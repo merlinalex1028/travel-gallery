@@ -1,0 +1,7 @@
+{
+  "repository": "google-ai-edge/mediapipe",
+  "commit": "81817034c5edbcb147938d2140e9ac52738d06a3",
+  "path": "mediapipe/tasks/cc/vision/face_landmarker/face_blendshapes_graph.cc",
+  "sourceSha256": "76b5544a7edb84d3a251a5773d9574b35e1a1e6c7368ed8f4af19a9e23b801b8",
+  "adaptation": "Fixed 146 landmark index constants and public preprocessing conventions; independently implemented Rust pipeline. SDK not distributed."
+}

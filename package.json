@@ -1,0 +1,50 @@
+{
+  "name": "travel-gallery",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:budget": "python3 scripts/check-test-artifact-budget.py",
+    "test:cleanup": "python3 scripts/cleanup-test-artifacts.py",
+    "test:rust": "node scripts/native.mjs cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri": "node scripts/native.mjs tauri",
+    "desktop": "node scripts/native.mjs tauri dev --features desktop",
+    "desktop:build": "node scripts/native.mjs tauri build --features desktop",
+    "desktop:package:mac": "pnpm media:tools:build && pnpm notices && pnpm desktop:build && node scripts/package-macos.mjs",
+    "desktop:package:windows": "node scripts/package-windows.mjs",
+    "notices": "node scripts/generate-notices.mjs",
+    "notices:check": "python3 scripts/check-notices.py",
+    "desktop:dmg": "node scripts/native.mjs tauri build --features desktop --bundles dmg",
+    "media:tools:build": "node scripts/build-media-tools.mjs",
+    "ai:model:prepare": "node scripts/prepare-ai-model.mjs",
+    "ai:worker:build": "node scripts/build-ai-worker.mjs",
+    "eyes:model:prepare": "node scripts/prepare-eyes-model.mjs"
+  },
+  "dependencies": {
+    "@tanstack/vue-virtual": "^3.13.0",
+    "@tauri-apps/api": "^2.8.0",
+    "element-plus": "^2.11.0",
+    "lucide-vue-next": "^0.468.0",
+    "maplibre-gl": "^5.7.0",
+    "pinia": "^3.0.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "@types/node": "^22.0.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^20.0.0",
+    "prettier": "^3.9.10",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.0",
+    "vue-tsc": "^3.0.0"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "theme": "system",
+  "density": 220,
+  "autoAdvance": true,
+  "pauseOnBattery": false,
+  "scanConcurrency": 2,
+  "cacheLimitGb": 5,
+  "showInspector": true,
+  "showFilmstrip": true,
+  "fontSize": 14,
+  "prefetch": 2
+}

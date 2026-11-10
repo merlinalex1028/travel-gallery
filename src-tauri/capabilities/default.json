@@ -1,0 +1,1 @@
+{"identifier":"main","description":"Local application window. Filesystem and process access stays in the Rust catalog service.","windows":["main"],"permissions":["core:default"]}

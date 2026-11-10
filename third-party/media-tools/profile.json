@@ -1,0 +1,14 @@
+{
+  "version": "9.0.2",
+  "archive": "ffmpeg-9.0.2.tar.xz",
+  "source": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+  "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+  "configure": [
+    "--disable-gpl", "--disable-version3", "--disable-nonfree",
+    "--disable-autodetect", "--disable-network", "--disable-protocols", "--enable-protocol=file",
+    "--disable-shared", "--enable-static", "--disable-doc", "--disable-debug",
+    "--disable-ffplay", "--disable-avdevice", "--disable-videotoolbox", "--disable-audiotoolbox",
+    "--disable-encoders", "--enable-encoder=mjpeg", "--disable-muxers", "--enable-muxer=image2",
+    "--enable-zlib"
+  ]
+}

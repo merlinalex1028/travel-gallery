@@ -1,0 +1,6 @@
+node_modules
+dist
+src-tauri
+travel_gallery_prd_v1_1
+pnpm-lock.yaml
+public/demo

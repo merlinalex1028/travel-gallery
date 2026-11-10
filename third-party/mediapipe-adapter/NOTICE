@@ -1,0 +1,8 @@
+MediaPipe Face Blendshapes landmark subset
+Copyright 2023 The MediaPipe Authors.
+Licensed under the Apache License, Version 2.0. The original license is retained in LICENSE.
+
+The fixed 146 landmark-index subset in src-tauri/src/eye_engine.rs was adapted into a Rust array from:
+https://github.com/google-ai-edge/mediapipe/blob/81817034c5edbcb147938d2140e9ac52738d06a3/mediapipe/tasks/cc/vision/face_landmarker/face_blendshapes_graph.cc
+
+The project implements the CPU pipeline in Rust with Tract; it does not distribute the MediaPipe prebuilt SDK. Weights and author model cards are optional, separately hash-checked data resources.

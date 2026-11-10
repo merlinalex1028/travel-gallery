@@ -1,0 +1,27 @@
+import { createRouter, createWebHashHistory } from 'vue-router';
+export const router = createRouter({
+  history: createWebHashHistory(),
+  routes: [
+    { path: '/', redirect: '/library' },
+    { path: '/welcome', component: () => import('./pages/WelcomePage.vue') },
+    { path: '/library', component: () => import('./pages/LibraryPage.vue') },
+    { path: '/filter', component: () => import('./pages/LibraryPage.vue') },
+    { path: '/sources', component: () => import('./pages/SourcesPage.vue') },
+    { path: '/cull', component: () => import('./pages/ViewerPage.vue') },
+    { path: '/viewer/:assetId', component: () => import('./pages/ViewerPage.vue') },
+    { path: '/duplicates', component: () => import('./pages/DuplicatesPage.vue') },
+    { path: '/tags', component: () => import('./pages/TagsPage.vue') },
+    { path: '/jobs', component: () => import('./pages/JobsPage.vue') },
+    { path: '/settings', component: () => import('./pages/SettingsPage.vue') },
+    { path: '/missing', component: () => import('./pages/MissingPage.vue') },
+    { path: '/trips', component: () => import('./pages/TripsPage.vue') },
+    { path: '/trips/:id/story', component: () => import('./pages/StoryPage.vue') },
+    { path: '/trips/:id', component: () => import('./pages/LibraryPage.vue') },
+    { path: '/compare', component: () => import('./pages/ComparePage.vue') },
+    { path: '/timeline', component: () => import('./pages/TimelinePage.vue') },
+    { path: '/quality', component: () => import('./pages/QualityPage.vue') },
+    { path: '/ai', component: () => import('./pages/LocalAiPage.vue') },
+    { path: '/map', component: () => import('./pages/MapPage.vue') },
+    { path: '/:pathMatch(.*)*', redirect: '/library' },
+  ],
+});

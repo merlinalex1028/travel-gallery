@@ -1,0 +1,78 @@
+[package]
+name = "travel-gallery"
+version = "0.1.0"
+edition = "2021"
+description = "Offline, source-safe travel media catalog"
+license = "MIT"
+default-run = "travel-gallery"
+
+[lib]
+name = "travel_gallery"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "travel-gallery"
+required-features = ["desktop"]
+
+[[bin]]
+name = "travel-gallery-ai"
+path = "src/ai_worker_main.rs"
+required-features = ["ai-worker"]
+
+[[bin]]
+name = "travel-gallery-quality"
+path = "src/quality_worker_main.rs"
+required-features = ["quality-worker"]
+
+[features]
+default = []
+quality-worker = ["dep:tract-tflite", "dep:zip", "dep:flatbuffers"]
+ai-worker = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers"]
+desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:open", "dep:tauri-build"]
+performance-probe = ["desktop"]
+offline-network-probe = ["performance-probe"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[dependencies]
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+open = { version = "5", optional = true }
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "tiff", "bmp"] }
+kamadak-exif = "0.6"
+walkdir = "2"
+globset = "0.4"
+base64 = "0.22"
+fs2 = "0.4"
+cap-std = "3"
+notify = "8.2.0"
+
+candle-core = { version = "=0.11.0", default-features = false, optional = true }
+candle-nn = { version = "=0.11.0", default-features = false, optional = true }
+candle-transformers = { version = "=0.11.0", default-features = false, optional = true }
+tokenizers = { version = "=0.22.2", default-features = false, features = ["fancy-regex"], optional = true }
+
+flatbuffers = { version = "=25.12.19", optional = true }
+tract-tflite = { version = "=0.23.9", optional = true }
+zip = { version = "=2.4.2", default-features = false, features = ["deflate"], optional = true }
+
+[patch.crates-io]
+tract-tflite = { path = "../third-party/vendor/tract-tflite" }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Power"] }
+
+[dev-dependencies]
+tempfile = "3"
+quick-xml = "0.42"

@@ -1,0 +1,10 @@
+{
+  "version": "9.0.2",
+  "source": "https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz",
+  "sha256": "8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e",
+  "signingKeyFingerprint": "FCF986EA15E6E293A5644F10B4322F04D67658D8",
+  "detachedRsaSignatureValid": true,
+  "verifier": "PGPy 0.6.0 / cryptography",
+  "sourceUnmodified": true,
+  "verificationLimits": "RSA detached signature against the official pinned fingerprint; PGPy does not perform key self-signature/revocation/flag policy checks. No claim of full OpenPGP trust-policy verification."
+}

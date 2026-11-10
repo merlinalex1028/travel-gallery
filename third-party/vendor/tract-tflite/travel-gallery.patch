@@ -1,0 +1,102 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -4,7 +4,7 @@
+ 
+ mod model;
+ mod ops;
+-mod registry;
++pub mod registry;
+ pub mod rewriter;
+ mod ser;
+ mod tensors;
+--- a/src/model.rs
++++ b/src/model.rs
+@@ -9,7 +9,7 @@
+ use crate::tflite;
+ use crate::tflite::{Buffer, BufferArgs};
+ 
+-pub struct Tflite(Registry);
++pub struct Tflite(pub Registry);
+ 
+ impl Debug for Tflite {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+--- a/src/tensors.rs
++++ b/src/tensors.rs
+@@ -115,8 +115,9 @@
+     }
+     let shape = flat
+         .shape()
+-        .unwrap()
+-        .iter()
++        .map(|shape| shape.iter().collect::<Vec<_>>())
++        .unwrap_or_default()
++        .into_iter()
+         .map(|d| {
+             if d < 0 {
+                 bail!("Negative dimension in TFLite tensor shape: {d}")
+--- a/src/ops/nn.rs
++++ b/src/ops/nn.rs
+@@ -112,7 +112,7 @@
+ }
+ 
+ fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> {
+-    let (_, axes) = args_2!(op.facts()?);
++    let (input, axes) = args_2!(op.facts()?);
+     let options = builtin!(op, builtin_options_as_reducer_options);
+     let axes: TVec<usize> = axes
+         .konst
+@@ -121,9 +121,13 @@
+         .try_as_plain_ram()?
+         .as_slice::<i32>()?
+         .iter()
+-        .map(|d| *d as usize)
+-        .sorted()
+-        .collect();
++        .map(|d| {
++            let axis = if *d < 0 { input.rank() as i32 + *d } else { *d };
++            ensure!(axis >= 0 && axis < input.rank() as i32, "Reduction axis is outside input rank");
++            Ok(axis as usize)
++        })
++        .collect::<TractResult<TVec<usize>>>()?;
++    let axes: TVec<usize> = axes.into_iter().sorted().dedup().collect();
+     let p = &op.prefix;
+     let mut wire = op.ctx.target.wire_node(
+         format!("{p}.reduce"),
+@@ -148,9 +152,13 @@
+         .try_as_plain_ram()?
+         .as_slice::<i32>()?
+         .iter()
+-        .map(|d| *d as usize)
+-        .sorted()
+-        .collect();
++        .map(|d| {
++            let axis = if *d < 0 { input.rank() as i32 + *d } else { *d };
++            ensure!(axis >= 0 && axis < input.rank() as i32, "Reduction axis is outside input rank");
++            Ok(axis as usize)
++        })
++        .collect::<TractResult<TVec<usize>>>()?;
++    let axes: TVec<usize> = axes.into_iter().sorted().dedup().collect();
+     let norm: TDim = axes.iter().map(|d| &input.shape[*d]).product();
+     let wire = de_reduce(op, Reducer::Sum)?;
+     let p = &op.prefix;
+@@ -161,7 +169,8 @@
+         &[norm],
+     )?;
+     let norm = op.ctx.target.wire_node(format!("{p}.recip"), core::math::recip(), &norm)?;
+-    wire_with_rank_broadcast(op.prefix, op.ctx.target, core::quant::scale(), &[norm[0], wire[0]])
++    let multiply = if input.datum_type.is_float() { core::math::mul() } else { core::quant::scale() };
++    wire_with_rank_broadcast(op.prefix, op.ctx.target, multiply, &[norm[0], wire[0]])
+ }
+ 
+ fn de_softmax(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+--- a/src/ops/array.rs
++++ b/src/ops/array.rs
+@@ -154,7 +154,7 @@
+ 
+ fn de_strided_slice(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+     let options = builtin!(op, builtin_options_as_strided_slice_options);
+-    ensure!(options.new_axis_mask() == 0 && options.shrink_axis_mask() == 0);
++    ensure!(options.new_axis_mask() == 0 && options.ellipsis_mask() == 0);
+     let slice = tract_core::ops::array::StridedSlice {
+         begin_mask: options.begin_mask() as _,
+         end_mask: options.end_mask() as _,

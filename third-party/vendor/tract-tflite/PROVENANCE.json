@@ -1,0 +1,14 @@
+{
+  "package": "tract-tflite",
+  "version": "0.23.9",
+  "crateSha256": "9bae0a8b068043c5778caf5008455a5419bcaf481396076da01747f23ba52884",
+  "publishedVcs": {
+    "git": {
+      "sha1": "ee878dcb69f7385fc48611b056568effcb2b32cf",
+      "dirty": true
+    },
+    "path_in_vcs": "tflite"
+  },
+  "note": "Published crate reports dirty=true; archive checksum binds original source. Root licenses are fetched from stated commit. Five source files changed; see travel-gallery.patch.",
+  "patchSha256": "73b5f4f91c86de9dfe3e3d796961e833d75c56904f5c9ba0a5f1b2b37b3ece8e"
+}

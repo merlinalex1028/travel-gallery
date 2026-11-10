@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "id": "face-landmarker-v1-64184e22",
+  "name": "MediaPipe Face Landmarker V1",
+  "kind": "mediapipe-face-landmarker-f16-v1",
+  "repository": "google-ai-edge/mediapipe-models/face_landmarker",
+  "revision": "gcs-generation-1683136941916318",
+  "license": "Apache-2.0",
+  "embeddingDimension": 0,
+  "imageSize": 256,
+  "maxTextTokens": 0,
+  "files": [
+    {
+      "path": "face_landmarker.task",
+      "bytes": 3758596,
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "url": "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task?generation=1683136941916318"
+    },
+    {
+      "path": "face_detector_model_card.pdf",
+      "bytes": 434425,
+      "sha256": "cd335c06fc0de7807cd815a0777a697932598bcdb28fa98adaaabf847485f758",
+      "url": "https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20(Short%20Range).pdf?generation=1683223301065412"
+    },
+    {
+      "path": "face_mesh_model_card.pdf",
+      "bytes": 3476420,
+      "sha256": "c6add060f4ebfb37b2690136b6c711c7e5fcb7038baa2649ae3338b83979565a",
+      "url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Face%20Mesh%20V2.pdf?generation=1683910257859728"
+    },
+    {
+      "path": "blendshape_model_card.pdf",
+      "bytes": 2324099,
+      "sha256": "c8e9cf60a39998f4b341740623917590e050d1c97004e2de4568d84e026445ae",
+      "url": "https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Blendshape%20V2.pdf?generation=1683910254913832"
+    },
+    {
+      "path": "LICENSE.txt",
+      "bytes": 12331,
+      "sha256": "8707eef0533987efc5b155d64761eeb6e20793f50b9bd1a68dad1cf4719d0ed8",
+      "url": "https://raw.githubusercontent.com/google-ai-edge/mediapipe/81817034c5edbcb147938d2140e9ac52738d06a3/LICENSE"
+    }
+  ]
+}
