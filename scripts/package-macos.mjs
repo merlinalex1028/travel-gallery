@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertFormalMacBundle } from './formal-macos-bundle.mjs';
 
 if (process.platform !== 'darwin') throw new Error('This packaging command requires macOS.');
 if (process.env.APPLE_SIGNING_IDENTITY && process.env.APPLE_SIGNING_IDENTITY !== '-')
@@ -23,6 +24,7 @@ const bundle = process.env.TRAVEL_GALLERY_PACKAGE_APP ?? join(root, 'src-tauri/t
 if (!isAbsolute(bundle) || basename(bundle) !== 'Travel Gallery.app')
   throw new Error('The review bundle must be an absolute path named Travel Gallery.app.');
 if (!existsSync(bundle)) throw new Error('Build the release .app first with pnpm desktop:build.');
+assertFormalMacBundle(bundle);
 const workers = ['travel-gallery-ai', 'travel-gallery-quality', 'ffmpeg', 'ffprobe'].map((name) =>
   join('Contents', 'MacOS', name),
 );
@@ -60,6 +62,7 @@ try {
   execFileSync('/usr/bin/unzip', ['-t', temporary], { stdio: 'pipe' });
   execFileSync('ditto', ['-x', '-k', temporary, extracted], { stdio: 'pipe' });
   const extractedBundle = join(extracted, 'Travel Gallery.app');
+  assertFormalMacBundle(extractedBundle);
   execFileSync('codesign', ['--verify', '--deep', '--strict', extractedBundle], { stdio: 'pipe' });
   const executable = join('Contents', 'MacOS', 'travel-gallery');
   const executableHash = createHash('sha256')

@@ -1,0 +1,16 @@
+{
+  "identifier": "com.travelgallery.development",
+  "productName": "Travel Gallery Dev",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "旅图 · 开发版",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 860,
+        "minHeight": 600
+      }
+    ]
+  }
+}

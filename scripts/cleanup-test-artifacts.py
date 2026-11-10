@@ -12,7 +12,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS = ROOT / 'artifacts'
 APP = ROOT / 'src-tauri/target/release/bundle/macos/Travel Gallery.app'
-IDENTIFIERS = ('com.travelgallery.offlineaudit', 'com.travelgallery.benchmark')
+IDENTIFIERS = ('com.travelgallery.offlineaudit', 'com.travelgallery.benchmark', 'com.travelgallery.development')
 
 
 def sha(path):
@@ -66,24 +66,33 @@ def build_cache_targets():
         parent /= component
 
 
+def qa_namespace_paths(home, identifier):
+    if identifier not in IDENTIFIERS:
+        raise ValueError('Expected an isolated application identifier')
+    library = home / 'Library'
+    container = library / 'Containers' / identifier / 'Data/Library'
+    for folder, suffix in (('Application Support', ''), ('Caches', ''), ('WebKit', ''),
+                           ('HTTPStorages', ''), ('HTTPStorages', '.binarycookies'),
+                           ('Preferences', '.plist'), ('Saved Application State', '.savedState'),
+                           ('Logs', '')):
+        for path in (library / folder / (identifier + suffix),
+                     container / folder / (identifier + suffix),
+                     # A production identifier is disposable only inside a QA container.
+                     container / folder / ('com.travelgallery.desktop' + suffix)):
+            # Refuse linked ancestors even before a new profile exists.
+            for parent in path.parents:
+                if parent == home:
+                    break
+                if parent.is_symlink():
+                    raise RuntimeError(f'Refusing linked QA ancestor: {parent}')
+            yield path
+
+
 def qa_data_targets(home=None):
     home = Path.home() if home is None else home
     for identifier in IDENTIFIERS:
-        library = home / 'Library'
-        container = library / 'Containers' / identifier / 'Data/Library'
-        for suffix in ('Application Support', 'Caches', 'WebKit', 'HTTPStorages'):
-            for path in (library / suffix / identifier,
-                         container / suffix / identifier,
-                         container / suffix / 'com.travelgallery.desktop'):
-                if not path.exists() and not path.is_symlink():
-                    continue
-                # A production identifier is disposable only inside a QA container.
-                # Reject linked ancestors; unlinking a target link itself is safe.
-                for parent in path.parents:
-                    if parent == home:
-                        break
-                    if parent.is_symlink():
-                        raise RuntimeError(f'Refusing linked QA ancestor: {parent}')
+        for path in qa_namespace_paths(home, identifier):
+            if path.exists() or path.is_symlink():
                 yield path
 
 

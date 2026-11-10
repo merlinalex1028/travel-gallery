@@ -25,13 +25,12 @@ b.APPROVAL = ROOT/'docs/native-disk-full-default-budget.json'
 b.RECEIPT = ROOT/'docs/native-disk-full-latest.json'
 b.DATA = b.LIBRARY/'Application Support/com.travelgallery.desktop'
 b.CACHE = b.LIBRARY/'Caches/com.travelgallery.desktop'
-b.EXTRA = [b.LIBRARY/sub/identifier for sub in ('WebKit', 'HTTPStorages')
-           for identifier in ('com.travelgallery.desktop', b.IDENTIFIER)]
-b.EXTRA += [b.LIBRARY/sub/b.IDENTIFIER for sub in ('Application Support', 'Caches')]
-b.EXTRA += [Path.home()/'Library'/sub/b.IDENTIFIER
-            for sub in ('Application Support', 'Caches', 'WebKit', 'HTTPStorages')]
 OWNED = [b.LIBRARY/sub/identifier for sub in ('Application Support', 'Caches')
          for identifier in ('com.travelgallery.desktop', b.IDENTIFIER)]
+cleanup_spec = importlib.util.spec_from_file_location('cleanup', ROOT/'scripts/cleanup-test-artifacts.py')
+cleanup = importlib.util.module_from_spec(cleanup_spec)
+cleanup_spec.loader.exec_module(cleanup)
+b.EXTRA = [path for path in cleanup.qa_namespace_paths(Path.home(), b.IDENTIFIER) if path not in OWNED]
 TABLES = ('asset_reviews', 'tags', 'asset_tags', 'linked_media', 'collections',
           'collection_assets', 'saved_filters', 'source_options', 'app_settings')
 SCOPE = 'Default-budget production-binary native disk-full acceptance'
@@ -50,7 +49,14 @@ def write_sources(source):
 
 
 def normal_state():
-    path = Path.home()/'Library/Application Support/com.travelgallery.desktop/catalog.sqlite'
+    library = Path.home()/'Library'
+    data = library/'Application Support/com.travelgallery.desktop'
+    cache = library/'Caches/com.travelgallery.desktop'
+    path = data/'catalog.sqlite'
+    if not path.exists() and not path.is_symlink():
+        return dict(media=0, tables={}, catalogPresent=False,
+                    dataDirectoryPresent=data.exists() or data.is_symlink(),
+                    cacheDirectoryPresent=cache.exists() or cache.is_symlink())
     with sqlite3.connect(f'file:{path}?mode=ro', uri=True) as conn:
         conn.execute('BEGIN')
         tables = {table: hashlib.sha256('\n'.join(sorted(json.dumps(tuple(row), ensure_ascii=False, sort_keys=True)
