@@ -1,0 +1,65 @@
+name: Verify Travel Gallery
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - if: runner.os == 'macOS' && runner.arch == 'X64'
+        run: brew install nasm
+      - if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make diffutils curl tar
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-zlib
+      - run: pnpm install --frozen-lockfile
+      - run: node --test scripts/tests/media-tools-build.test.mjs
+      - run: pnpm test
+      - run: pnpm build
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build and verify native media tools
+        run: node scripts/build-media-tools.mjs
+        env:
+          TRAVEL_GALLERY_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+      - run: node scripts/smoke-media-tools.mjs --output artifacts/media-tools-smoke.json
+      - run: pnpm notices
+      - run: node scripts/build-ai-worker.mjs
+      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml --features desktop
+      - if: runner.os == 'macOS'
+        run: pnpm desktop:build
+      - if: runner.os == 'Windows'
+        run: pnpm desktop:package:windows
+        env:
+          TRAVEL_GALLERY_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+      - if: runner.os == 'macOS'
+        run: node scripts/package-macos.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: travel-gallery-${{ matrix.os }}
+          path: |
+            src-tauri/target/release/bundle/
+            artifacts/

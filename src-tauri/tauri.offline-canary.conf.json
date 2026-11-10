@@ -1,0 +1,23 @@
+{
+  "productName": "Travel Gallery Offline Bench",
+  "identifier": "com.travelgallery.offlineaudit",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-media-tools.mjs && pnpm exec vue-tsc --noEmit && pnpm exec vite build --mode performance --outDir dist-offline-canary",
+    "frontendDist": "../dist-offline-canary"
+  },
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "旅图 · 回环网络验收",
+      "width": 1440,
+      "height": 920,
+      "minWidth": 860,
+      "minHeight": 600,
+      "alwaysOnTop": true,
+      "visibleOnAllWorkspaces": true
+    }],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:39841; img-src 'self' data: blob: media: http://media.localhost; media-src 'self' blob: media: http://media.localhost; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "productName": "Travel Gallery Offline Bench",
+  "identifier": "com.travelgallery.offlineaudit",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-media-tools.mjs && pnpm exec vue-tsc --noEmit && pnpm exec vite build --mode performance --outDir dist-performance",
+    "frontendDist": "../dist-performance"
+  },
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "旅图 · 离线验收",
+      "width": 1440,
+      "height": 920,
+      "minWidth": 860,
+      "minHeight": 600
+    }]
+  }
+}

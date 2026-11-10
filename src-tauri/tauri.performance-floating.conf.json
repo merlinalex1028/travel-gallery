@@ -1,0 +1,20 @@
+{
+  "productName": "Travel Gallery Bench",
+  "identifier": "com.travelgallery.benchmark",
+  "build": {
+    "beforeBuildCommand": "node scripts/build-media-tools.mjs && pnpm exec vue-tsc --noEmit && pnpm exec vite build --mode performance --outDir dist-performance",
+    "frontendDist": "../dist-performance"
+  },
+  "app": {
+    "windows": [{
+      "label": "main",
+      "title": "旅图 · 原生性能验收（浮动）",
+      "width": 1440,
+      "height": 920,
+      "minWidth": 860,
+      "minHeight": 600,
+      "alwaysOnTop": true,
+      "visibleOnAllWorkspaces": true
+    }]
+  }
+}

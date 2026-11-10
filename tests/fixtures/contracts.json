@@ -1,0 +1,369 @@
+{
+  "aiClusters": {
+    "createdAt": null,
+    "filter": {},
+    "groups": [],
+    "jobId": null,
+    "summary": null
+  },
+  "aiStatus": {
+    "enabled": false,
+    "idleReleaseSeconds": 60,
+    "indexedCount": 0,
+    "inferenceThreads": 2,
+    "installedAt": null,
+    "modelAvailable": false,
+    "modelBytes": 1535226485,
+    "modelFolderPresent": false,
+    "modelVersion": "siglip2-base224-75de2d55/siglip2-screen-rgb-bilinear224-pad0-v1/candle-0.11.0",
+    "profileId": "siglip2-base224-75de2d55",
+    "profileName": "Google SigLIP 2 Base",
+    "runtime": "idle",
+    "total": 1
+  },
+  "assetDetail": {
+    "absolutePath": "<source>/IMG_0001.JPG",
+    "byteSize": 12345,
+    "cameraMake": "Example",
+    "cameraModel": "Camera",
+    "captureLocal": "2026-06-15 09:20:00",
+    "captureTimeCorrection": {
+      "isCorrected": false,
+      "original": null,
+      "revision": 0
+    },
+    "captureTimeSource": "exif",
+    "captureTzMin": 480,
+    "captureUtcMs": 1781486400000,
+    "codec": null,
+    "durationMs": null,
+    "extension": "jpg",
+    "fileState": "available",
+    "filename": "IMG_0001.JPG",
+    "gpsLat": 30.04,
+    "gpsLon": 101.52,
+    "height": 4000,
+    "id": "golden-photo",
+    "indexedAt": 0,
+    "linkedMediaCount": 0,
+    "linkedMediaType": null,
+    "mediaKind": "image",
+    "metadata": {},
+    "mtimeMs": 0,
+    "orientation": 1,
+    "preview": {
+      "canOpenSystem": true,
+      "canOriginalPreview": true,
+      "canPlayInline": false,
+      "canScreenPreview": true,
+      "canThumbnail": true
+    },
+    "relativePath": "IMG_0001.JPG",
+    "review": {
+      "isFavorite": false,
+      "note": "",
+      "pickState": "unreviewed",
+      "rating": 0,
+      "revision": 0,
+      "updatedAt": 0
+    },
+    "sourceId": "golden-source",
+    "tagIds": [],
+    "thumbnailState": "queued",
+    "width": 6000
+  },
+  "assetQuality": {
+    "assetId": "golden-photo",
+    "observations": [],
+    "staleCount": 0
+  },
+  "assetSummary": {
+    "byteSize": 12345,
+    "cameraModel": "Camera",
+    "captureLocal": "2026-06-15 09:20:00",
+    "captureUtcMs": 1781486400000,
+    "durationMs": null,
+    "extension": "jpg",
+    "fileState": "available",
+    "filename": "IMG_0001.JPG",
+    "height": 4000,
+    "id": "golden-photo",
+    "indexedAt": 0,
+    "linkedMediaCount": 0,
+    "linkedMediaType": null,
+    "mediaKind": "image",
+    "mtimeMs": 0,
+    "relativePath": "IMG_0001.JPG",
+    "review": {
+      "isFavorite": false,
+      "note": "",
+      "pickState": "unreviewed",
+      "rating": 0,
+      "revision": 0,
+      "updatedAt": 0
+    },
+    "sourceId": "golden-source",
+    "thumbnailState": "queued",
+    "width": 6000
+  },
+  "captureTimeReceipt": {
+    "revision": 1,
+    "updated": true
+  },
+  "cullProgress": {
+    "day": {
+      "label": "2026-06-15",
+      "reviewed": 0,
+      "total": 1
+    },
+    "folder": {
+      "label": "来源根目录",
+      "reviewed": 0,
+      "total": 1
+    },
+    "scope": {
+      "reviewed": 0,
+      "total": 1
+    }
+  },
+  "error": {
+    "code": "INVALID_FILTER",
+    "details": {},
+    "message": "筛选或输入参数无效",
+    "retryable": false
+  },
+  "exportPreset": {
+    "id": "<preset>",
+    "name": "旅行精选",
+    "options": {
+      "conflictPolicy": "skip",
+      "includeLinked": true,
+      "includeXmp": false,
+      "layout": "captureMonth",
+      "naming": {
+        "padding": 4,
+        "pattern": "{date}_{seq}",
+        "start": 7
+      }
+    },
+    "revision": 1
+  },
+  "exportReport": {
+    "copiedCount": 1,
+    "failedCount": 0,
+    "items": [
+      {
+        "assetId": "golden-photo",
+        "destination": "IMG_0001.JPG",
+        "errorCode": null,
+        "sha256": "<sha256>",
+        "state": "copied"
+      }
+    ],
+    "jobId": "golden-export",
+    "manifestPath": "travel-gallery-golden-export.csv",
+    "sidecars": [
+      {
+        "assetId": "golden-photo",
+        "destination": "IMG_0001.xmp",
+        "errorCode": "EXPORT_CONFLICT",
+        "sha256": null,
+        "state": "failed"
+      }
+    ],
+    "skippedCount": 0,
+    "status": "completed",
+    "verifiedCount": 1,
+    "xmpCopiedCount": 0,
+    "xmpFailedCount": 1,
+    "xmpSkippedCount": 0
+  },
+  "neighbors": {
+    "anchorMatches": true,
+    "total": 1,
+    "position": 1,
+    "items": [
+      {
+        "byteSize": 12345,
+        "cameraModel": "Camera",
+        "captureLocal": "2026-06-15 09:20:00",
+        "captureUtcMs": 1781486400000,
+        "durationMs": null,
+        "extension": "jpg",
+        "fileState": "available",
+        "filename": "IMG_0001.JPG",
+        "height": 4000,
+        "id": "golden-photo",
+        "indexedAt": 0,
+        "linkedMediaCount": 0,
+        "linkedMediaType": null,
+        "mediaKind": "image",
+        "mtimeMs": 0,
+        "relativePath": "IMG_0001.JPG",
+        "review": {
+          "isFavorite": false,
+          "note": "",
+          "pickState": "unreviewed",
+          "rating": 0,
+          "revision": 0,
+          "updatedAt": 0
+        },
+        "sourceId": "golden-source",
+        "thumbnailState": "queued",
+        "width": 6000
+      }
+    ],
+    "nextId": null,
+    "previousId": null
+  },
+  "page": {
+    "items": [
+      {
+        "byteSize": 12345,
+        "cameraModel": "Camera",
+        "captureLocal": "2026-06-15 09:20:00",
+        "captureUtcMs": 1781486400000,
+        "durationMs": null,
+        "extension": "jpg",
+        "fileState": "available",
+        "filename": "IMG_0001.JPG",
+        "height": 4000,
+        "id": "golden-photo",
+        "indexedAt": 0,
+        "linkedMediaCount": 0,
+        "linkedMediaType": null,
+        "mediaKind": "image",
+        "mtimeMs": 0,
+        "relativePath": "IMG_0001.JPG",
+        "review": {
+          "isFavorite": false,
+          "note": "",
+          "pickState": "unreviewed",
+          "rating": 0,
+          "revision": 0,
+          "updatedAt": 0
+        },
+        "sourceId": "golden-source",
+        "thumbnailState": "queued",
+        "width": 6000
+      }
+    ],
+    "nextCursor": null,
+    "queryFingerprint": "<fingerprint>",
+    "total": 1
+  },
+  "qualityResults": {
+    "items": [],
+    "offset": 0,
+    "pageSize": 60,
+    "total": 0
+  },
+  "qualityStatus": {
+    "detailCount": 0,
+    "detailEnabled": false,
+    "detailVersion": "detail-laplacian4-sobel3-luma512-v1",
+    "eyeVersion": "face-landmarker-v1-64184e22/blazeface128-mesh256-blend146-cv32-v1/tract-0.23.9-r1;hint-ear016-blink035-v1",
+    "eyesCount": 0,
+    "eyesEnabled": false,
+    "idleReleaseSeconds": 60,
+    "inferenceThreads": 1,
+    "installedAt": null,
+    "modelAvailable": false,
+    "modelBytes": 10005871,
+    "modelFolderPresent": false,
+    "profileId": "face-landmarker-v1-64184e22",
+    "profileName": "MediaPipe Face Landmarker V1",
+    "runtime": "idle",
+    "total": 1
+  },
+  "renamePreview": {
+    "expiresAt": 0,
+    "items": [
+      {
+        "assetId": "golden-photo",
+        "dateUnknown": false,
+        "originalFilename": "IMG_0001.JPG",
+        "proposedFilename": "20260615_0007.JPG",
+        "proposedRelativePath": "20260615_0007.JPG",
+        "reason": "",
+        "sourceId": "golden-source",
+        "sourceName": "fixture",
+        "sourceRelativePath": "IMG_0001.JPG",
+        "status": "ready"
+      }
+    ],
+    "job": {
+      "autoPauseReason": null,
+      "cancelRequested": false,
+      "createdAt": 0,
+      "errorSummary": null,
+      "failureCount": 0,
+      "id": "<job>",
+      "operation": "renamePreview",
+      "progressDone": 1,
+      "progressTotal": 1,
+      "status": "completed",
+      "type": "REPAIR",
+      "updatedAt": 0
+    },
+    "nextOffset": null,
+    "rule": {
+      "padding": 4,
+      "pattern": "{date}_{seq}",
+      "start": 7
+    },
+    "summary": {
+      "conflict": 0,
+      "invalid": 0,
+      "ready": 1,
+      "total": 1,
+      "unavailable": 0,
+      "unchanged": 0
+    },
+    "target": {
+      "kind": "snapshot",
+      "snapshotId": "<snapshot>"
+    }
+  },
+  "reviewReceipt": {
+    "affectedCount": 1,
+    "changeBatchId": "<batch>",
+    "conflicts": [],
+    "unchangedCount": 0
+  },
+  "story": {
+    "epoch": 0,
+    "items": [
+      {
+        "assetId": "golden-photo",
+        "date": "2026-06-15",
+        "fileState": "available",
+        "filename": "IMG_0001.JPG",
+        "mediaKind": "image",
+        "note": "",
+        "unknownTimezone": true
+      }
+    ],
+    "nextOffset": null,
+    "total": 1,
+    "trip": {
+      "count": 1,
+      "coverAssetId": "golden-photo",
+      "description": "原始日期分章",
+      "endAt": null,
+      "id": "golden-trip",
+      "name": "旅行故事",
+      "startAt": null
+    }
+  },
+  "timeline": [
+    {
+      "count": 1,
+      "date": "2026-06-15",
+      "photos": 1,
+      "reviewed": 1,
+      "unknownTimezone": 1,
+      "videos": 0
+    }
+  ]
+}
