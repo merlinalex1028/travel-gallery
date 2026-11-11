@@ -48,6 +48,7 @@ def authorized(record):
         and record.get('status') == 'active'
         and record.get('userAnswer') == '允许这一轮，结束即清理'
         and not record.get('claimedAt')
+        and not record.get('closedAt')
     )
 
 

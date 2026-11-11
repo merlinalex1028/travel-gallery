@@ -37,6 +37,9 @@ m.EXTRA=[folder/'owned-extra'];m.GENERATED=folder/'owned-generated';m.OWNS_GENER
 owned=[*m.OWNED_PATHS,*m.EXTRA,m.GENERATED]
 for path in owned:
     path.mkdir();(path/'sentinel').write_text('Temporary cleanup fixture')
+preferences=folder/'owned-preferences.plist'
+preferences.write_text('Temporary preference file fixture')
+m.EXTRA.append(preferences)
 m.check=lambda:{'files':0,'logicalBytes':0}
 calls=[]
 m.build=lambda qa,env:calls.append('normal') or work/'candidate/Travel Gallery.app'
@@ -57,6 +60,7 @@ if mode=='finish':assert calls==['normal','observed'],calls
 else:assert m.STATE['terminationSignal']==mode,m.STATE
 assert not work.exists()
 assert not any(path.exists() for path in owned)
+assert not preferences.exists()
 assert json.loads(m.APPROVAL.read_text())['status']=='closed'
 assert json.loads(m.RECEIPT.read_text())['temporaryDirectoryRemoved']
 print('CONTROLLER_AND_CLEANUP_PASSED:'+mode)
@@ -86,7 +90,7 @@ print('CONTROLLER_AND_CLEANUP_PASSED:'+mode)
                 assert subprocess.run(['ps','-p',str(child_pid)],stdout=subprocess.DEVNULL).returncode!=0,'Owned child survived cleanup'
             checks.append(dict(mode=mode,exitCode=process.returncode,ownedChildStopped=bool(child_pid),
                 repeatedSignalIgnored=bool(child_pid),approvalClosed=True,runDirectoryRemoved=True,
-                ownedDataCacheGeneratedRemoved=True,previousSignalHandlersRestored=True))
+                ownedDataCacheGeneratedRemoved=True,ownedPreferencesFileRemoved=True,previousSignalHandlersRestored=True))
         finally:
             if process.poll() is None:
                 process.terminate()

@@ -22,9 +22,11 @@ spec.loader.exec_module(batch)
 class CombinedBatchChecks(unittest.TestCase):
     def test_budget_requires_a_fresh_matching_approval(self):
         record = json.loads(batch.APPROVAL.read_text())
+        record.pop('claimedAt', None)
+        record.pop('closedAt', None)
         record.update(status='active', userAnswer='允许这一轮，结束即清理')
         self.assertTrue(batch.authorized(record))
-        for update in ({'status': 'proposed'}, {'claimedAt': 'already used'}, {'userAnswer': 'other batch'},
+        for update in ({'status': 'proposed'}, {'claimedAt': 'already used'}, {'closedAt': 'already closed'}, {'userAnswer': 'other batch'},
                        {'batch': 'other batch'}, {'limits': dict(batch.LIMITS, files=40001)}):
             self.assertFalse(batch.authorized(dict(record, **update)), update)
 

@@ -241,7 +241,8 @@ def _run_with_cleanup():
                             else:raise RuntimeError('Owned QA process did not stop; refusing to delete its live data')
         for p in [*OWNED_PATHS,*(EXTRA if OWNED_PATHS else [])]:
             if p.is_symlink():p.unlink()
-            elif p.exists():shutil.rmtree(p)
+            elif p.is_dir():shutil.rmtree(p)
+            elif p.exists():p.unlink()
         if OWNS_GENERATED:
             if GENERATED.is_symlink():GENERATED.unlink()
             elif GENERATED.exists():shutil.rmtree(GENERATED)
