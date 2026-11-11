@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
     collections::{HashMap, HashSet},
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 use walkdir::WalkDir;
@@ -419,7 +419,6 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         }
         let aid = old.as_ref().map(|o| o.0.clone()).unwrap_or_else(id);
         let meta = media::metadata(path, &ext, kind, file_stamp.1);
-        let v = &meta.values;
         if files::stamp(path).ok() != Some(file_stamp) {
             failures += 1;
             complete = false;
@@ -427,18 +426,22 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         }
         let tx = c.transaction()?;
         if old.is_some() {
-            tx.execute("DELETE FROM linked_media WHERE match_method NOT IN ('manual','manual_exclusion') AND (primary_asset_id=? OR secondary_asset_id=?)", params![aid,aid])?;
-            tx.execute("DELETE FROM thumbnail_cache WHERE asset_id=?", [&aid])?;
-            tx.execute("DELETE FROM similar_groups WHERE id IN(SELECT group_id FROM similar_group_items WHERE asset_id=?)",[&aid])?;
+            invalidate_indexed_file(&tx, &aid)?;
         }
-        tx.execute("INSERT INTO media_assets(id,source_id,relative_path,filename,extension,media_kind,byte_size,mtime_ms,capture_local,capture_utc_ms,capture_tz_min,capture_time_source,width,height,orientation,duration_ms,codec,camera_make,camera_model,gps_lat,gps_lon,file_state,metadata_json,indexed_at,updated_at,last_seen_scan_generation) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id,relative_path) DO UPDATE SET byte_size=excluded.byte_size,mtime_ms=excluded.mtime_ms,capture_local=excluded.capture_local,capture_utc_ms=excluded.capture_utc_ms,capture_tz_min=excluded.capture_tz_min,capture_time_source=excluded.capture_time_source,width=excluded.width,height=excluded.height,orientation=excluded.orientation,duration_ms=excluded.duration_ms,codec=excluded.codec,camera_make=excluded.camera_make,camera_model=excluded.camera_model,gps_lat=excluded.gps_lat,gps_lon=excluded.gps_lon,file_state=excluded.file_state,metadata_json=excluded.metadata_json,updated_at=excluded.updated_at,last_seen_scan_generation=excluded.last_seen_scan_generation,sha256=NULL,perceptual_hash=NULL",params![aid,sid,rel,path.file_name().unwrap().to_string_lossy(),ext,kind,file_stamp.0,file_stamp.1,v["captureLocal"].as_str(),v["captureUtcMs"].as_i64(),v["captureTzMin"].as_i64(),v["captureTimeSource"].as_str(),v["width"].as_i64(),v["height"].as_i64(),v["orientation"].as_i64(),v["durationMs"].as_i64(),v["codec"].as_str(),v["cameraMake"].as_str(),v["cameraModel"].as_str(),v["gpsLat"].as_f64(),v["gpsLon"].as_f64(),meta.state,v["metadata"].to_string(),now(),now(),generation])?;
-        crate::capture_time::refresh_original(&tx, &aid, v)?;
+        IndexedFile {
+            aid: &aid,
+            sid,
+            rel: &rel,
+            path,
+            ext: &ext,
+            kind,
+            stamp: file_stamp,
+            identity: identity.as_deref(),
+            generation,
+        }
+        .save(&tx, &meta)?;
         db::bump(&tx)?;
         tx.commit()?;
-        c.execute(
-            "UPDATE media_assets SET file_identity=? WHERE id=?",
-            params![identity, aid],
-        )?;
         if done < 18 {
             let _ = media::thumbnail(cat, &mut c, &aid, "small");
         }
@@ -480,9 +483,66 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
     cat.queue(&c, "THUMBNAIL", json!({"sourceId":sid}))?;
     Ok(())
 }
+// Keep exact groups discoverable after a source scan clears the hash. The
+// group query detects the missing hash and schedules a fresh byte comparison.
+fn invalidate_indexed_file(c: &Connection, aid: &str) -> Result<()> {
+    c.execute("DELETE FROM linked_media WHERE match_method NOT IN ('manual','manual_exclusion') AND (primary_asset_id=? OR secondary_asset_id=?)", params![aid,aid])?;
+    c.execute("DELETE FROM thumbnail_cache WHERE asset_id=?", [aid])?;
+    c.execute("DELETE FROM similar_groups WHERE group_type='similar' AND id IN(SELECT group_id FROM similar_group_items WHERE asset_id=?)",[aid])?;
+    Ok(())
+}
+
+struct IndexedFile<'a> {
+    aid: &'a str,
+    sid: &'a str,
+    rel: &'a str,
+    path: &'a Path,
+    ext: &'a str,
+    kind: &'a str,
+    stamp: (u64, i64),
+    identity: Option<&'a str>,
+    generation: i64,
+}
+impl IndexedFile<'_> {
+    fn save(&self, c: &Connection, meta: &media::Metadata) -> Result<()> {
+        let v = &meta.values;
+        c.execute(
+            "INSERT INTO media_assets(id,source_id,relative_path,filename,extension,media_kind,
+              byte_size,mtime_ms,capture_local,capture_utc_ms,capture_tz_min,capture_time_source,
+              width,height,orientation,duration_ms,codec,camera_make,camera_model,gps_lat,gps_lon,
+              file_state,metadata_json,indexed_at,updated_at,last_seen_scan_generation,file_identity)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             ON CONFLICT(source_id,relative_path) DO UPDATE SET
+              byte_size=excluded.byte_size,mtime_ms=excluded.mtime_ms,capture_local=excluded.capture_local,
+              capture_utc_ms=excluded.capture_utc_ms,capture_tz_min=excluded.capture_tz_min,
+              capture_time_source=excluded.capture_time_source,width=excluded.width,height=excluded.height,
+              orientation=excluded.orientation,duration_ms=excluded.duration_ms,codec=excluded.codec,
+              camera_make=excluded.camera_make,camera_model=excluded.camera_model,gps_lat=excluded.gps_lat,
+              gps_lon=excluded.gps_lon,file_state=excluded.file_state,metadata_json=excluded.metadata_json,
+              updated_at=excluded.updated_at,last_seen_scan_generation=excluded.last_seen_scan_generation,
+              file_identity=excluded.file_identity,sha256=NULL,sha256_mtime_ms=NULL,sha256_byte_size=NULL,
+              perceptual_hash=NULL",
+            params![self.aid,self.sid,self.rel,self.path.file_name().unwrap().to_string_lossy(),
+                self.ext,self.kind,self.stamp.0,self.stamp.1,v["captureLocal"].as_str(),
+                v["captureUtcMs"].as_i64(),v["captureTzMin"].as_i64(),v["captureTimeSource"].as_str(),
+                v["width"].as_i64(),v["height"].as_i64(),v["orientation"].as_i64(),v["durationMs"].as_i64(),
+                v["codec"].as_str(),v["cameraMake"].as_str(),v["cameraModel"].as_str(),v["gpsLat"].as_f64(),
+                v["gpsLon"].as_f64(),meta.state,v["metadata"].to_string(),now(),now(),self.generation,self.identity],
+        )?;
+        crate::capture_time::refresh_original(c, self.aid, v)?;
+        Ok(())
+    }
+}
+
 fn auto_pairs(c: &Connection, sid: &str) -> Result<()> {
     let tx = c.unchecked_transaction()?;
-    let c = &tx;
+    refresh_pairs(&tx, sid)?;
+    db::bump(&tx)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn refresh_pairs(c: &Connection, sid: &str) -> Result<()> {
     c.execute(
         "DELETE FROM linked_media WHERE match_method='apple_content_identifier'",
         [],
@@ -566,8 +626,6 @@ fn auto_pairs(c: &Connection, sid: &str) -> Result<()> {
             }
         }
     }
-    db::bump(c)?;
-    tx.commit()?;
     Ok(())
 }
 fn thumbnails(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
@@ -593,6 +651,9 @@ fn thumbnails(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
 }
 fn exact(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
     let mut c = cat.connection()?;
+    if r["operation"] == "recomputeExact" {
+        return recompute_exact(cat, &mut c, jid, r);
+    }
     let ids = query::target_ids(&c, &r["scope"])?;
     let mut buckets: HashMap<i64, Vec<String>> = HashMap::new();
     for aid in &ids {
@@ -610,6 +671,7 @@ fn exact(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         .flatten()
         .collect();
     let mut hashes: HashMap<String, Vec<String>> = HashMap::new();
+    let mut verified = Vec::new();
     let mut failures = 0;
     for (n, aid) in candidates.iter().enumerate() {
         safe_point(cat, jid)?;
@@ -620,7 +682,7 @@ fn exact(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         });
         match calculated {
             Ok((hash, size, mtime)) => {
-                c.execute("UPDATE media_assets SET sha256=?,sha256_byte_size=?,sha256_mtime_ms=? WHERE id=?",params![hash,size,mtime,aid])?;
+                verified.push((aid, hash.clone(), size, mtime));
                 hashes.entry(hash).or_default().push(aid.clone());
             }
             Err(e) => {
@@ -636,6 +698,9 @@ fn exact(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         }
     }
     let tx = c.transaction()?;
+    for (aid, hash, size, mtime) in verified {
+        store_exact_hash(&tx, aid, &hash, (size, mtime))?;
+    }
     let mut decisions = clear_scoped_groups(&tx, "exact", "SHA-256", &ids)?;
     for members in hashes.into_values().filter(|v| v.len() > 1) {
         let members = members.into_iter().map(|aid| (aid, None)).collect::<Vec<_>>();
@@ -644,6 +709,187 @@ fn exact(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
     db::bump(&tx)?;
     tx.commit()?;
     progress(&c, jid, candidates.len(), Some(candidates.len()), failures)?;
+    Ok(())
+}
+
+fn store_exact_hash(c: &Connection, aid: &str, hash: &str, (size, mtime): (u64, i64)) -> Result<()> {
+    c.execute(
+        "UPDATE media_assets SET sha256=?,sha256_byte_size=?,sha256_mtime_ms=? WHERE id=?",
+        params![hash, size, mtime, aid],
+    )?;
+    Ok(())
+}
+
+fn exact_group_ids(c: &Connection, gid: &str) -> Result<Vec<String>> {
+    let mut st = c.prepare(
+        "SELECT gi.asset_id FROM similar_group_items gi JOIN similar_groups g ON g.id=gi.group_id
+         WHERE g.id=? AND g.group_type='exact' ORDER BY gi.asset_id",
+    )?;
+    let ids = st
+        .query_map([gid], |row| row.get::<_, String>(0))?
+        .collect::<std::result::Result<_, _>>()?;
+    Ok(ids)
+}
+
+struct ExactMember {
+    aid: String,
+    path: PathBuf,
+    stamp: (u64, i64),
+    metadata: Option<media::Metadata>,
+    hash: Option<String>,
+}
+
+fn recompute_exact(cat: &Catalog, c: &mut Connection, jid: &str, r: &Value) -> Result<()> {
+    let groups: Vec<String> = serde_json::from_value(r["groupIds"].clone())?;
+    let mut failures = 0;
+    progress(c, jid, 0, Some(groups.len()), failures)?;
+    for (i, gid) in groups.iter().enumerate() {
+        safe_point(cat, jid)?;
+        if let Err(error) = recompute_exact_group(cat, c, jid, gid) {
+            if error.code == "CANCELLED" {
+                return Err(error);
+            }
+            failures += 1;
+            record_error(c, jid, None, &error.message)?;
+        }
+        progress(c, jid, i + 1, Some(groups.len()), failures)?;
+    }
+    if failures > 0 {
+        return Err(AppError::new(
+            "DB_CONFLICT",
+            "部分精确组无法重算。请检查来源和任务详情后重试",
+        ));
+    }
+    Ok(())
+}
+
+fn exact_change_conflict() -> AppError {
+    AppError::new("DB_CONFLICT", "重算期间分组或文件发生变化，请重试")
+}
+
+fn exact_stamp(path: &Path) -> Result<(u64, i64)> {
+    if !path.is_file() {
+        return Err(AppError::new("ASSET_NOT_FOUND", "原文件缺失或不是普通文件"));
+    }
+    files::stamp(path)
+}
+
+fn recompute_exact_group(cat: &Catalog, c: &mut Connection, jid: &str, gid: &str) -> Result<()> {
+    let ids = exact_group_ids(c, gid)?;
+    if ids.is_empty() {
+        // A manual exact scan may have superseded this queued result.
+        return Ok(());
+    }
+    let mut buckets = HashMap::<u64, usize>::new();
+    let mut members = Vec::with_capacity(ids.len());
+    for aid in &ids {
+        safe_point(cat, jid)?;
+        let path = files::source_path(c, aid)?;
+        let stamp = exact_stamp(&path)?;
+        let (size, mtime, ext, kind) = c.query_row(
+            "SELECT byte_size,mtime_ms,extension,media_kind FROM media_assets WHERE id=?",
+            [aid],
+            |row| {
+                Ok((
+                    row.get::<_, u64>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )?;
+        let metadata = ((size, mtime) != (stamp.0, Some(stamp.1)))
+            .then(|| media::metadata(&path, &ext, &kind, stamp.1));
+        if exact_stamp(&path)? != stamp {
+            return Err(exact_change_conflict());
+        }
+        *buckets.entry(stamp.0).or_default() += 1;
+        members.push(ExactMember {
+            aid: aid.clone(),
+            path,
+            stamp,
+            metadata,
+            hash: None,
+        });
+    }
+    let mut hashes = HashMap::<String, Vec<(String, Option<u32>)>>::new();
+    for member in &mut members {
+        safe_point(cat, jid)?;
+        if buckets[&member.stamp.0] > 1 {
+            if exact_stamp(&member.path)? != member.stamp {
+                return Err(exact_change_conflict());
+            }
+            let hash = files::sha256(&member.path, Some((cat, jid)))?;
+            if exact_stamp(&member.path)? != member.stamp {
+                return Err(exact_change_conflict());
+            }
+            hashes
+                .entry(hash.clone())
+                .or_default()
+                .push((member.aid.clone(), None));
+            member.hash = Some(hash);
+        }
+    }
+
+    safe_point(cat, jid)?;
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if exact_group_ids(&tx, gid)? != ids {
+        return Err(exact_change_conflict());
+    }
+    let mut changed_sources = HashSet::new();
+    for member in members {
+        if files::source_path(&tx, &member.aid)? != member.path
+            || exact_stamp(&member.path)? != member.stamp
+        {
+            return Err(exact_change_conflict());
+        }
+        let (sid, rel, ext, kind, size, mtime, generation) = tx.query_row(
+            "SELECT source_id,relative_path,extension,media_kind,byte_size,mtime_ms,
+             last_seen_scan_generation FROM media_assets WHERE id=?",
+            [&member.aid],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, u64>(4)?,
+                    row.get::<_, Option<i64>>(5)?,
+                    row.get::<_, i64>(6)?,
+                ))
+            },
+        )?;
+        if (size, mtime) != (member.stamp.0, Some(member.stamp.1)) {
+            let meta = member.metadata.as_ref().ok_or_else(exact_change_conflict)?;
+            let identity = files::identity(&member.path);
+            invalidate_indexed_file(&tx, &member.aid)?;
+            IndexedFile {
+                aid: &member.aid,
+                sid: &sid,
+                rel: &rel,
+                path: Path::new(&rel),
+                ext: &ext,
+                kind: &kind,
+                stamp: member.stamp,
+                identity: identity.as_deref(),
+                generation,
+            }
+            .save(&tx, meta)?;
+            changed_sources.insert(sid);
+        }
+        if let Some(hash) = member.hash {
+            store_exact_hash(&tx, &member.aid, &hash, member.stamp)?;
+        }
+    }
+    let mut decisions = clear_scoped_groups(&tx, "exact", "SHA-256", &ids)?;
+    for members in hashes.into_values().filter(|v| v.len() > 1) {
+        insert_group(&tx, "exact", "SHA-256", &members, &mut decisions)?;
+    }
+    for sid in changed_sources {
+        refresh_pairs(&tx, &sid)?;
+    }
+    db::bump(&tx)?;
+    tx.commit()?;
     Ok(())
 }
 #[derive(Default)]
@@ -666,8 +912,7 @@ fn clear_scoped_groups(
         c.execute("INSERT OR IGNORE INTO scan_scope VALUES(?)", [aid])?;
     }
     // Capture only manual decisions in this scope, inside the same transaction
-    // that replaces the groups. A source-change scan has already invalidated
-    // stale groups; a different membership/algorithm must get fresh decisions.
+    // that replaces the groups. A different membership or algorithm gets fresh decisions.
     let mut previous = GroupDecisions::new();
     let mut statement = c.prepare("SELECT g.id,g.representative_asset_id FROM similar_groups g WHERE g.group_type=? AND g.algorithm=? AND g.algorithm_version='1' AND (g.representative_asset_id IS NOT NULL OR EXISTS(SELECT 1 FROM similar_group_items WHERE group_id=g.id AND manually_excluded=1)) AND g.id IN(SELECT group_id FROM similar_group_items gi JOIN scan_scope s ON s.id=gi.asset_id)")?;
     let groups = statement.query_map(params![kind, algorithm], |row| {
@@ -847,7 +1092,86 @@ fn similar(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
     progress(&c, jid, ids.len(), Some(ids.len()), failures)?;
     Ok(())
 }
-pub fn groups(c: &Connection, r: &Value) -> Result<Value> {
+#[derive(Default)]
+struct GroupStaleness {
+    changed: bool,
+    unavailable: bool,
+}
+
+fn group_staleness(c: &Connection, gid: &str, kind: &str, limit: i64) -> Result<GroupStaleness> {
+    let mut st = c.prepare(
+        "SELECT a.id,a.byte_size,a.mtime_ms,a.sha256 IS NOT NULL,a.sha256_byte_size,a.sha256_mtime_ms
+         FROM similar_group_items gi JOIN media_assets a ON a.id=gi.asset_id
+         WHERE gi.group_id=? ORDER BY gi.asset_id LIMIT ?",
+    )?;
+    let rows = st.query_map(params![gid, limit], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, u64>(1)?,
+            row.get::<_, Option<i64>>(2)?,
+            row.get::<_, bool>(3)?,
+            row.get::<_, Option<u64>>(4)?,
+            row.get::<_, Option<i64>>(5)?,
+        ))
+    })?;
+    let mut state = GroupStaleness::default();
+    for row in rows {
+        let (aid, indexed_size, indexed_mtime, hashed, hash_size, hash_mtime) = row?;
+        match files::source_path(c, &aid).and_then(|path| exact_stamp(&path)) {
+            Ok((size, mtime)) => {
+                state.changed |= indexed_size != size || indexed_mtime != Some(mtime);
+                if kind == "exact" {
+                    state.changed |=
+                        !hashed || hash_size != Some(size) || hash_mtime != Some(mtime);
+                }
+            }
+            Err(_) => state.unavailable = true,
+        }
+    }
+    Ok(state)
+}
+
+fn queue_exact_recompute(cat: &Catalog, c: &mut Connection, candidates: &[String]) -> Result<()> {
+    if candidates.is_empty() {
+        return Ok(());
+    }
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM jobs WHERE type='HASH_EXACT' AND status IN ('queued','running','paused'))",
+        [],
+        |row| row.get::<_, bool>(0),
+    )? {
+        return Ok(());
+    }
+    // Each stale group ID gets one automatic attempt. A failed or
+    // cancelled attempt remains visible and can be retried from the Jobs page.
+    let group_ids = {
+        let mut st = tx.prepare(
+            "SELECT g.id FROM json_each(?) candidate JOIN similar_groups g ON g.id=candidate.value
+             WHERE g.group_type='exact' AND NOT EXISTS (
+                 SELECT 1 FROM jobs j, json_each(j.checkpoint_json,'$.groupIds') previous
+                 WHERE j.type='HASH_EXACT'
+                   AND json_extract(j.checkpoint_json,'$.operation')='recomputeExact'
+                   AND previous.value=g.id
+             ) ORDER BY g.id",
+        )?;
+        let rows = st.query_map([serde_json::to_string(candidates)?], |row| {
+            row.get::<_, String>(0)
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()?
+    };
+    if group_ids.is_empty() {
+        return Ok(());
+    }
+    let jid = id();
+    let request = json!({"operation":"recomputeExact","groupIds":group_ids});
+    insert(&tx, &jid, "HASH_EXACT", &request)?;
+    tx.commit()?;
+    cat.spawn_job(jid, "HASH_EXACT".into(), request);
+    Ok(())
+}
+
+pub fn groups(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Value> {
     let kind = required(r, "kind")?;
     if !["exact", "similar"].contains(&kind) {
         return Err(AppError::new("INVALID_FILTER", "分组类型无效"));
@@ -858,12 +1182,13 @@ pub fn groups(c: &Connection, r: &Value) -> Result<Value> {
         .and_then(|s| s.parse::<i64>().ok())
         .unwrap_or(0)
         .max(0);
-    let total: i64 = c.query_row(
+    let tx = c.transaction()?;
+    let total: i64 = tx.query_row(
         "SELECT count(*) FROM similar_groups WHERE group_type=?",
         [kind],
         |r| r.get(0),
     )?;
-    let mut st=c.prepare("SELECT id,algorithm,algorithm_version,representative_asset_id FROM similar_groups WHERE group_type=? ORDER BY created_at DESC,id LIMIT ? OFFSET ?")?;
+    let mut st=tx.prepare("SELECT id,algorithm,algorithm_version,representative_asset_id FROM similar_groups WHERE group_type=? ORDER BY created_at DESC,id LIMIT ? OFFSET ?")?;
     let rows = st
         .query_map(params![kind, page, offset], |r| {
             Ok((
@@ -874,9 +1199,11 @@ pub fn groups(c: &Connection, r: &Value) -> Result<Value> {
             ))
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
+    drop(st);
     let mut groups = vec![];
+    let mut candidates = vec![];
     for (gid, algorithm, version, representative) in rows {
-        let mut s=c.prepare("SELECT asset_id,distance,manually_excluded FROM similar_group_items WHERE group_id=? ORDER BY asset_id LIMIT 12")?;
+        let mut s=tx.prepare("SELECT asset_id,distance,manually_excluded FROM similar_group_items WHERE group_id=? ORDER BY asset_id LIMIT 12")?;
         let members = s
             .query_map([&gid], |r| {
                 Ok((
@@ -887,62 +1214,60 @@ pub fn groups(c: &Connection, r: &Value) -> Result<Value> {
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         let mut v = vec![];
-        let mut stale = false;
+        let status = group_staleness(&tx, &gid, kind, if kind == "exact" { -1 } else { 12 })?;
+        let stale = status.changed || status.unavailable;
+        if kind == "exact" && status.changed && !status.unavailable {
+            candidates.push(gid.clone());
+        }
         for (aid, distance, excluded) in members {
-            let a = query::asset(c, &aid)?;
-            let stamp = files::source_path(c, &aid).and_then(|p| files::stamp(&p));
-            if stamp.ok() != a["byteSize"].as_u64().zip(a["mtimeMs"].as_i64()) {
-                stale = true;
-            }
+            let a = query::asset(&tx, &aid)?;
             v.push(json!({"asset":a,"distance":distance,"excluded":excluded}));
         }
-        let count: i64 = c.query_row(
+        let count: i64 = tx.query_row(
             "SELECT count(*) FROM similar_group_items WHERE group_id=? AND manually_excluded=0",
             [&gid],
             |r| r.get(0),
         )?;
-        let all_count: i64 = c.query_row(
+        let all_count: i64 = tx.query_row(
             "SELECT count(*) FROM similar_group_items WHERE group_id=?",
             [&gid],
             |r| r.get(0),
         )?;
         groups.push(json!({"totalMembers":all_count,"id":gid,"kind":kind,"algorithm":algorithm,"algorithmVersion":version,"representativeAssetId":representative,"memberCount":count,"members":v,"stale":stale}));
     }
+    tx.commit()?;
+    queue_exact_recompute(cat, c, &candidates)?;
     Ok(
         json!({"items":groups,"total":total,"nextCursor":if offset+page<total{Some((offset+page).to_string())}else{None},"queryFingerprint":kind}),
     )
 }
-pub fn group_action(c: &Connection, name: &str, r: &Value) -> Result<Value> {
+pub fn group_action(c: &mut Connection, name: &str, r: &Value) -> Result<Value> {
     let gid = required(r, "groupId")?;
     let aid = required(r, "assetId")?;
-    let excluded = c.query_row(
-        "SELECT manually_excluded FROM similar_group_items WHERE group_id=? AND asset_id=?",
-        params![gid, aid], |row| row.get::<_, bool>(0),
+    let (excluded, kind) = c.query_row(
+        "SELECT gi.manually_excluded,g.group_type FROM similar_group_items gi JOIN similar_groups g ON g.id=gi.group_id WHERE g.id=? AND gi.asset_id=?",
+        params![gid, aid], |row| Ok((row.get::<_, bool>(0)?, row.get::<_, String>(1)?)),
     ).optional()?.ok_or_else(|| AppError::new("INVALID_SELECTION", "分组或成员已变化，请刷新后重试"))?;
     if name == "set_group_representative" && excluded {
         return Err(AppError::new("INVALID_SELECTION", "请选择组内有效媒体"));
     }
-    let mut st=c.prepare("SELECT a.id,a.byte_size,a.mtime_ms FROM similar_group_items gi JOIN media_assets a ON a.id=gi.asset_id WHERE gi.group_id=?")?;
-    for row in st.query_map([gid], |r| {
-        Ok((
-            r.get::<_, String>(0)?,
-            r.get::<_, u64>(1)?,
-            r.get::<_, i64>(2)?,
-        ))
-    })? {
-        let (aid, size, mtime) = row?;
-        if files::source_path(c, &aid)
-            .and_then(|p| files::stamp(&p))
-            .ok()
-            != Some((size, mtime))
-        {
-            return Err(AppError::new("DB_CONFLICT", "分组结果已过期，请重新查重"));
-        }
+    let status = group_staleness(c, gid, &kind, -1)?;
+    if status.changed || status.unavailable {
+        return Err(AppError::new(
+            "DB_CONFLICT",
+            "分组结果已过期，请刷新分组后重试",
+        ));
     }
-    drop(st);
     // Keep file checks outside the write transaction. Validate the affected
     // row again so a concurrent rebuild cannot turn an old action into success.
-    let tx = c.unchecked_transaction()?;
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if kind == "exact" && tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM similar_group_items gi JOIN media_assets a ON a.id=gi.asset_id
+         WHERE gi.group_id=? AND (a.sha256 IS NULL OR a.sha256_byte_size IS NOT a.byte_size OR a.sha256_mtime_ms IS NOT a.mtime_ms))",
+        [gid], |row| row.get::<_, bool>(0),
+    )? {
+        return Err(AppError::new("DB_CONFLICT", "分组结果已过期，请刷新分组后重试"));
+    }
     let changed = if name == "set_group_representative" {
         tx.execute(
             "UPDATE similar_groups SET representative_asset_id=? WHERE id=? AND EXISTS(SELECT 1 FROM similar_group_items WHERE group_id=similar_groups.id AND asset_id=? AND manually_excluded=0)",

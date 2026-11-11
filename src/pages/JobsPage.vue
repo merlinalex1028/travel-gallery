@@ -23,6 +23,7 @@ const operationNames: Record<string, string> = {
   eyesImportModel: '导入闭眼模型',
   eyesRemoveModel: '移除闭眼模型和记录',
   qualityAnalyze: '照片闭眼与细节检查',
+  recomputeExact: '重算过期精确组',
 };
 const visible = computed(() =>
   app.jobs.filter(

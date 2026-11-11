@@ -33,6 +33,13 @@ const sourceRoots = computed(() => new Map(app.sources.map((s) => [s.id, s.absol
 const active = computed(() =>
   app.running.some((j) => j.type === (kind.value === 'exact' ? 'HASH_EXACT' : 'HASH_SIMILAR')),
 );
+const finishedRecompute = computed(
+  () =>
+    app.jobs.find(
+      (job) =>
+        job.operation === 'recomputeExact' && ['completed', 'failed', 'cancelled'].includes(job.status),
+    )?.id,
+);
 let loadGeneration = 0;
 onUnmounted(() => {
   loadGeneration++;
@@ -75,8 +82,8 @@ watch(kind, () => {
   void router.replace({ query: { kind: kind.value } });
   void load();
 });
-watch(active, (current, prior) => {
-  if (prior && !current) void load();
+watch([active, finishedRecompute], ([current, finished], [prior, priorFinished]) => {
+  if ((prior && !current) || (kind.value === 'exact' && finished && finished !== priorFinished)) void load();
 });
 onMounted(() => {
   void load();
@@ -260,7 +267,9 @@ async function loadMembers(group: DuplicateGroup) {
             ><span v-if="group.kind === 'exact'" class="muted small"
               >全组理论冗余约
               {{ bytes(Math.max(0, group.memberCount - 1) * (group.members[0]?.asset.byteSize ?? 0)) }}，仅估算</span
-            ><span v-if="group.stale" class="warning-text">结果过期，请重算</span>
+            ><span v-if="group.stale" class="warning-text">{{
+              group.kind === 'exact' ? '结果过期，请检查来源和任务中心' : '结果过期，请重算'
+            }}</span>
           </div>
           <div>
             <button

@@ -101,3 +101,26 @@ it('does not open a copy wizard when every displayed candidate is excluded', asy
   await button.trigger('click');
   expect(useApp().exportOpen).toBe(false);
 });
+
+it('refreshes a stale exact group when recomputation finishes between job polls', async () => {
+  await showGroup(false, true);
+  expect(wrapper!.text()).toContain('结果过期');
+  invoke.mockResolvedValueOnce({ items: [], total: 0, nextCursor: null });
+  useApp().jobs = [
+    {
+      id: 'recomputed',
+      type: 'HASH_EXACT',
+      operation: 'recomputeExact',
+      status: 'completed',
+      progressDone: 1,
+      progressTotal: 1,
+      failureCount: 0,
+      errorSummary: null,
+      createdAt: 1,
+      updatedAt: 2,
+    },
+  ];
+  await flushPromises();
+  expect(wrapper!.text()).toContain('0 个精确重复组');
+  expect(wrapper!.text()).not.toContain('结果过期');
+});

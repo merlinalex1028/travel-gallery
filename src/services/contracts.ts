@@ -226,6 +226,7 @@ export interface JobSummary {
     | 'eyesImportModel'
     | 'eyesRemoveModel'
     | 'qualityAnalyze'
+    | 'recomputeExact'
     | null;
   autoPauseReason?: 'battery' | null;
   cancelRequested?: boolean;

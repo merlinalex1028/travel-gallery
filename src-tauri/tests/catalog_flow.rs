@@ -1046,6 +1046,339 @@ fn group_actions_reject_stale_groups_and_foreign_members_without_mutation() {
     assert_eq!(c.query_row("SELECT sum(manually_excluded) FROM similar_group_items", [], |r|r.get::<_,i64>(0)).unwrap(), 0);
 }
 
+fn exact_groups(cat: &Catalog) -> Value {
+    cat.call("query_duplicate_groups", json!({"kind":"exact"}))
+        .unwrap()
+}
+
+fn build_exact_group(cat: &Catalog, ids: &[String]) -> Value {
+    let task = cat
+        .call(
+            "start_duplicate_scan",
+            json!({
+                "kind":"exact","scope":{"kind":"explicit","assetIds":ids}
+            }),
+        )
+        .unwrap();
+    assert_eq!(
+        wait(cat, task["jobId"].as_str().unwrap())["status"],
+        "completed"
+    );
+    let groups = exact_groups(cat);
+    assert_eq!(groups["total"], 1);
+    assert_eq!(groups["items"][0]["stale"], false);
+    groups["items"][0].clone()
+}
+
+fn exact_recompute_jobs(cat: &Catalog) -> Vec<Value> {
+    cat.call("list_jobs", json!({"pageSize":100})).unwrap()["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|job| job["operation"] == "recomputeExact")
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn stale_exact_group_recomputes_unloaded_cross_source_members_with_new_sizes() {
+    let f = Fixture::new();
+    let other = f._temp.path().join("second source");
+    fs::create_dir(&other).unwrap();
+    f.picture("00.png", 1);
+    for i in 1..15 {
+        let source = if i % 2 == 0 { &f.source } else { &other };
+        fs::copy(f.source.join("00.png"), source.join(format!("{i:02}.png"))).unwrap();
+    }
+    let replacement = image::RgbImage::from_pixel(12, 9, image::Rgb([7, 11, 13]));
+    replacement.save(f.source.join("outside.png")).unwrap();
+    f.add();
+    f.cat.authorize(&other, "source").unwrap();
+    let added = f
+        .cat
+        .call(
+            "add_source",
+            json!({"selectedPath":other,"options":{
+                "recursive":true,"skipHidden":true,"excludeGlobs":[],"followSymlinks":false
+            }}),
+        )
+        .unwrap();
+    let other_id = added["sourceId"].as_str().unwrap();
+    assert_eq!(
+        wait(&f.cat, added["jobId"].as_str().unwrap())["status"],
+        "completed"
+    );
+    wait_all(&f.cat);
+    let assets = f.assets();
+    let mut ids: Vec<_> = assets
+        .iter()
+        .filter(|a| a["filename"] != "outside.png")
+        .map(|a| a["id"].as_str().unwrap().to_owned())
+        .collect();
+    ids.sort();
+    let group = build_exact_group(&f.cat, &ids);
+    let gid = group["id"].as_str().unwrap();
+    assert_eq!(group["members"].as_array().unwrap().len(), 12);
+    f.cat
+        .call(
+            "set_group_representative",
+            json!({"groupId":gid,"assetId":ids[0]}),
+        )
+        .unwrap();
+    f.cat
+        .call(
+            "exclude_group_member",
+            json!({"groupId":gid,"assetId":ids[1],"excluded":true}),
+        )
+        .unwrap();
+    f.review(
+        &[ids[0].clone()],
+        json!({"pickState":"keep","rating":4}),
+        "exact-recompute-review",
+    );
+    let reviewed = f.assets();
+    let c = f.cat.connection().unwrap();
+    let previous_size = assets[0]["byteSize"].as_u64().unwrap();
+    let mut changed = vec![];
+    for aid in &ids[13..] {
+        let asset = assets
+            .iter()
+            .find(|a| a["id"].as_str() == Some(aid.as_str()))
+            .unwrap();
+        let root = if asset["sourceId"] == other_id {
+            &other
+        } else {
+            &f.source
+        };
+        let path = root.join(asset["relativePath"].as_str().unwrap());
+        replacement.save(&path).unwrap();
+        assert_ne!(files::stamp(&path).unwrap().0, previous_size);
+        changed.push((aid, path));
+    }
+    let before = (hashes(&f.source), hashes(&other));
+    c.execute(
+        "INSERT INTO jobs(id,type,status,created_at,updated_at) VALUES('busy','HASH_EXACT','paused',0,0)",
+        [],
+    ).unwrap();
+    let stale = exact_groups(&f.cat);
+    assert_eq!(stale["items"][0]["stale"], true);
+    assert_eq!(stale["items"][0]["id"], gid);
+    assert!(exact_recompute_jobs(&f.cat).is_empty());
+    assert_eq!(
+        f.cat
+            .call(
+                "exclude_group_member",
+                json!({"groupId":gid,"assetId":ids[0],"excluded":true})
+            )
+            .unwrap_err()
+            .code,
+        "DB_CONFLICT"
+    );
+    c.execute("DELETE FROM jobs WHERE id='busy'", []).unwrap();
+    let start = std::sync::Barrier::new(4);
+    thread::scope(|scope| {
+        let start = &start;
+        let cat = &f.cat;
+        for _ in 0..3 {
+            scope.spawn(move || {
+                start.wait();
+                exact_groups(cat);
+            });
+        }
+        start.wait();
+        exact_groups(cat);
+    });
+    let jobs = exact_recompute_jobs(&f.cat);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(
+        wait(&f.cat, jobs[0]["id"].as_str().unwrap())["status"],
+        "completed"
+    );
+    let rebuilt = exact_groups(&f.cat);
+    assert_eq!(rebuilt["total"], 2);
+    let mut sizes = vec![];
+    for group in rebuilt["items"].as_array().unwrap() {
+        assert_eq!(group["stale"], false);
+        assert!(group["representativeAssetId"].is_null());
+        assert_eq!(group["totalMembers"], group["memberCount"]);
+        sizes.push(group["totalMembers"].as_i64().unwrap());
+    }
+    sizes.sort();
+    assert_eq!(sizes, [2, 13]);
+    for (aid, path) in changed {
+        let asset = f
+            .assets()
+            .into_iter()
+            .find(|a| a["id"].as_str() == Some(aid.as_str()))
+            .unwrap();
+        let (size, mtime) = files::stamp(&path).unwrap();
+        assert_eq!(asset["byteSize"], size);
+        assert_eq!(asset["mtimeMs"], mtime);
+        assert_eq!(asset["width"], 12);
+        assert_eq!(asset["height"], 9);
+        let stored: (String, u64, i64) = c
+            .query_row(
+                "SELECT sha256,sha256_byte_size,sha256_mtime_ms FROM media_assets WHERE id=?",
+                [aid],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(stored, (files::sha256(&path, None).unwrap(), size, mtime));
+        assert_eq!(
+            c.query_row(
+                "SELECT count(*) FROM thumbnail_cache WHERE asset_id=?",
+                [aid],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+    }
+    for (old, new) in reviewed.iter().zip(f.assets()) {
+        assert_eq!(old["id"], new["id"]);
+        assert_eq!(old["review"], new["review"]);
+    }
+    assert_eq!((hashes(&f.source), hashes(&other)), before);
+    assert_eq!(exact_recompute_jobs(&f.cat).len(), 1);
+}
+
+#[test]
+fn source_rescan_retains_stale_exact_group_until_recompute_preserves_same_members() {
+    let f = Fixture::new();
+    f.picture("a.png", 1);
+    fs::copy(f.source.join("a.png"), f.source.join("b.png")).unwrap();
+    let source = f.add();
+    let ids: Vec<_> = f
+        .assets()
+        .iter()
+        .map(|a| a["id"].as_str().unwrap().to_owned())
+        .collect();
+    let group = build_exact_group(&f.cat, &ids);
+    f.cat
+        .call(
+            "set_group_representative",
+            json!({"groupId":group["id"],"assetId":ids[0]}),
+        )
+        .unwrap();
+    f.cat
+        .call(
+            "exclude_group_member",
+            json!({"groupId":group["id"],"assetId":ids[1],"excluded":true}),
+        )
+        .unwrap();
+    image::RgbImage::from_pixel(3, 5, image::Rgb([9, 5, 3]))
+        .save(f.source.join("a.png"))
+        .unwrap();
+    fs::copy(f.source.join("a.png"), f.source.join("b.png")).unwrap();
+    scan(&f.cat, &source);
+    wait_all(&f.cat);
+    let frozen = f
+        .cat
+        .call(
+            "create_selection_snapshot",
+            json!({
+                "filter":{"duplicateKind":"exact"},"sort":{"field":"filename","direction":"asc"}
+            }),
+        )
+        .unwrap();
+    assert_eq!(frozen["count"], 0);
+    assert_eq!(exact_groups(&f.cat)["items"][0]["stale"], true);
+    let jobs = exact_recompute_jobs(&f.cat);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(
+        wait(&f.cat, jobs[0]["id"].as_str().unwrap())["status"],
+        "completed"
+    );
+    let rebuilt = &exact_groups(&f.cat)["items"][0];
+    assert_eq!(rebuilt["stale"], false);
+    assert_eq!(rebuilt["representativeAssetId"], ids[0]);
+    assert_eq!(rebuilt["totalMembers"], 2);
+    assert_eq!(rebuilt["memberCount"], 1);
+    let count: i64 = f
+        .cat
+        .connection()
+        .unwrap()
+        .query_row(
+            "SELECT count(*) FROM selection_snapshot_items WHERE snapshot_id=?",
+            [frozen["id"].as_str().unwrap()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn unavailable_exact_group_waits_and_failed_recompute_requires_explicit_retry() {
+    let f = Fixture::new();
+    f.picture("a.png", 1);
+    fs::copy(f.source.join("a.png"), f.source.join("b.png")).unwrap();
+    f.add();
+    let ids: Vec<_> = f
+        .assets()
+        .iter()
+        .map(|a| a["id"].as_str().unwrap().to_owned())
+        .collect();
+    let group = build_exact_group(&f.cat, &ids);
+    let away = f._temp.path().join("offline");
+    fs::rename(&f.source, &away).unwrap();
+    for _ in 0..2 {
+        assert_eq!(exact_groups(&f.cat)["items"][0]["stale"], true);
+    }
+    assert!(exact_recompute_jobs(&f.cat).is_empty());
+
+    // Seed an interrupted job, then run the actual retry while the root is absent.
+    let request = json!({"operation":"recomputeExact","groupIds":[group["id"]]});
+    let c = f.cat.connection().unwrap();
+    c.execute(
+        "INSERT INTO jobs(id,type,status,checkpoint_json,created_at,updated_at) VALUES
+         ('interrupted','HASH_EXACT','failed',?,0,0)",
+        [request.to_string()],
+    )
+    .unwrap();
+    let retry = || {
+        f.cat
+            .call(
+                "retry_job",
+                json!({
+                    "jobId":exact_recompute_jobs(&f.cat)[0]["id"]
+                }),
+            )
+            .unwrap()
+    };
+    let failed = retry();
+    assert_eq!(
+        wait(&f.cat, failed["newJobId"].as_str().unwrap())["status"],
+        "failed"
+    );
+    assert_eq!(
+        f.cat
+            .call("get_job_errors", json!({"jobId":failed["newJobId"]}))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    fs::rename(away, &f.source).unwrap();
+    image::RgbImage::from_pixel(3, 5, image::Rgb([9, 5, 3]))
+        .save(f.source.join("a.png"))
+        .unwrap();
+    let before = hashes(&f.source);
+    for _ in 0..2 {
+        let stale = exact_groups(&f.cat);
+        assert_eq!(stale["items"][0]["id"], group["id"]);
+        assert_eq!(stale["items"][0]["stale"], true);
+    }
+    assert_eq!(exact_recompute_jobs(&f.cat).len(), 2);
+    let recovered = retry();
+    assert_eq!(
+        wait(&f.cat, recovered["newJobId"].as_str().unwrap())["status"],
+        "completed"
+    );
+    assert_eq!(exact_groups(&f.cat)["total"], 0);
+    assert_eq!(hashes(&f.source), before);
+}
+
 #[test]
 fn similar_rebuild_preserves_manual_decisions_for_unchanged_members() {
     check_group_decisions_survive_unchanged_rebuild("similar");

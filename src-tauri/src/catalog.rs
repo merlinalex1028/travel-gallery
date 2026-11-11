@@ -181,13 +181,13 @@ impl Catalog {
                     } else {
                         "HASH_SIMILAR"
                     },
-                    r,
+                    json!({"kind":kind,"scope":r["scope"],"similarity":r["similarity"]}),
                 )
             }
-            "query_duplicate_groups" => tasks::groups(&c, &r),
+            "query_duplicate_groups" => tasks::groups(self, &mut c, &r),
             "query_group_members" => tasks::group_members(&c, &r),
             "set_group_representative" | "exclude_group_member" => {
-                tasks::group_action(&c, name, &r)
+                tasks::group_action(&mut c, name, &r)
             }
             "preview_export" => files::preview_export(self, &mut c, &r),
             "get_trip_story" => crate::story::page(&mut c, &r),
