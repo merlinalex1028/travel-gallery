@@ -5,6 +5,7 @@ import MediaStage from '../components/MediaStage.vue';
 import { clearPreviewCache } from '../composables/preview';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import type { AssetDetail } from '../services/contracts';
+import { useApp } from '../stores/app';
 import golden from '../../tests/fixtures/contracts.json';
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('../services/api', async (importOriginal) => ({
@@ -265,6 +266,45 @@ it('keeps cached missing-media previews and provides the source relink entry', a
     expect(wrapper.text()).toContain('原文件缺失，已有预览和整理记录保留');
     const link = wrapper.get('a');
     expect(link.text()).toBe('重新定位来源');
+    await link.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/sources');
+  } finally {
+    wrapper.unmount();
+  }
+});
+it('keeps the cached preview and links to reauthorization before the asset refreshes', async () => {
+  invoke.mockResolvedValue({ ready: true, resourceUrl: 'cached.jpg' });
+  const asset = photo();
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/', component: {} },
+      { path: '/sources', component: {} },
+    ],
+  });
+  await router.push('/');
+  const wrapper = mount(MediaStage, { props: { asset }, global: { plugins: [router] } });
+  try {
+    useApp().sources = [
+      {
+        id: asset.sourceId,
+        displayName: '相册',
+        absolutePath: '/source',
+        volumeId: null,
+        isEnabled: true,
+        isOnline: false,
+        requiresAuthorization: true,
+        lastScanAt: null,
+        totalAssets: 1,
+        offlineAssets: 1,
+      },
+    ];
+    await flushPromises();
+    expect(wrapper.get('img').attributes('src')).toBe('cached.jpg');
+    expect(wrapper.text()).toContain('来源需要重新授权，已有预览和整理记录保留');
+    const link = wrapper.get('a');
+    expect(link.text()).toBe('重新授权来源');
     await link.trigger('click');
     await flushPromises();
     expect(router.currentRoute.value.path).toBe('/sources');

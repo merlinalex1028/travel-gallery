@@ -29,6 +29,19 @@ pub fn stamp(path: &Path) -> Result<(u64, i64)> {
             .as_millis() as i64,
     ))
 }
+pub(crate) fn check_source_access(root: &Path) -> Result<()> {
+    // A sandbox may allow directory metadata while denying enumeration.
+    fs::read_dir(root)
+        .and_then(|mut entries| entries.next().transpose())
+        .map(drop)
+        .map_err(|error| {
+            if error.kind() == io::ErrorKind::PermissionDenied {
+                AppError::new("PERMISSION_DENIED", "无法读取来源目录，请重新授权来源")
+            } else {
+                AppError::new("SOURCE_OFFLINE", "来源目录不可读取，请检查磁盘连接后重试")
+            }
+        })
+}
 pub fn identity(path: &Path) -> Option<String> {
     #[cfg(unix)]
     {
@@ -757,6 +770,11 @@ pub fn preview_relink(cat: &Catalog, c: &Connection, r: &Value) -> Result<Value>
     let sid = required(r, "sourceId")?;
     let path = cat.authorized(Path::new(required(r, "selectedNewPath")?), "relink")?;
     assert_not_app_path(cat, &path)?;
+    check_source_access(&path)?;
+    let old_path: String = c
+        .query_row("SELECT absolute_path FROM source_roots WHERE id=?", [sid], |row| row.get(0))
+        .optional()?
+        .ok_or_else(|| AppError::new("SOURCE_OFFLINE", "来源已不存在"))?;
     let mut roots = c.prepare("SELECT absolute_path FROM source_roots WHERE id<>?")?;
     for root in roots.query_map([sid], |r| r.get::<_, String>(0))? {
         let root = PathBuf::from(root?);
@@ -765,21 +783,25 @@ pub fn preview_relink(cat: &Catalog, c: &Connection, r: &Value) -> Result<Value>
         }
     }
     let mut s = c.prepare(
-        "SELECT relative_path,byte_size,mtime_ms,sha256 FROM media_assets WHERE source_id=?",
+        "SELECT id,relative_path,byte_size,mtime_ms,sha256 FROM media_assets WHERE source_id=? ORDER BY id",
     )?;
     let rows = s
         .query_map([sid], |r| {
             Ok((
                 r.get::<_, String>(0)?,
-                r.get::<_, u64>(1)?,
-                r.get::<_, Option<i64>>(2)?,
-                r.get::<_, Option<String>>(3)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, u64>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+                r.get::<_, Option<String>>(4)?,
             ))
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let (mut matched, mut conflicts, mut missing) = (0, 0, 0);
     let mut samples = vec![];
-    for (rel, size, mtime, hash) in rows {
+    let mut signature = Sha256::new();
+    for row in rows {
+        signature.update(serde_json::to_vec(&row)?);
+        let (_, rel, size, mtime, hash) = row;
         safe_relative(Path::new(&rel))?;
         let candidate = path.join(&rel);
         let mut ok = false;
@@ -815,7 +837,10 @@ pub fn preview_relink(cat: &Catalog, c: &Connection, r: &Value) -> Result<Value>
         }
     }
     let token = id();
-    cat.inner.tokens.lock().unwrap().insert(token.clone(),json!({"purpose":"relink","sourceId":sid,"newPath":path,"epoch":db::epoch(c)?,"expiresAt":now()+900000,"conflicts":conflicts,"missing":missing}));
+    cat.inner.tokens.lock().unwrap().insert(
+        token.clone(),
+        json!({"purpose":"relink","sourceId":sid,"oldPath":old_path,"newPath":path,"signature":format!("{:x}",signature.finalize()),"epoch":db::epoch(c)?,"expiresAt":now()+900000,"conflicts":conflicts,"missing":missing}),
+    );
     Ok(
         json!({"sourceId":sid,"newPath":path,"matched":matched,"conflicts":conflicts,"missing":missing,"sampleChecks":samples,"verificationToken":token}),
     )
@@ -830,12 +855,14 @@ pub fn commit_relink(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Val
         .get(token)
         .cloned()
         .ok_or_else(|| AppError::new("SNAPSHOT_EXPIRED", "路径验证已过期"))?;
+    let epoch = db::epoch(c)?;
+    let same_directory = v["oldPath"] == v["newPath"];
     if v["purpose"] != "relink"
         || v["sourceId"] != r["sourceId"]
         || v["expiresAt"].as_i64().unwrap_or(0) < now()
         || v["conflicts"] != 0
         || v["missing"] != 0
-        || v["epoch"] != db::epoch(c)?
+        || (!same_directory && v["epoch"] != epoch)
     {
         return Err(AppError::new(
             "DB_CONFLICT",
@@ -848,16 +875,25 @@ pub fn commit_relink(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Val
         c,
         &json!({"sourceId":r["sourceId"],"selectedNewPath":path}),
     )?;
-    if checked["conflicts"] != 0 || checked["missing"] != 0 {
+    let checked_token = required(&checked, "verificationToken")?;
+    let verified = cat.inner.tokens.lock().unwrap().remove(checked_token);
+    // The picker can restore OS access before confirmation, so normal status polling can
+    // advance the catalog epoch. Revalidate the same directory against the confirmed media.
+    if checked["conflicts"] != 0
+        || checked["missing"] != 0
+        || !verified.is_some_and(|entry| {
+            entry["oldPath"] == v["oldPath"] && entry["signature"] == v["signature"]
+        })
+    {
         return Err(AppError::new(
             "DB_CONFLICT",
             "新目录在预演后发生变化，请重新验证",
         ));
     }
-    if let Some(verification) = checked["verificationToken"].as_str() {
-        cat.inner.tokens.lock().unwrap().remove(verification);
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if db::epoch(&tx)? != epoch {
+        return Err(AppError::new("DB_CONFLICT", "资料库已变化，请重新验证"));
     }
-    let tx = c.transaction()?;
     tx.execute(
         "UPDATE source_roots SET absolute_path=?,is_online=1,updated_at=? WHERE id=?",
         params![path.to_string_lossy(), now(), required(&v, "sourceId")?],

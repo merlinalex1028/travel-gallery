@@ -76,7 +76,7 @@ async function commit() {
         <h3>{{ source.displayName }}</h3>
         <span class="state-pill" :class="source.isOnline ? 'online' : 'warning'"
           ><span class="tiny-dot" :class="source.isOnline ? 'green' : 'amber'" />{{
-            source.isOnline ? '在线' : '来源离线'
+            source.requiresAuthorization ? '需要重新授权' : source.isOnline ? '在线' : '来源离线'
           }}</span
         ><span v-if="!source.isEnabled" class="state-pill">已禁用</span>
       </div>
@@ -86,6 +86,14 @@ async function commit() {
         ><span v-if="source.offlineAssets">{{ source.offlineAssets }} 个离线 / 缺失</span
         ><span>上次扫描 {{ date(source.lastScanAt, true) }}</span>
       </div>
+      <button
+        v-if="source.requiresAuthorization"
+        class="btn small-btn"
+        :disabled="verifying"
+        @click="repair"
+      >
+        {{ verifying ? '正在校验目录…' : '重新授权来源' }}
+      </button>
     </div>
     <ElDropdown trigger="click"
       ><button class="icon-btn" aria-label="来源操作"><Icon name="more" /></button

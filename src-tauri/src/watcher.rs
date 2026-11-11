@@ -2,6 +2,7 @@
 use crate::{
     catalog::{Catalog, Inner},
     error::Result,
+    files,
 };
 use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
@@ -57,6 +58,7 @@ struct Root {
     path: PathBuf,
     recursive: bool,
     online: bool,
+    requires_authorization: bool,
     backend: Option<bool>, // true means polling fallback
     retry_at: Instant,
 }
@@ -140,11 +142,15 @@ fn run(weak: Weak<Inner>, stop: Arc<AtomicBool>) {
                                     path,
                                     recursive,
                                     online: false,
+                                    requires_authorization: false,
                                     backend: None,
                                     retry_at: Instant::now(),
                                 }
                             });
-                            let online = root.path.is_dir();
+                            let access = files::check_source_access(&root.path);
+                            let online = access.is_ok();
+                            root.requires_authorization =
+                                access.is_err_and(|error| error.code == "PERMISSION_DENIED");
                             if root.online != online {
                                 dirty.insert(sid.clone(), Instant::now());
                                 if !online {
@@ -222,7 +228,9 @@ fn run(weak: Weak<Inner>, stop: Arc<AtomicBool>) {
             }
             if let Ok(c) = cat.connection() {
                 dirty.retain(|sid, since| {
-                    if stop.load(Ordering::Relaxed) {
+                    if stop.load(Ordering::Relaxed)
+                        || watched.get(sid).is_some_and(|root| root.requires_authorization)
+                    {
                         return false;
                     }
                     if since.elapsed() < Duration::from_millis(800) {

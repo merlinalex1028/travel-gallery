@@ -187,6 +187,114 @@ fn unchanged_source_status_reads_do_not_wait_for_a_background_writer() {
         assert_eq!(db::epoch(&c).unwrap(),before);
     }
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn unreadable_source_requires_reauthorization_and_preserves_its_catalog() {
+    use std::os::unix::fs::PermissionsExt;
+
+    struct RestorePermissions<'a>(&'a Path, fs::Permissions);
+    impl Drop for RestorePermissions<'_> {
+        fn drop(&mut self) {
+            let _ = fs::set_permissions(self.0, self.1.clone());
+        }
+    }
+    let f = Fixture::new();
+    f.picture("photo.png", 11);
+    let sid = f.add();
+    let aid = f.assets()[0]["id"].as_str().unwrap().to_owned();
+    f.review(
+        std::slice::from_ref(&aid),
+        json!({"pickState":"keep","rating":4}),
+        "retain-while-unreadable",
+    );
+    let photo = f.source.join("photo.png");
+    let before = f.assets()[0]["review"].clone();
+    let original_bytes = fs::read(&photo).unwrap();
+    let c = f.cat.connection().unwrap();
+    let scan_count = || {
+        c.query_row("SELECT count(*) FROM jobs WHERE type='SCAN'", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap()
+    };
+    let initially_scanned = scan_count();
+    {
+        let _restore_root =
+            RestorePermissions(&f.source, fs::metadata(&f.source).unwrap().permissions());
+        let _restore_photo =
+            RestorePermissions(&photo, fs::metadata(&photo).unwrap().permissions());
+        fs::set_permissions(&photo, fs::Permissions::from_mode(0)).unwrap();
+        fs::set_permissions(&f.source, fs::Permissions::from_mode(0o100)).unwrap();
+        assert!(
+            f.source.is_dir(),
+            "metadata must stay visible for this regression"
+        );
+        assert_eq!(
+            fs::read_dir(&f.source).unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        f.cat.startup_scan().unwrap();
+        assert_eq!(scan_count(), initially_scanned);
+        let status = f.cat.call("list_sources", json!({})).unwrap();
+        assert_eq!(status[0]["isOnline"], false);
+        assert_eq!(status[0]["requiresAuthorization"], true);
+        assert_eq!(status[0]["offlineAssets"], 1);
+        assert_eq!(f.assets()[0]["fileState"], "offline");
+        let cached = f
+            .cat
+            .call("resolve_preview", json!({"assetId":aid,"variant":"small"}))
+            .unwrap();
+        assert_eq!(cached["ready"], true);
+        let error = f
+            .cat
+            .call("resolve_original", json!({"assetId":aid}))
+            .unwrap_err();
+        assert_eq!(error.code, "PERMISSION_DENIED");
+        let task = f
+            .cat
+            .call("rescan_source", json!({"sourceId":sid}))
+            .unwrap();
+        let failed = wait(&f.cat, task["jobId"].as_str().unwrap());
+        assert_eq!(failed["status"], "failed");
+        assert!(failed["errorSummary"]
+            .as_str()
+            .unwrap()
+            .contains("重新授权"));
+        assert_eq!(f.assets()[0]["review"], before);
+    }
+    f.cat.authorize(&f.source, "relink").unwrap();
+    let preview = f
+        .cat
+        .call(
+            "preview_relink_source",
+            json!({"sourceId":sid,"selectedNewPath":f.source}),
+        )
+        .unwrap();
+    assert_eq!(preview["matched"], 1);
+    let preview_epoch = db::epoch(&c).unwrap();
+    f.cat.call("list_sources", json!({})).unwrap();
+    assert!(db::epoch(&c).unwrap() > preview_epoch);
+    f.cat
+        .call(
+            "commit_relink_source",
+            json!({"sourceId":sid,"verificationToken":preview["verificationToken"]}),
+        )
+        .unwrap();
+    let status = f.cat.call("list_sources", json!({})).unwrap();
+    assert_eq!(status[0]["isOnline"], true);
+    assert_eq!(status[0]["requiresAuthorization"], false);
+    let asset = &f.assets()[0];
+    assert_eq!(asset["id"], aid);
+    assert_eq!(asset["review"], before);
+    assert_eq!(asset["fileState"], "available");
+    assert!(f
+        .cat
+        .call("resolve_original", json!({"assetId":aid}))
+        .is_ok());
+    assert_eq!(fs::read(&photo).unwrap(), original_bytes);
+}
+
 #[test]
 fn media_location_uses_the_catalog_id_and_stays_inside_the_source_even_for_corrupt_files() {
     let f = Fixture::new();

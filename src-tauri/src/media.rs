@@ -769,7 +769,17 @@ pub fn original(cat: &Catalog, c: &Connection, r: &Value) -> Result<Value> {
             ))
         }
     };
-    if fs::metadata(&path)?.len() > 64 * 1024 * 1024 {
+    if !path.is_file() {
+        return Err(AppError::new("ASSET_NOT_FOUND", "原文件缺失或无法读取"));
+    }
+    let original = File::open(&path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            AppError::new("PERMISSION_DENIED", "无法读取原文件，请重新授权来源目录")
+        } else {
+            AppError::new("ASSET_NOT_FOUND", "原文件缺失或无法读取")
+        }
+    })?;
+    if original.metadata()?.len() > 64 * 1024 * 1024 {
         return Err(AppError::new(
             "ASSET_UNSUPPORTED",
             "原图超过 64 MB 安全预览上限，请使用系统应用查看",

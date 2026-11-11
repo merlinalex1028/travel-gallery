@@ -86,7 +86,7 @@ impl Catalog {
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         for (id, path) in roots {
-            if Path::new(&path).is_dir() {
+            if files::check_source_access(Path::new(&path)).is_ok() {
                 self.queue(&c, "SCAN", json!({"sourceId":id}))?;
             }
         }
@@ -360,10 +360,21 @@ impl Catalog {
     }
     fn sources(&self, c: &Connection) -> Result<Value> {
         let mut st=c.prepare("SELECT id,display_name,absolute_path,volume_id,is_enabled,is_online,last_scan_at,(SELECT count(*) FROM media_assets a WHERE a.source_id=s.id),(SELECT count(*) FROM media_assets a WHERE a.source_id=s.id AND a.file_state IN ('offline','missing')) FROM source_roots s ORDER BY created_at")?;
-        let rows=st.query_map([],|r|Ok((json!({"id":r.get::<_,String>(0)?,"displayName":r.get::<_,String>(1)?,"absolutePath":r.get::<_,String>(2)?,"volumeId":r.get::<_,Option<String>>(3)?,"isEnabled":r.get::<_,bool>(4)?,"isOnline":Path::new(&r.get::<_,String>(2)?).is_dir(),"lastScanAt":r.get::<_,Option<i64>>(6)?,"totalAssets":r.get::<_,i64>(7)?,"offlineAssets":r.get::<_,i64>(8)?}),r.get::<_,bool>(5)?)))?;
-        let items = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+        let rows = st.query_map([], |r| {
+            let path: String = r.get(2)?;
+            let access = files::check_source_access(Path::new(&path));
+            Ok((json!({
+                "id": r.get::<_, String>(0)?, "displayName": r.get::<_, String>(1)?,
+                "absolutePath": path, "volumeId": r.get::<_, Option<String>>(3)?,
+                "isEnabled": r.get::<_, bool>(4)?, "isOnline": access.is_ok(),
+                "requiresAuthorization": access.is_err_and(|e| e.code == "PERMISSION_DENIED"),
+                "lastScanAt": r.get::<_, Option<i64>>(6)?, "totalAssets": r.get::<_, i64>(7)?,
+                "offlineAssets": r.get::<_, i64>(8)?
+            }), r.get::<_, bool>(5)?))
+        })?;
+        let mut items = rows.collect::<std::result::Result<Vec<_>, _>>()?;
         let mut changed = 0;
-        for (s, was_online) in &items {
+        for (s, was_online) in &mut items {
             if s["isOnline"].as_bool() != Some(*was_online) {
                 changed += c.execute(
                 "UPDATE source_roots SET is_online=? WHERE id=? AND is_online<>?",
@@ -375,7 +386,9 @@ impl Catalog {
                 )?;
             }
             if s["isOnline"] == false && c.query_row("SELECT EXISTS(SELECT 1 FROM media_assets WHERE source_id=? AND file_state='available')",[s["id"].as_str()],|r|r.get::<_,bool>(0))? {
-                changed+=c.execute("UPDATE media_assets SET file_state='offline' WHERE source_id=? AND file_state='available'",[s["id"].as_str()])?;
+                let marked = c.execute("UPDATE media_assets SET file_state='offline' WHERE source_id=? AND file_state='available'",[s["id"].as_str()])?;
+                s["offlineAssets"] = json!(s["offlineAssets"].as_i64().unwrap_or(0) + marked as i64);
+                changed += marked;
             }
         }
         if changed > 0 {
@@ -389,6 +402,7 @@ impl Catalog {
             return Err(AppError::new("SOURCE_PATH_INVALID", "请选择目录"));
         }
         files::assert_not_app_path(self, &path)?;
+        files::check_source_access(&path)?;
         let mut st = c.prepare("SELECT id,absolute_path FROM source_roots")?;
         let old = st
             .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?

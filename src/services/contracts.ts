@@ -49,6 +49,7 @@ export interface SourceRoot {
   volumeId: string | null;
   isEnabled: boolean;
   isOnline: boolean;
+  requiresAuthorization?: boolean;
   lastScanAt: number | null;
   totalAssets: number;
   offlineAssets: number;

@@ -281,12 +281,11 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         |r| r.get(0),
     )?;
     let root = Path::new(&root);
-    if !root.is_dir() {
-        c.execute("UPDATE source_roots SET is_online=0 WHERE id=?", [sid])?;
-        return Err(AppError::new(
-            "SOURCE_OFFLINE",
-            "来源离线，请重新连接后重试",
-        ));
+    if let Err(error) = files::check_source_access(root) {
+        if c.execute("UPDATE source_roots SET is_online=0 WHERE id=? AND is_online<>0", [sid])? > 0 {
+            db::bump(&c)?;
+        }
+        return Err(error);
     }
     let opts: String = c
         .query_row(
@@ -461,12 +460,7 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         }
     }
     safe_point(cat, jid)?;
-    if !root.is_dir() {
-        return Err(AppError::new(
-            "SOURCE_OFFLINE",
-            "来源在扫描中断开；未更改缺失状态",
-        ));
-    }
+    files::check_source_access(root)?;
     let tx = c.transaction()?;
     if complete {
         tx.execute("UPDATE media_assets SET file_state='missing' WHERE source_id=? AND last_seen_scan_generation<>?",params![sid,generation])?;

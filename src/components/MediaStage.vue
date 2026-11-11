@@ -32,6 +32,9 @@ const url = computed(() => screen.url.value || small.url.value),
   reason = screen.reason,
   loading = computed(() => screen.loading.value || small.loading.value),
   usingSmall = computed(() => !originalUrl.value && !screen.url.value && !!small.url.value);
+const needsAuthorization = computed(
+  () => app.sources.find((source) => source.id === props.asset.sourceId)?.requiresAuthorization ?? false,
+);
 const stage = useTemplateRef<HTMLElement>('stage'),
   bounds = shallowRef({ width: 1, height: 1 });
 const observer = new ResizeObserver(([entry]) => {
@@ -210,11 +213,11 @@ function reloadPreviews() {
     <div class="stage-notices">
       <div v-if="originalReason" class="video-fallback notice" role="status">{{ originalReason }}</div>
       <div
-        v-if="asset.fileState === 'missing' || asset.fileState === 'offline'"
+        v-if="needsAuthorization || asset.fileState === 'missing' || asset.fileState === 'offline'"
         class="video-fallback notice"
       >
-        原文件{{ asset.fileState === 'offline' ? '来源离线' : '缺失' }}，已有预览和整理记录保留。
-        <RouterLink class="text-btn" to="/sources">重新定位来源</RouterLink>
+        {{ needsAuthorization ? '来源需要重新授权' : asset.fileState === 'offline' ? '原文件来源离线' : '原文件缺失' }}，已有预览和整理记录保留。
+        <RouterLink class="text-btn" to="/sources">{{ needsAuthorization ? '重新授权来源' : '重新定位来源' }}</RouterLink>
       </div>
       <div v-if="videoReason" class="video-fallback notice" role="status">
         <Icon name="warning" />{{ videoReason }}<button class="text-btn" @click="play">重试播放</button
