@@ -58,8 +58,8 @@ watch(
     try {
       const r = await api('resolve_original', { assetId: id });
       if (!stale) originalUrl.value = resourceUrl(r.resourceUrl);
-    } catch {
-      if (!stale) originalReason.value = '此格式仅提供屏幕预览，请使用系统应用查看原文件。';
+    } catch (e) {
+      if (!stale) originalReason.value = errorMessage(e);
     }
   },
   { immediate: true, flush: 'sync' },
@@ -208,7 +208,7 @@ function reloadPreviews() {
       <Icon :name="resolvingVideo ? 'loader' : 'play'" :size="28" :class="{ spin: resolvingVideo }" />
     </button>
     <div class="stage-notices">
-      <div v-if="originalReason" class="video-fallback notice">{{ originalReason }}</div>
+      <div v-if="originalReason" class="video-fallback notice" role="status">{{ originalReason }}</div>
       <div
         v-if="asset.fileState === 'missing' || asset.fileState === 'offline'"
         class="video-fallback notice"

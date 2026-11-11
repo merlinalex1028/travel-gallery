@@ -7,10 +7,10 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import type { AssetDetail } from '../services/contracts';
 import golden from '../../tests/fixtures/contracts.json';
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock('../services/api', () => ({
+vi.mock('../services/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../services/api')>()),
   api: invoke,
   resourceUrl: (url: string) => url,
-  errorMessage: (e: Error) => e.message,
 }));
 vi.mock('element-plus', () => ({ ElMessage: { info: vi.fn(), success: vi.fn(), error: vi.fn() } }));
 function video(id = 'a'): AssetDetail {
@@ -87,6 +87,37 @@ it('can display the original at1:1 from a ready thumbnail while the screen previ
   wrapper.unmount();
   previews.resolve({ ready: false });
   await flushPromises();
+});
+it.each([
+  { code: 'PERMISSION_DENIED', message: '媒体路径超出授权目录' },
+  { code: 'SOURCE_OFFLINE', message: '来源目录离线，请重新连接磁盘' },
+  { code: 'ASSET_NOT_FOUND', message: '原文件缺失或无法读取' },
+  { code: 'ASSET_UNSUPPORTED', message: '原图超过 64 MB 安全预览上限，请使用系统应用查看' },
+])('keeps the cached screen image and reports the original failure ($code)', async (error) => {
+  invoke.mockImplementation(async (command: string) => {
+    if (command === 'resolve_preview') return { ready: true, resourceUrl: 'screen-a.jpg' };
+    if (command === 'resolve_original') throw error;
+    throw new Error(`unexpected ${command}`);
+  });
+  const wrapper = mount(MediaStage, { props: { asset: photo(), actualPixels: true } });
+  try {
+    await flushPromises();
+    expect(wrapper.get('[role="status"]').text()).toBe(error.message);
+    expect(wrapper.get('img[alt="a.jpg"]').attributes('src')).toBe('screen-a.jpg');
+    expect(wrapper.get('img').classes()).not.toContain('actual-pixels');
+
+    await wrapper.setProps({ actualPixels: false });
+    invoke.mockImplementation(async (command: string) => {
+      if (command === 'resolve_original') return { resourceUrl: 'recovered-a.jpg' };
+      return { ready: true, resourceUrl: 'screen-a.jpg' };
+    });
+    await wrapper.setProps({ actualPixels: true });
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.get('img[alt="a.jpg"]').attributes('src')).toBe('recovered-a.jpg');
+  } finally {
+    wrapper.unmount();
+  }
 });
 it('shows source errors persistently and permits retry without duplicate pending playback requests', async () => {
   let attempts = 0;
