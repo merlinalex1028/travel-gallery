@@ -14,6 +14,8 @@ parser.add_argument('--fixture', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
 parser.add_argument('--webkit-mach-lookup', action='store_true',
                     help='Diagnostic only: permit lookup of com.apple.nsurlsessiond, never network.client/server')
+parser.add_argument('--picker-only', action='store_true',
+                    help='Omit the fixed fixture path exception for native directory authorization tests')
 args = parser.parse_args()
 assert sys.platform == 'darwin'
 source = args.source.resolve(strict=True)
@@ -31,8 +33,9 @@ output.mkdir()
 app = output / 'Travel Gallery Offline Bench.app'
 subprocess.run(['ditto', str(source), str(app)], check=True)
 parent = {'com.apple.security.app-sandbox': True,
-          'com.apple.security.files.user-selected.read-write': True,
-          'com.apple.security.temporary-exception.files.absolute-path.read-write': [str(fixture) + '/']}
+          'com.apple.security.files.user-selected.read-write': True}
+if not args.picker_only:
+    parent['com.apple.security.temporary-exception.files.absolute-path.read-write'] = [str(fixture) + '/']
 if args.webkit_mach_lookup:
     parent['com.apple.security.temporary-exception.mach-lookup.global-name'] = ['com.apple.nsurlsessiond']
 child = {'com.apple.security.app-sandbox': True, 'com.apple.security.inherit': True}
@@ -54,10 +57,12 @@ report = dict(atUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(), ap
               source=str(source), fixture=str(fixture), executableNameUnchanged=True,
               identifier=marker['identifier'], parentEntitlements=parent, childEntitlements=child,
               webkitMachLookupDiagnostic=args.webkit_mach_lookup,
+              pickerOnly=args.picker_only,
               binarySha256={name: hashlib.sha256((macos / name).read_bytes()).hexdigest() for name in ['travel-gallery', *helpers]},
               signatureVerification='ad hoc deep/strict passed; parent/helper entitlement round-trip matched',
               state='prepared; actual process denial, GUI and XPC behavior still require execution',
-              limits=['Only the owned fixture root has an absolute file exception; no global security/network settings changed.',
+              limits=[('No absolute file exception; source access is exercised through the native picker.' if args.picker_only
+                       else 'Only the owned fixture root has an absolute file exception.'),
                       'An explicit nsurlsessiond Mach lookup exception is diagnostic only and may permit mediated network access; no WebKit isolation is inferred.',
                       'The offline-network-probe feature must reject startup unless the actual GUI process receives PermissionDenied on its local control.'])
 (output / 'preparation.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')

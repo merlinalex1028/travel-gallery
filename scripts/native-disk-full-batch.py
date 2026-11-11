@@ -38,6 +38,7 @@ RUN_PREFIX = 'travel-gallery-native-disk-full-'
 PLANNED_BYTES = 1536*1024**2
 PLANNED_FILES = 250
 SOURCE_FILES = 5
+SANDBOX_SEAL_ARGS = ('--webkit-mach-lookup',)
 
 
 def write_sources(source):
@@ -205,7 +206,7 @@ def main():
     plist.update(CFBundleIdentifier=b.IDENTIFIER, CFBundleName='Travel Gallery Offline Bench', CFBundleDisplayName='Travel Gallery Offline Bench')
     path.write_bytes(plistlib.dumps(plist))
     b.command('sealIsolatedCopy', [sys.executable, 'scripts/prepare-offline-sandbox.py', '--source', str(stage),
-        '--fixture', str(fixture), '--output', str(b.WORK/'qa'), '--webkit-mach-lookup'])
+        '--fixture', str(fixture), '--output', str(b.WORK/'qa'), *SANDBOX_SEAL_ARGS])
     shutil.rmtree(stage.parent)
     b.APP_PATH = b.WORK/'qa/Travel Gallery Offline Bench.app'
     for path in OWNED:
