@@ -38,6 +38,29 @@ def verified_process(database):
     return pids[0]
 
 
+def verify_reauthorization(label, online, states, scans, baseline):
+    """Check the catalog transitions independently of the visible QA steps."""
+    successes = [scan_id for scan_id, status, count, failures, _ in scans
+                 if (status, count, failures) == ('completed', reuse.SOURCE_FILES, 0)]
+    if label == 'before-restart':
+        assert online and states == {'available'} and successes and len(successes) == len(scans)
+        baseline['initialScans'] = successes
+    elif label in ('after-restart', 'after-denied-rescan'):
+        assert not online and states == {'offline'}
+        new = [scan for scan in scans if scan[0] not in baseline['initialScans']]
+        if label == 'after-restart':
+            assert not new, 'No automatic scan should run with a permission-denied root'
+        else:
+            assert len(new) == 1
+            scan_id, status, count, _, reason = new[0]
+            assert (status, count) == ('failed', 0) and '重新授权' in reason
+            baseline['deniedScan'] = scan_id
+    elif label == 'after-reselect':
+        assert online and states == {'available'}
+        assert set(successes) > set(baseline['initialScans'])
+        assert {scan[0] for scan in scans} - set(successes) == {baseline['deniedScan']}
+
+
 def snapshot(label):
     preparation = json.loads((b.WORK / 'qa/preparation.json').read_text())
     entitlements = preparation['parentEntitlements']
@@ -52,6 +75,7 @@ def snapshot(label):
         reviews = conn.execute('SELECT * FROM asset_reviews ORDER BY asset_id').fetchall()
         reviewed = conn.execute("SELECT count(*) FROM asset_reviews WHERE rating=4 AND pick_state='keep'").fetchone()[0]
         cached = conn.execute('SELECT count(*) FROM thumbnail_cache').fetchone()[0]
+        scans = conn.execute("SELECT id,status,progress_done,failure_count,COALESCE(error_summary,'') FROM jobs WHERE type='SCAN'").fetchall()
         assert conn.execute('PRAGMA quick_check').fetchone() == ('ok',)
         assert not conn.execute('PRAGMA foreign_key_check').fetchall()
         assert not conn.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','paused') LIMIT 1").fetchone()
@@ -67,15 +91,20 @@ def snapshot(label):
             b.STATE['originalPid'] = pid
             b.STATE['catalogIdentitySha256'] = unchanged
         else:
-            assert label in ('after-restart', 'after-reselect') and pid != b.STATE['originalPid']
+            assert label in ('after-restart', 'after-denied-rescan', 'after-reselect') and pid != b.STATE['originalPid']
             assert unchanged == b.STATE['catalogIdentitySha256']
             if label == 'after-reselect':
                 assert roots[0][2] and all(a[2] == 'available' for a in assets)
     assert reuse.source_state() == b.STATE['sourceBefore']
     assert reuse.normal_state() == b.STATE['normalBefore']
+    online = bool(roots and roots[0][2])
+    states = {asset[2] for asset in assets}
+    if b.STATE.get('expectReauthorization'):
+        verify_reauthorization(label, online, states, scans, b.STATE.setdefault('scanCheckpoints', {}))
     b.event('pickerRestartSnapshot', label=label, actualPid=pid, sources=len(roots),
-            assets=len(assets), states=sorted({a[2] for a in assets}),
-            online=bool(roots and roots[0][2]), marked=reviewed, cacheReferences=cached,
+            assets=len(assets), states=sorted(states),
+            online=online, marked=reviewed, cacheReferences=cached,
+            scans=[dict(status=status, progress=count, failures=failures) for _, status, count, failures, _ in scans],
             pickerOnly=True, catalogIdentityPreserved=label != 'before-import')
 
 
