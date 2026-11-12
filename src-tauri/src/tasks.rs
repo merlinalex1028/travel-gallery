@@ -682,14 +682,8 @@ fn exact(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
     let mut failures = 0;
     for (n, (aid, path, version)) in candidates.into_iter().enumerate() {
         safe_point(cat, jid)?;
-        match ExactMember::inspect(&c, aid.clone(), path, version).and_then(|mut member| {
-            member.hash = Some(files::sha256_at_version(
-                &member.path,
-                &member.version,
-                Some((cat, jid)),
-            )?);
-            Ok(member)
-        }) {
+        let hash = files::sha256_at_version(&path, &version, Some((cat, jid)));
+        match hash.and_then(|hash| ExactMember::inspect(&c, aid.clone(), path, version, Some(hash))) {
             Ok(member) => verified.push(member),
             Err(e) => {
                 if e.code == "CANCELLED" {
@@ -760,24 +754,26 @@ impl ExactMember {
         aid: String,
         path: PathBuf,
         version: files::FileVersion,
+        hash: Option<String>,
     ) -> Result<Self> {
         let (size, mtime, token, legacy_hash, ext, kind) = c.query_row(
-            "SELECT byte_size,mtime_ms,file_version,sha256 IS NOT NULL AND sha256_file_version IS NULL,
+            "SELECT byte_size,mtime_ms,file_version,CASE WHEN sha256_file_version IS NULL THEN sha256 END,
                     extension,media_kind FROM media_assets WHERE id=?",
             [&aid],
             |r| Ok((r.get::<_,u64>(0)?, r.get::<_,Option<i64>>(1)?, r.get::<_,Option<String>>(2)?,
-                    r.get::<_,bool>(3)?, r.get::<_,String>(4)?, r.get::<_,String>(5)?)),
+                    r.get::<_,Option<String>>(3)?, r.get::<_,String>(4)?, r.get::<_,String>(5)?)),
         )?;
-        // Old hashes have no file-version evidence. Refresh their derivatives
-        // when the group is rebuilt, even if a scan has adopted a new baseline.
-        let metadata = (legacy_hash || !version.matches_index(size, mtime, token.as_deref()))
+        // A legacy hash can expose a rewrite even when a scan has adopted the
+        // current version using the older size and modification time.
+        let legacy_changed = legacy_hash.is_some() && legacy_hash != hash;
+        let metadata = (legacy_changed || !version.matches_index(size, mtime, token.as_deref()))
             .then(|| media::metadata(&path, &ext, &kind, version.mtime_ms));
         Ok(Self {
             aid,
             path,
             version,
             metadata,
-            hash: None,
+            hash,
         })
     }
 
@@ -789,15 +785,16 @@ impl ExactMember {
         }
         let (sid, rel, ext, kind, size, mtime, generation, token, legacy_hash) = c.query_row(
             "SELECT source_id,relative_path,extension,media_kind,byte_size,mtime_ms,
-                    last_seen_scan_generation,file_version,sha256 IS NOT NULL AND sha256_file_version IS NULL
+                    last_seen_scan_generation,file_version,CASE WHEN sha256_file_version IS NULL THEN sha256 END
              FROM media_assets WHERE id=?",
             [&self.aid],
             |r| Ok((r.get::<_,String>(0)?, r.get::<_,String>(1)?, r.get::<_,String>(2)?,
                     r.get::<_,String>(3)?, r.get::<_,u64>(4)?, r.get::<_,Option<i64>>(5)?,
-                    r.get::<_,i64>(6)?, r.get::<_,Option<String>>(7)?, r.get::<_,bool>(8)?)),
+                    r.get::<_,i64>(6)?, r.get::<_,Option<String>>(7)?, r.get::<_,Option<String>>(8)?)),
         )?;
         let mut changed_source = None;
-        if legacy_hash || !self.version.matches_index(size, mtime, token.as_deref()) {
+        let legacy_changed = legacy_hash.is_some() && legacy_hash != self.hash;
+        if legacy_changed || !self.version.matches_index(size, mtime, token.as_deref()) {
             let meta = self.metadata.as_ref().ok_or_else(exact_change_conflict)?;
             invalidate_indexed_file(c, &self.aid)?;
             IndexedFile {
@@ -867,25 +864,21 @@ fn recompute_exact_group(cat: &Catalog, c: &mut Connection, jid: &str, gid: &str
         return Ok(());
     }
     let mut buckets = HashMap::<u64, usize>::new();
-    let mut members = Vec::with_capacity(ids.len());
+    let mut versions = Vec::with_capacity(ids.len());
     for aid in &ids {
         safe_point(cat, jid)?;
         let path = files::source_path(c, aid)?;
         let version = files::FileVersion::read(&path)?;
         *buckets.entry(version.size).or_default() += 1;
-        members.push(ExactMember::inspect(c, aid.clone(), path, version)?);
+        versions.push((aid.clone(), path, version));
     }
-    let mut hashes = HashMap::<String, Vec<(String, Option<u32>)>>::new();
-    for member in &mut members {
+    let mut members = Vec::with_capacity(ids.len());
+    for (aid, path, version) in versions {
         safe_point(cat, jid)?;
-        if buckets[&member.version.size] > 1 {
-            let hash = files::sha256_at_version(&member.path, &member.version, Some((cat, jid)))?;
-            hashes
-                .entry(hash.clone())
-                .or_default()
-                .push((member.aid.clone(), None));
-            member.hash = Some(hash);
-        }
+        let hash = (buckets[&version.size] > 1)
+            .then(|| files::sha256_at_version(&path, &version, Some((cat, jid))))
+            .transpose()?;
+        members.push(ExactMember::inspect(c, aid, path, version, hash)?);
     }
 
     safe_point(cat, jid)?;
@@ -893,9 +886,13 @@ fn recompute_exact_group(cat: &Catalog, c: &mut Connection, jid: &str, gid: &str
     if exact_group_ids(&tx, gid)? != ids {
         return Err(exact_change_conflict());
     }
+    let mut hashes = HashMap::<String, Vec<(String, Option<u32>)>>::new();
     let mut changed_sources = HashSet::new();
     for member in members {
         changed_sources.extend(member.publish(&tx)?);
+        if let Some(hash) = member.hash {
+            hashes.entry(hash).or_default().push((member.aid, None));
+        }
     }
     let mut decisions = clear_scoped_groups(&tx, "exact", "SHA-256", &ids)?;
     for members in hashes.into_values().filter(|v| v.len() > 1) {

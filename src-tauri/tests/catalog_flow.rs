@@ -1415,13 +1415,25 @@ fn source_rescan_retains_stale_exact_group_until_recompute_preserves_same_member
     assert_eq!(count, 0);
 }
 
+fn migrate_v9_exact_fixture(f: &Fixture) {
+    let c = f.cat.connection().unwrap();
+    c.execute_batch(
+        "ALTER TABLE media_assets DROP COLUMN file_version;
+         ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+         PRAGMA user_version=9;",
+    )
+    .unwrap();
+    drop(c);
+    db::initialize(&f._temp.path().join("app/catalog.sqlite")).unwrap();
+}
+
 #[cfg(unix)]
 #[test]
 fn exact_group_rebuilds_after_same_size_same_mtime_rewrite_with_or_without_rescan() {
     use std::io::Write;
     use std::os::unix::fs::MetadataExt;
 
-    for rescan in [false, true] {
+    for (legacy, rescan) in [(false, false), (false, true), (true, true)] {
         let f = Fixture::new();
         f.picture("a.bmp", 1);
         fs::copy(f.source.join("a.bmp"), f.source.join("b.bmp")).unwrap();
@@ -1450,6 +1462,9 @@ fn exact_group_rebuilds_after_same_size_same_mtime_rewrite_with_or_without_resca
             .unwrap()
         };
         let old_preview = cache_name();
+        if legacy {
+            migrate_v9_exact_fixture(&f);
+        }
         let original = f.source.join("a.bmp");
         let metadata = fs::metadata(&original).unwrap();
         let original_stamp = files::stamp(&original).unwrap();
@@ -1562,15 +1577,18 @@ fn v9_exact_group_revalidates_legacy_hashes_and_keeps_manual_decisions() {
         .unwrap();
     f.review(&ids[..1], json!({"rating":4}), "legacy-exact-review");
     let c = f.cat.connection().unwrap();
-    c.execute_batch(
-        "ALTER TABLE media_assets DROP COLUMN file_version;
-                     ALTER TABLE media_assets DROP COLUMN sha256_file_version;
-                     PRAGMA user_version=9;",
-    )
-    .unwrap();
-    drop(c);
-    db::initialize(&f._temp.path().join("app/catalog.sqlite")).unwrap();
-    let c = f.cat.connection().unwrap();
+    let cached_paths = || {
+        let mut statement = c
+            .prepare("SELECT cache_rel_path FROM thumbnail_cache ORDER BY asset_id,variant")
+            .unwrap();
+        statement.query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    let original_cache = cached_paths();
+    assert_eq!(original_cache.len(), 2);
+    migrate_v9_exact_fixture(&f);
     let unstamped: i64 = c.query_row(
         "SELECT count(*) FROM media_assets WHERE sha256 IS NOT NULL AND sha256_file_version IS NULL",
         [], |r| r.get(0),
@@ -1599,6 +1617,7 @@ fn v9_exact_group_revalidates_legacy_hashes_and_keeps_manual_decisions() {
         [], |r| r.get(0),
     ).unwrap();
     assert_eq!(stamped, 2);
+    assert_eq!(cached_paths(), original_cache);
 }
 
 #[test]
