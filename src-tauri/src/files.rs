@@ -359,6 +359,7 @@ pub fn preview_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Va
         return Err(AppError::new("INVALID_SELECTION", "请先选择媒体"));
     }
     let (mut total, mut conflicts, mut offline, mut duplicates) = (0i64, 0, 0, 0);
+    let mut stale = 0;
     let mut used = HashSet::new();
     let mut items = vec![];
     let mut replaced_characters = 0;
@@ -373,10 +374,10 @@ pub fn preview_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Va
         let a = cat.detail(&tx, aid)?;
         let filename = required(&a, "filename")?;
         let relative = required(&a, "relativePath")?;
-        let source: String = tx.query_row(
-            "SELECT display_name FROM source_roots WHERE id=?",
-            [a["sourceId"].as_str()],
-            |r| r.get(0),
+        let (source, indexed_version): (String, Option<String>) = tx.query_row(
+            "SELECT s.display_name,a.file_version FROM media_assets a JOIN source_roots s ON s.id=a.source_id WHERE a.id=?",
+            [aid],
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         let renamed = naming
             .as_ref()
@@ -450,7 +451,23 @@ pub fn preview_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Va
         } else {
             None
         };
-        let available = source_path(&tx, aid).is_ok();
+        let current = source_path(&tx, aid)
+            .and_then(|path| FileVersion::read(&path))
+            .ok();
+        let available = current.is_some();
+        if current.as_ref().is_some_and(|version| {
+            !version.matches_index(
+                a["byteSize"].as_u64().unwrap_or(u64::MAX),
+                a["mtimeMs"].as_i64(),
+                indexed_version.as_deref(),
+            )
+        }) {
+            stale += 1;
+        }
+        // An indexed version also guards items from an offline source that reconnects before copying.
+        let source_version = indexed_version
+            .as_deref()
+            .or_else(|| current.as_ref().map(|v| v.token.as_str()));
         if examples.len() < 100 {
             examples.push(json!({"assetId":aid,"sourceRelativePath":relative,"destinationRelativePath":output,"skipped":conflict&&policy=="skip"}));
         }
@@ -458,7 +475,8 @@ pub fn preview_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Va
             offline += 1;
         }
         total += a["byteSize"].as_i64().unwrap_or(0);
-        items.push(json!({"assetId":aid,"relative":output,"skip":conflict&&policy=="skip","unavailable":!available,"size":a["byteSize"],"mtime":a["mtimeMs"],"xmp":sidecar}));
+        items.push(json!({"assetId":aid,"relative":output,"skip":conflict&&policy=="skip","unavailable":!available,
+            "size":a["byteSize"],"mtime":a["mtimeMs"],"sourceVersion":source_version,"xmp":sidecar}));
     }
     let token = id();
     let expires = now() + 900_000;
@@ -471,6 +489,11 @@ pub fn preview_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Va
     let mut warnings = vec![];
     if offline > 0 {
         warnings.push(format!("{offline} 个原文件不可用，执行时会列入失败明细"));
+    }
+    if stale > 0 {
+        warnings.push(format!(
+            "{stale} 个原文件与索引版本不一致，请重新扫描和预演"
+        ));
     }
     if replaced_characters > 0 {
         warnings.push(format!(
@@ -582,6 +605,62 @@ pub(crate) fn sha256_at_version(
     }
     Ok(hash)
 }
+
+fn export_source_changed() -> AppError {
+    AppError::new("DB_CONFLICT", "复制期间原文件发生变化，请重新扫描和预演")
+}
+
+fn copy_export_media(
+    mut staged: crate::publish::StagedFile,
+    source: &Path,
+    mut input: File,
+    before: &FileVersion,
+    mut control: impl FnMut() -> Result<()>,
+) -> Result<(u64, String)> {
+    let mut target = staged.writer().map_err(export_io_error)?;
+    let mut hash = Sha256::new();
+    let mut bytes = 0;
+    let mut buffer = vec![0; 1024 * 1024];
+    loop {
+        control()?;
+        let count = input.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        target
+            .write_all(&buffer[..count])
+            .map_err(export_io_error)?;
+        hash.update(&buffer[..count]);
+        bytes += count as u64;
+    }
+    target.sync_all().map_err(export_io_error)?;
+    drop(target);
+    if bytes != before.size || FileVersion::from_file(&input)? != *before {
+        return Err(export_source_changed());
+    }
+    let expected = format!("{:x}", hash.finalize());
+    let mut verify = staged.reader()?;
+    let mut hash = Sha256::new();
+    loop {
+        control()?;
+        let count = verify.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hash.update(&buffer[..count]);
+    }
+    drop(verify);
+    if format!("{:x}", hash.finalize()) != expected {
+        return Err(AppError::new("ASSET_CORRUPT", "复制校验不一致"));
+    }
+    control()?;
+    if FileVersion::read(source).as_ref().ok() != Some(before) {
+        return Err(export_source_changed());
+    }
+    // Publish with the OS no-replace primitive, relative to a capability directory handle.
+    staged.commit().map_err(export_publish_error)?;
+    Ok((bytes, expected))
+}
 fn export_io_error(error: io::Error) -> AppError {
     export_target_error(error, crate::export_errors::Operation::Write)
 }
@@ -668,14 +747,22 @@ pub fn export(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         ));
         let copy = (|| -> Result<(u64, String)> {
             let source = source_path(&c, aid)?;
-            let before = stamp(&source)?;
-            if before.0 != item["size"].as_u64().unwrap_or(u64::MAX)
-                || Some(before.1) != item["mtime"].as_i64()
+            let before = FileVersion::read(&source)?;
+            let expected_version = item["sourceVersion"].as_str().ok_or_else(|| {
+                AppError::new("DB_CONFLICT", "预演缺少源文件版本，请重新预演")
+            })?;
+            if before.size != item["size"].as_u64().unwrap_or(u64::MAX)
+                || Some(before.mtime_ms) != item["mtime"].as_i64()
+                || before.token != expected_version
             {
                 return Err(AppError::new(
                     "DB_CONFLICT",
                     "原文件在预演后已变化，请重新扫描和预演",
                 ));
+            }
+            let input = File::open(&source)?;
+            if FileVersion::from_file(&input)? != before {
+                return Err(export_source_changed());
             }
             if let Some(parent) = relative.parent() {
                 if !parent.as_os_str().is_empty() {
@@ -683,46 +770,12 @@ pub fn export(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
                 }
             }
             // cap-std resolves relative paths beneath this directory handle, including symlink races.
-            let mut staged = crate::publish::StagedFile::create(&dir, &part, &relative).map_err(export_io_error)?;
-            let mut target = staged.writer().map_err(export_io_error)?;
+            let staged = crate::publish::StagedFile::create(&dir, &part, &relative)
+                .map_err(export_io_error)?;
             c.execute("UPDATE export_run_items SET state='copying',updated_at=? WHERE job_id=? AND asset_id=?",params![now(),jid,aid])?;
-            let mut input = File::open(&source)?;
-            let mut h = Sha256::new();
-            let mut bytes = 0u64;
-            let mut buffer = vec![0; 1024 * 1024];
-            loop {
-                tasks::safe_point(cat, jid)?;
-                let n = input.read(&mut buffer)?;
-                if n == 0 {
-                    break;
-                }
-                target.write_all(&buffer[..n]).map_err(export_io_error)?;
-                h.update(&buffer[..n]);
-                bytes += n as u64;
-            }
-            target.sync_all().map_err(export_io_error)?;
-            drop(target);
-            if bytes != before.0 || stamp(&source)? != before {
-                return Err(AppError::new("DB_CONFLICT", "复制期间原文件发生变化"));
-            }
-            let expected = format!("{:x}", h.finalize());
-            let mut verify = staged.reader()?;
-            let mut h = Sha256::new();
-            loop {
-                tasks::safe_point(cat, jid)?;
-                let n = verify.read(&mut buffer)?;
-                if n == 0 {
-                    break;
-                }
-                h.update(&buffer[..n]);
-            }
-            if format!("{:x}", h.finalize()) != expected {
-                return Err(AppError::new("ASSET_CORRUPT", "复制校验不一致"));
-            }
-            tasks::safe_point(cat, jid)?;
-            // Publish with the OS no-replace primitive, relative to a capability directory handle.
-            staged.commit().map_err(export_publish_error)?;
-            Ok((bytes, expected))
+            copy_export_media(staged, &source, input, &before, || {
+                tasks::safe_point(cat, jid)
+            })
         })();
         match copy {
             Ok((bytes, hash)) => {
@@ -1156,6 +1209,55 @@ impl Catalog {
 #[cfg(test)]
 mod sidecar_tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn same_stamp_source_change_during_copy_or_verification_drops_the_owned_part() {
+        for mutate_at in [2, 3] {
+            let temp = tempfile::tempdir().unwrap();
+            let source = temp.path().join("source.png");
+            fs::write(&source, b"original").unwrap();
+            let mtime = fs::metadata(&source).unwrap().modified().unwrap();
+            let original_stamp = stamp(&source).unwrap();
+            let version = FileVersion::read(&source).unwrap();
+            let target = temp.path().join("target");
+            fs::create_dir(&target).unwrap();
+            fs::write(target.join("keep.txt"), b"existing").unwrap();
+            let dir = Dir::open_ambient_dir(&target, ambient_authority()).unwrap();
+            let staged = crate::publish::StagedFile::create(
+                &dir,
+                Path::new(".export.png.part"),
+                Path::new("export.png"),
+            )
+            .unwrap();
+            let mut calls = 0;
+            let result = copy_export_media(
+                staged,
+                &source,
+                File::open(&source).unwrap(),
+                &version,
+                || {
+                    calls += 1;
+                    // For this one-chunk source, call 2 is before EOF and call 3 begins output verification.
+                    if calls == mutate_at {
+                        fs::write(&source, b"modified").unwrap();
+                        File::options()
+                            .write(true)
+                            .open(&source)
+                            .unwrap()
+                            .set_times(fs::FileTimes::new().set_modified(mtime))
+                            .unwrap();
+                        assert_eq!(stamp(&source).unwrap(), original_stamp);
+                    }
+                    Ok(())
+                },
+            );
+            assert_eq!(result.unwrap_err().code, "DB_CONFLICT");
+            assert_eq!(fs::read(&source).unwrap(), b"modified");
+            assert_eq!(fs::read_dir(&target).unwrap().count(), 1);
+            assert_eq!(fs::read(target.join("keep.txt")).unwrap(), b"existing");
+        }
+    }
     #[test]
     fn destination_errors_keep_space_permission_and_conflicts_distinct() {
         let full=export_io_error(io::Error::from(io::ErrorKind::StorageFull));

@@ -1750,6 +1750,105 @@ fn export_preflight_recheck_collision_verification_and_read_only_sources() {
         .contains("travelgallery-part")));
 }
 
+#[cfg(unix)]
+#[test]
+fn export_freezes_source_versions_and_requires_a_fresh_preview_after_same_stamp_changes() {
+    let f = Fixture::new();
+    f.picture("a.bmp", 1);
+    f.picture("b.bmp", 7);
+    let source_id = f.add();
+    let assets = f.assets();
+    let a = assets[0]["id"].as_str().unwrap();
+    let b = assets[1]["id"].as_str().unwrap();
+    let c = f.cat.connection().unwrap();
+    // A migrated asset can establish its first export version from the file at preview.
+    c.execute("UPDATE media_assets SET file_version=NULL WHERE id=?", [b])
+        .unwrap();
+    f.cat.authorize(&f.output, "export").unwrap();
+    let preview = |ids: &[&str]| {
+        f.cat
+            .call(
+                "preview_export",
+                json!({
+                    "target":{"kind":"explicit","assetIds":ids},"destinationPath":f.output,
+                    "layout":"flat","conflictPolicy":"rename","includeXmp":true
+                }),
+            )
+            .unwrap()
+    };
+    let execute = |plan: &Value, mutation: &str| {
+        let job = f
+            .cat
+            .call(
+                "start_export",
+                json!({
+                    "planToken":plan["planToken"],"clientMutationId":mutation
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            wait(&f.cat, job["jobId"].as_str().unwrap())["status"],
+            "completed"
+        );
+        f.cat
+            .call("get_export_report", json!({"jobId":job["jobId"]}))
+            .unwrap()
+    };
+    let frozen = preview(&[a, b]);
+    let changed = f.source.join("a.bmp");
+    let before = fs::metadata(&changed).unwrap();
+    let original_stamp = files::stamp(&changed).unwrap();
+    let replacement = fs::read(f.source.join("b.bmp")).unwrap();
+    assert_eq!(replacement.len() as u64, before.len());
+    assert_ne!(replacement, fs::read(&changed).unwrap());
+    fs::write(&changed, &replacement).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&changed)
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(before.modified().unwrap()))
+        .unwrap();
+    assert_eq!(
+        fs::metadata(&changed).unwrap().modified().unwrap(),
+        before.modified().unwrap()
+    );
+    assert_eq!(files::stamp(&changed).unwrap(), original_stamp);
+    let report = execute(&frozen, "same-stamp-export");
+    assert_eq!(report["verifiedCount"], 1);
+    assert_eq!(report["failedCount"], 1);
+    assert_eq!(report["xmpCopiedCount"], 1);
+    assert_eq!(report["xmpSkippedCount"], 1);
+    let changed_item = report["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["assetId"] == a)
+        .unwrap();
+    assert_eq!(changed_item["errorCode"], "DB_CONFLICT");
+    assert!(!f.output.join("a.bmp").exists());
+    assert!(!f.output.join("a.xmp").exists());
+    assert_eq!(fs::read(f.output.join("b.bmp")).unwrap(), replacement);
+    assert_eq!(fs::read(&changed).unwrap(), replacement);
+
+    assert_eq!(scan(&f.cat, &source_id)["status"], "completed");
+    let legacy = preview(&[a]);
+    c.execute("UPDATE export_plans SET plan_json=json_remove(plan_json,'$.items[0].sourceVersion') WHERE token=?",
+        [legacy["planToken"].as_str().unwrap()]).unwrap();
+    let report = execute(&legacy, "legacy-export-plan");
+    assert_eq!(report["items"][0]["errorCode"], "DB_CONFLICT");
+    assert!(!f.output.join("a.bmp").exists());
+
+    let report = execute(&preview(&[a]), "fresh-version-export");
+    assert_eq!(report["verifiedCount"], 1);
+    assert_eq!(report["xmpCopiedCount"], 1);
+    assert_eq!(fs::read(f.output.join("a.bmp")).unwrap(), replacement);
+    assert!(fs::read_dir(&f.output).unwrap().all(|entry| !entry
+        .unwrap()
+        .file_name()
+        .to_string_lossy()
+        .contains("travelgallery-part")));
+}
+
 #[test]
 fn export_root_replaced_with_a_file_is_rejected_before_creating_a_job() {
     let f = Fixture::new();
