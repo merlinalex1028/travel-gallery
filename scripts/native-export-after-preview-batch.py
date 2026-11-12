@@ -183,6 +183,15 @@ def snapshot(label):
             b.STATE['verifiedPid'] = pid
             b.event('emptyIsolatedCatalogVerified')
         else:
+            if label == 'after-bootstrap' and same_stamp:
+                assert pid != b.STATE['verifiedPid']
+                assert conn.execute('PRAGMA user_version').fetchone() == (10,)
+                assert conn.execute('SELECT absolute_path FROM source_roots').fetchall() == [(str(source),)]
+                assert {name for (name,) in conn.execute('SELECT relative_path FROM media_assets')} == MEDIA
+                assert conn.execute("SELECT 1 FROM jobs WHERE type='SCAN' AND status='completed' AND progress_done=5 AND failure_count=0").fetchone()
+                b.STATE['verifiedPid'] = pid
+                b.event('controlledSourceScannedNatively', sourceCount=len(MEDIA))
+                return
             assert pid == b.STATE['verifiedPid']
             assert conn.execute('SELECT absolute_path FROM source_roots').fetchall() == [(str(source),)]
             assert {name for (name,) in conn.execute('SELECT relative_path FROM media_assets')} == MEDIA
@@ -201,10 +210,11 @@ if __name__ == '__main__':
     parser.add_argument('--same-stamp', action='store_true', help='Only rewrite one source with unchanged size and modification time')
     same_stamp = parser.parse_args().same_stamp
     if same_stamp:
-        b.APPROVAL = reuse.ROOT / 'docs/native-export-same-stamp-default-budget.json'
-        b.RECEIPT = reuse.ROOT / 'docs/native-export-same-stamp-latest.json'
+        b.APPROVAL = reuse.ROOT / 'docs/native-export-same-stamp-retry-default-budget.json'
+        b.RECEIPT = reuse.ROOT / 'docs/native-export-same-stamp-retry-latest.json'
         reuse.SCOPE = 'Native export after same-size same-mtime source rewrite following preview'
         reuse.RUN_PREFIX = 'travel-gallery-native-export-same-stamp-'
+        reuse.SANDBOX_SEAL_ARGS = ('--webkit-mach-lookup',)
     timer = Timer(900, lambda: os.kill(os.getpid(), signal.SIGTERM))
     timer.daemon = True
     timer.start()
