@@ -1415,6 +1415,192 @@ fn source_rescan_retains_stale_exact_group_until_recompute_preserves_same_member
     assert_eq!(count, 0);
 }
 
+#[cfg(unix)]
+#[test]
+fn exact_group_rebuilds_after_same_size_same_mtime_rewrite_with_or_without_rescan() {
+    use std::io::Write;
+    use std::os::unix::fs::MetadataExt;
+
+    for rescan in [false, true] {
+        let f = Fixture::new();
+        f.picture("a.bmp", 1);
+        fs::copy(f.source.join("a.bmp"), f.source.join("b.bmp")).unwrap();
+        fs::copy(f.source.join("a.bmp"), f.source.join("c.bmp")).unwrap();
+        f.picture("outside.bmp", 7);
+        let source = f.add();
+        let ids: Vec<_> = f
+            .assets()
+            .iter()
+            .map(|a| a["id"].as_str().unwrap().to_owned())
+            .collect();
+        let group = build_exact_group(&f.cat, &ids);
+        assert_eq!(group["totalMembers"], 3);
+        f.review(
+            &ids[..1],
+            json!({"rating":4,"pickState":"keep"}),
+            "same-stamp-review",
+        );
+        let c = f.cat.connection().unwrap();
+        let cache_name = || {
+            c.query_row(
+                "SELECT cache_rel_path FROM thumbnail_cache WHERE asset_id=? AND variant='small'",
+                [&ids[0]],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap()
+        };
+        let old_preview = cache_name();
+        let original = f.source.join("a.bmp");
+        let metadata = fs::metadata(&original).unwrap();
+        let original_stamp = files::stamp(&original).unwrap();
+        let replacement = fs::read(f.source.join("outside.bmp")).unwrap();
+        assert_eq!(original_stamp.0, replacement.len() as u64);
+        let mut handle = fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(&original)
+            .unwrap();
+        handle.write_all(&replacement).unwrap();
+        handle
+            .set_times(fs::FileTimes::new().set_modified(metadata.modified().unwrap()))
+            .unwrap();
+        drop(handle);
+        let changed = fs::metadata(&original).unwrap();
+        assert_eq!(changed.ino(), metadata.ino());
+        assert_eq!(changed.modified().unwrap(), metadata.modified().unwrap());
+        assert_eq!(files::stamp(&original).unwrap(), original_stamp);
+
+        if rescan {
+            assert_eq!(scan(&f.cat, &source)["status"], "completed");
+        }
+        let stale = exact_groups(&f.cat);
+        assert_eq!(stale["items"][0]["id"], group["id"]);
+        assert_eq!(stale["items"][0]["stale"], true);
+        let jobs = exact_recompute_jobs(&f.cat);
+        assert_eq!(jobs.len(), 1);
+        assert_eq!(
+            wait(&f.cat, jobs[0]["id"].as_str().unwrap())["status"],
+            "completed"
+        );
+        let groups = exact_groups(&f.cat);
+        assert_eq!(groups["total"], 1);
+        assert_eq!(groups["items"][0]["stale"], false);
+        let mut members: Vec<_> = groups["items"][0]["members"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|member| member["asset"]["id"].as_str().unwrap().to_owned())
+            .collect();
+        members.sort();
+        let mut expected = ids[1..3].to_vec();
+        expected.sort();
+        assert_eq!(members, expected);
+        let review = f.cat.call("get_asset", json!({"assetId":ids[0]})).unwrap();
+        assert_eq!(review["review"]["rating"], 4);
+        assert_eq!(review["review"]["pickState"], "keep");
+        let preview = f
+            .cat
+            .call(
+                "resolve_preview",
+                json!({"assetId":ids[0],"variant":"small"}),
+            )
+            .unwrap();
+        assert_eq!(preview["ready"], true);
+        assert_ne!(cache_name(), old_preview);
+
+        let task = f
+            .cat
+            .call(
+                "start_duplicate_scan",
+                json!({"kind":"exact",
+            "scope":{"kind":"explicit","assetIds":ids}}),
+            )
+            .unwrap();
+        assert_eq!(
+            wait(&f.cat, task["jobId"].as_str().unwrap())["status"],
+            "completed"
+        );
+        assert_eq!(exact_groups(&f.cat)["total"], 2);
+        let (hash, indexed, hashed): (String, String, String) = c
+            .query_row(
+                "SELECT sha256,file_version,sha256_file_version FROM media_assets WHERE id=?",
+                [&ids[0]],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            hash,
+            files::sha256(&f.source.join("outside.bmp"), None).unwrap()
+        );
+        assert_eq!(indexed, hashed);
+    }
+}
+
+#[test]
+fn v9_exact_group_revalidates_legacy_hashes_and_keeps_manual_decisions() {
+    let f = Fixture::new();
+    f.picture("a.png", 1);
+    fs::copy(f.source.join("a.png"), f.source.join("b.png")).unwrap();
+    f.add();
+    let ids: Vec<_> = f
+        .assets()
+        .iter()
+        .map(|a| a["id"].as_str().unwrap().to_owned())
+        .collect();
+    let group = build_exact_group(&f.cat, &ids);
+    f.cat
+        .call(
+            "set_group_representative",
+            json!({"groupId":group["id"],"assetId":ids[0]}),
+        )
+        .unwrap();
+    f.cat
+        .call(
+            "exclude_group_member",
+            json!({"groupId":group["id"],"assetId":ids[1],"excluded":true}),
+        )
+        .unwrap();
+    f.review(&ids[..1], json!({"rating":4}), "legacy-exact-review");
+    let c = f.cat.connection().unwrap();
+    c.execute_batch(
+        "ALTER TABLE media_assets DROP COLUMN file_version;
+                     ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+                     PRAGMA user_version=9;",
+    )
+    .unwrap();
+    drop(c);
+    db::initialize(&f._temp.path().join("app/catalog.sqlite")).unwrap();
+    let c = f.cat.connection().unwrap();
+    let unstamped: i64 = c.query_row(
+        "SELECT count(*) FROM media_assets WHERE sha256 IS NOT NULL AND sha256_file_version IS NULL",
+        [], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(unstamped, 2);
+    assert_eq!(exact_groups(&f.cat)["items"][0]["stale"], true);
+    let jobs = exact_recompute_jobs(&f.cat);
+    assert_eq!(jobs.len(), 1);
+    assert_eq!(
+        wait(&f.cat, jobs[0]["id"].as_str().unwrap())["status"],
+        "completed"
+    );
+    let groups = exact_groups(&f.cat);
+    assert_eq!(groups["total"], 1);
+    let rebuilt = &groups["items"][0];
+    assert_eq!(rebuilt["stale"], false);
+    assert_eq!(rebuilt["representativeAssetId"], ids[0]);
+    assert_eq!(rebuilt["totalMembers"], 2);
+    assert_eq!(rebuilt["memberCount"], 1);
+    assert_eq!(
+        f.cat.call("get_asset", json!({"assetId":ids[0]})).unwrap()["review"]["rating"],
+        4
+    );
+    let stamped: i64 = c.query_row(
+        "SELECT count(*) FROM media_assets WHERE sha256 IS NOT NULL AND sha256_file_version=file_version",
+        [], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(stamped, 2);
+}
+
 #[test]
 fn unavailable_exact_group_waits_and_failed_recompute_requires_explicit_retry() {
     let f = Fixture::new();
@@ -3072,7 +3258,10 @@ fn v4_catalog_upgrade_preserves_export_history_and_checks_sidecar_backup_shape()
     c.execute("INSERT INTO jobs(id,type,status,created_at,updated_at) VALUES('old-export','EXPORT','completed',0,0)",[]).unwrap();
     c.execute("INSERT INTO export_run_items VALUES('old-export','a','a.jpg','copied',0,NULL,'old-hash',0)",[]).unwrap();
     c.execute_batch(
-        "DROP TABLE quality_hint_reviews;DROP TABLE quality_observations;DROP TABLE ai_cluster_members;DROP TABLE ai_clusters;DROP TABLE ai_embeddings;DROP TABLE review_undo_lineage;DROP TABLE export_sidecar_items;PRAGMA user_version=4;",
+        "DROP TABLE quality_hint_reviews;DROP TABLE quality_observations;DROP TABLE ai_cluster_members;DROP TABLE ai_clusters;DROP TABLE ai_embeddings;DROP TABLE review_undo_lineage;DROP TABLE export_sidecar_items;
+         ALTER TABLE media_assets DROP COLUMN file_version;
+         ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+         PRAGMA user_version=4;",
     )
     .unwrap();
     drop(c);
@@ -4556,7 +4745,10 @@ fn quality_backup_checks_typed_scalar_results_and_migrates_old_catalogs() {
     );
     c.execute("DELETE FROM quality_observations", []).unwrap();
     c.execute_batch(
-        "DROP TABLE quality_hint_reviews;DROP TABLE quality_observations;PRAGMA user_version=7;",
+        "DROP TABLE quality_hint_reviews;DROP TABLE quality_observations;
+         ALTER TABLE media_assets DROP COLUMN file_version;
+         ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+         PRAGMA user_version=7;",
     )
     .unwrap();
     drop(c);

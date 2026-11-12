@@ -21,13 +21,14 @@ use std::{
 
 pub fn stamp(path: &Path) -> Result<(u64, i64)> {
     let m = fs::metadata(path)?;
-    Ok((
-        m.len(),
-        m.modified()?
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as i64,
-    ))
+    Ok((m.len(), modified_ms(&m)?))
+}
+fn modified_ms(metadata: &fs::Metadata) -> Result<i64> {
+    Ok(metadata
+        .modified()?
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64)
 }
 pub(crate) fn check_source_access(root: &Path) -> Result<()> {
     // A sandbox may allow directory metadata while denying enumeration.
@@ -42,30 +43,98 @@ pub(crate) fn check_source_access(root: &Path) -> Result<()> {
             }
         })
 }
-pub fn identity(path: &Path) -> Option<String> {
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct FileVersion {
+    pub size: u64,
+    pub mtime_ms: i64,
+    pub identity: Option<String>,
+    pub token: String,
+}
+impl FileVersion {
+    pub fn read(path: &Path) -> Result<Self> {
+        #[cfg(unix)]
+        {
+            Self::from_metadata(fs::metadata(path)?)
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            use windows_sys::Win32::Storage::FileSystem::FILE_READ_ATTRIBUTES;
+            Self::from_file(
+                &fs::OpenOptions::new()
+                    .access_mode(FILE_READ_ATTRIBUTES)
+                    .open(path)?,
+            )
+        }
+    }
+    pub fn matches_index(&self, size: u64, mtime_ms: Option<i64>, token: Option<&str>) -> bool {
+        size == self.size
+            && mtime_ms == Some(self.mtime_ms)
+            && token.is_none_or(|token| token == self.token.as_str())
+    }
     #[cfg(unix)]
-    {
+    fn from_metadata(metadata: fs::Metadata) -> Result<Self> {
         use std::os::unix::fs::MetadataExt;
-        let m = fs::metadata(path).ok()?;
-        Some(format!("{}:{}", m.dev(), m.ino()))
+        let identity = format!("{}:{}", metadata.dev(), metadata.ino());
+        let token = format!(
+            "unix:{identity}:{}:{}:{}:{}",
+            metadata.mtime(),
+            metadata.mtime_nsec(),
+            metadata.ctime(),
+            metadata.ctime_nsec()
+        );
+        Self::regular(metadata, Some(identity), token)
+    }
+    #[cfg(unix)]
+    fn from_file(file: &File) -> Result<Self> {
+        Self::from_metadata(file.metadata()?)
     }
     #[cfg(windows)]
-    {
-        use std::os::windows::io::AsRawHandle;
+    fn from_file(file: &File) -> Result<Self> {
+        use std::os::windows::{fs::MetadataExt, io::AsRawHandle};
         use windows_sys::Win32::Storage::FileSystem::{
-            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+            FileBasicInfo, GetFileInformationByHandle, GetFileInformationByHandleEx,
+            BY_HANDLE_FILE_INFORMATION, FILE_BASIC_INFO,
         };
-        let f = File::open(path).ok()?;
+        let metadata = file.metadata()?;
         let mut info = BY_HANDLE_FILE_INFORMATION::default();
-        // Both the file handle and allocation outlive this synchronous OS call.
-        if unsafe { GetFileInformationByHandle(f.as_raw_handle(), &mut info) } == 0 {
-            return None;
+        let mut basic = FILE_BASIC_INFO::default();
+        // The handle and the matching writable structures outlive both synchronous calls.
+        let identity = (unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) }
+            != 0)
+            .then(|| {
+                format!(
+                    "{}:{}",
+                    info.dwVolumeSerialNumber,
+                    (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow)
+                )
+            });
+        let basic_available = unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FileBasicInfo,
+                (&mut basic as *mut FILE_BASIC_INFO).cast(),
+                std::mem::size_of::<FILE_BASIC_INFO>() as u32,
+            )
+        } != 0;
+        let change_time = if basic_available { basic.ChangeTime } else { 0 };
+        let token = format!(
+            "windows:{}:{}:{change_time}",
+            identity.as_deref().unwrap_or("-"),
+            metadata.last_write_time()
+        );
+        Self::regular(metadata, identity, token)
+    }
+    fn regular(metadata: fs::Metadata, identity: Option<String>, token: String) -> Result<Self> {
+        if !metadata.is_file() {
+            return Err(AppError::new("ASSET_NOT_FOUND", "原文件缺失或不是普通文件"));
         }
-        Some(format!(
-            "{}:{}",
-            info.dwVolumeSerialNumber,
-            ((info.nFileIndexHigh as u64) << 32) | info.nFileIndexLow as u64
-        ))
+        Ok(Self {
+            size: metadata.len(),
+            mtime_ms: modified_ms(&metadata)?,
+            identity,
+            token,
+        })
     }
 }
 pub fn source_path(c: &Connection, aid: &str) -> Result<PathBuf> {
@@ -480,8 +549,7 @@ pub fn start_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Valu
     cat.spawn_job(jid, "EXPORT".into(), plan);
     Ok(res)
 }
-fn hash_file(path: &Path, cat: Option<(&Catalog, &str)>) -> Result<String> {
-    let mut f = File::open(path)?;
+fn hash_file(f: &mut File, cat: Option<(&Catalog, &str)>) -> Result<String> {
     let mut h = Sha256::new();
     let mut b = vec![0; 1024 * 1024];
     loop {
@@ -497,9 +565,19 @@ fn hash_file(path: &Path, cat: Option<(&Catalog, &str)>) -> Result<String> {
     Ok(format!("{:x}", h.finalize()))
 }
 pub fn sha256(path: &Path, cat: Option<(&Catalog, &str)>) -> Result<String> {
-    let before = stamp(path)?;
-    let hash = hash_file(path, cat)?;
-    if stamp(path)? != before {
+    sha256_at_version(path, &FileVersion::read(path)?, cat)
+}
+pub(crate) fn sha256_at_version(
+    path: &Path,
+    version: &FileVersion,
+    cat: Option<(&Catalog, &str)>,
+) -> Result<String> {
+    let mut file = File::open(path)?;
+    if FileVersion::from_file(&file)? != *version {
+        return Err(AppError::new("DB_CONFLICT", "文件在读取期间已变化"));
+    }
+    let hash = hash_file(&mut file, cat)?;
+    if FileVersion::from_file(&file)? != *version || FileVersion::read(path)? != *version {
         return Err(AppError::new("DB_CONFLICT", "文件在读取期间已变化"));
     }
     Ok(hash)
@@ -984,6 +1062,9 @@ impl Catalog {
             crate::quality::validate_backup(&c).map_err(|_| {
                 AppError::new("DB_MIGRATION_FAILED", "备份中的照片检查记录格式无效")
             })?;
+        }
+        if version >= 10 {
+            c.prepare("SELECT file_version,sha256_file_version FROM media_assets LIMIT 0")?;
         }
         crate::export_options::list(&c)?;
         let violations: i64 =

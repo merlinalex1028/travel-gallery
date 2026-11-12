@@ -309,7 +309,8 @@ pub fn conditions(f: &Filter) -> Result<(String, Vec<Sql>)> {
             " AND (g.group_type<>'exact' OR g.id NOT IN (
                 SELECT sibling.group_id FROM similar_group_items sibling JOIN media_assets m ON m.id=sibling.asset_id
                 WHERE m.sha256 IS NULL OR m.sha256_byte_size IS NOT m.byte_size
-                    OR m.sha256_mtime_ms IS NOT m.mtime_ms))",
+                    OR m.sha256_mtime_ms IS NOT m.mtime_ms OR m.sha256_file_version IS NULL
+                    OR m.sha256_file_version IS NOT m.file_version))",
         );
         cond.push(')');
         if k == "none" {

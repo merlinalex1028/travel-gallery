@@ -371,7 +371,7 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         } else {
             rel
         };
-        let file_stamp = match files::stamp(path) {
+        let file_version = match files::FileVersion::read(path) {
             Ok(s) => s,
             Err(_) => {
                 complete = false;
@@ -379,35 +379,45 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
                 continue;
             }
         };
-        let identity = files::identity(path);
-        let mut old:Option<(String,i64,Option<i64>,i64)>=c.query_row("SELECT id,byte_size,mtime_ms,CAST(COALESCE(json_extract(CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,'$._version'),0) AS INTEGER) FROM media_assets WHERE source_id=? AND relative_path=?",params![sid,rel],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+        let mut old:Option<(String,u64,Option<i64>,i64,Option<String>)>=c.query_row("SELECT id,byte_size,mtime_ms,CAST(COALESCE(json_extract(CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,'$._version'),0) AS INTEGER),file_version FROM media_assets WHERE source_id=? AND relative_path=?",params![sid,rel],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).optional()?;
         if old.is_none() {
-            if let Some(identity) = &identity {
-                let candidate:Option<(String,String,Option<String>,i64)>=c.query_row("SELECT id,relative_path,sha256,CAST(COALESCE(json_extract(CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,'$._version'),0) AS INTEGER) FROM media_assets WHERE source_id=? AND file_identity=? AND byte_size=? AND mtime_ms=? LIMIT 1",params![sid,identity,file_stamp.0,file_stamp.1],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+            if let Some(identity) = &file_version.identity {
+                let candidate:Option<(String,String,Option<String>,i64)>=c.query_row("SELECT id,relative_path,sha256,CAST(COALESCE(json_extract(CASE WHEN json_valid(metadata_json) THEN metadata_json ELSE '{}' END,'$._version'),0) AS INTEGER) FROM media_assets WHERE source_id=? AND file_identity=? AND byte_size=? AND mtime_ms=? LIMIT 1",params![sid,identity,file_version.size,file_version.mtime_ms],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
                 if let Some((candidate, previous, Some(hash), version)) = candidate {
                     if !root.join(previous).exists()
-                        && files::sha256(path, Some((cat, jid)))? == hash
+                        && files::sha256_at_version(path, &file_version, Some((cat, jid)))? == hash
                     {
                         c.execute(
-                            "UPDATE media_assets SET relative_path=?,filename=? WHERE id=?",
-                            params![rel, path.file_name().unwrap().to_string_lossy(), candidate],
+                            "UPDATE media_assets SET relative_path=?,filename=?,file_version=?,sha256_file_version=? WHERE id=?",
+                            params![rel, path.file_name().unwrap().to_string_lossy(), file_version.token, file_version.token, candidate],
                         )?;
-                        old = Some((candidate, file_stamp.0 as i64, Some(file_stamp.1), version));
+                        old = Some((
+                            candidate,
+                            file_version.size,
+                            Some(file_version.mtime_ms),
+                            version,
+                            Some(file_version.token.clone()),
+                        ));
                         db::bump(&c)?;
                     }
                 }
             }
         }
-        if let Some((aid, size, mtime, version)) = &old {
-            if *size == file_stamp.0 as i64
-                && *mtime == Some(file_stamp.1)
+        if let Some((aid, size, mtime, version, token)) = &old {
+            if file_version.matches_index(*size, *mtime, token.as_deref())
                 && media::metadata_version_current(&ext, *version)
             {
-                c.execute("UPDATE media_assets SET last_seen_scan_generation=?,file_state=CASE WHEN file_state IN ('missing','offline') THEN 'available' ELSE file_state END WHERE id=?",params![generation,aid])?;
-                c.execute(
-                    "UPDATE media_assets SET file_identity=? WHERE id=?",
-                    params![identity, aid],
+                let updated = c.execute(
+                    "UPDATE media_assets SET last_seen_scan_generation=?,
+                     file_state=CASE WHEN file_state IN ('missing','offline') THEN 'available' ELSE file_state END,
+                     file_identity=?,file_version=? WHERE id=? AND (file_version IS ? OR file_version=?)",
+                    params![generation,file_version.identity,file_version.token,aid,token,file_version.token],
                 )?;
+                if updated == 0 {
+                    complete = false;
+                    failures += 1;
+                    continue;
+                }
                 done += 1;
                 if last.elapsed() > Duration::from_millis(150) {
                     progress(&c, jid, done, None, failures)?;
@@ -417,13 +427,13 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
             }
         }
         let aid = old.as_ref().map(|o| o.0.clone()).unwrap_or_else(id);
-        let meta = media::metadata(path, &ext, kind, file_stamp.1);
-        if files::stamp(path).ok() != Some(file_stamp) {
+        let meta = media::metadata(path, &ext, kind, file_version.mtime_ms);
+        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        if files::FileVersion::read(path).as_ref().ok() != Some(&file_version) {
             failures += 1;
             complete = false;
             continue;
         }
-        let tx = c.transaction()?;
         if old.is_some() {
             invalidate_indexed_file(&tx, &aid)?;
         }
@@ -434,8 +444,7 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
             path,
             ext: &ext,
             kind,
-            stamp: file_stamp,
-            identity: identity.as_deref(),
+            version: &file_version,
             generation,
         }
         .save(&tx, &meta)?;
@@ -482,6 +491,8 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
 fn invalidate_indexed_file(c: &Connection, aid: &str) -> Result<()> {
     c.execute("DELETE FROM linked_media WHERE match_method NOT IN ('manual','manual_exclusion') AND (primary_asset_id=? OR secondary_asset_id=?)", params![aid,aid])?;
     c.execute("DELETE FROM thumbnail_cache WHERE asset_id=?", [aid])?;
+    c.execute("DELETE FROM ai_embeddings WHERE asset_id=?", [aid])?;
+    c.execute("DELETE FROM quality_observations WHERE asset_id=?", [aid])?;
     c.execute("DELETE FROM similar_groups WHERE group_type='similar' AND id IN(SELECT group_id FROM similar_group_items WHERE asset_id=?)",[aid])?;
     Ok(())
 }
@@ -493,8 +504,7 @@ struct IndexedFile<'a> {
     path: &'a Path,
     ext: &'a str,
     kind: &'a str,
-    stamp: (u64, i64),
-    identity: Option<&'a str>,
+    version: &'a files::FileVersion,
     generation: i64,
 }
 impl IndexedFile<'_> {
@@ -504,8 +514,8 @@ impl IndexedFile<'_> {
             "INSERT INTO media_assets(id,source_id,relative_path,filename,extension,media_kind,
               byte_size,mtime_ms,capture_local,capture_utc_ms,capture_tz_min,capture_time_source,
               width,height,orientation,duration_ms,codec,camera_make,camera_model,gps_lat,gps_lon,
-              file_state,metadata_json,indexed_at,updated_at,last_seen_scan_generation,file_identity)
-             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+              file_state,metadata_json,indexed_at,updated_at,last_seen_scan_generation,file_identity,file_version)
+             VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
              ON CONFLICT(source_id,relative_path) DO UPDATE SET
               byte_size=excluded.byte_size,mtime_ms=excluded.mtime_ms,capture_local=excluded.capture_local,
               capture_utc_ms=excluded.capture_utc_ms,capture_tz_min=excluded.capture_tz_min,
@@ -514,14 +524,15 @@ impl IndexedFile<'_> {
               camera_make=excluded.camera_make,camera_model=excluded.camera_model,gps_lat=excluded.gps_lat,
               gps_lon=excluded.gps_lon,file_state=excluded.file_state,metadata_json=excluded.metadata_json,
               updated_at=excluded.updated_at,last_seen_scan_generation=excluded.last_seen_scan_generation,
-              file_identity=excluded.file_identity,sha256=NULL,sha256_mtime_ms=NULL,sha256_byte_size=NULL,
+              file_identity=excluded.file_identity,file_version=excluded.file_version,
+              sha256=NULL,sha256_mtime_ms=NULL,sha256_byte_size=NULL,sha256_file_version=NULL,
               perceptual_hash=NULL",
             params![self.aid,self.sid,self.rel,self.path.file_name().unwrap().to_string_lossy(),
-                self.ext,self.kind,self.stamp.0,self.stamp.1,v["captureLocal"].as_str(),
+                self.ext,self.kind,self.version.size,self.version.mtime_ms,v["captureLocal"].as_str(),
                 v["captureUtcMs"].as_i64(),v["captureTzMin"].as_i64(),v["captureTimeSource"].as_str(),
                 v["width"].as_i64(),v["height"].as_i64(),v["orientation"].as_i64(),v["durationMs"].as_i64(),
                 v["codec"].as_str(),v["cameraMake"].as_str(),v["cameraModel"].as_str(),v["gpsLat"].as_f64(),
-                v["gpsLon"].as_f64(),meta.state,v["metadata"].to_string(),now(),now(),self.generation,self.identity],
+                v["gpsLon"].as_f64(),meta.state,v["metadata"].to_string(),now(),now(),self.generation,self.version.identity,self.version.token],
         )?;
         crate::capture_time::refresh_original(c, self.aid, v)?;
         Ok(())
@@ -649,68 +660,78 @@ fn exact(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         return recompute_exact(cat, &mut c, jid, r);
     }
     let ids = query::target_ids(&c, &r["scope"])?;
-    let mut buckets: HashMap<i64, Vec<String>> = HashMap::new();
+    let mut buckets = HashMap::<u64, Vec<(String, PathBuf, files::FileVersion)>>::new();
     for aid in &ids {
-        let a = query::asset(&c, aid)?;
-        if files::source_path(&c, aid).is_ok() {
-            buckets
-                .entry(a["byteSize"].as_i64().unwrap_or(0))
-                .or_default()
-                .push(aid.clone());
+        safe_point(cat, jid)?;
+        if let Ok(path) = files::source_path(&c, aid) {
+            if let Ok(version) = files::FileVersion::read(&path) {
+                buckets
+                    .entry(version.size)
+                    .or_default()
+                    .push((aid.clone(), path, version));
+            }
         }
     }
-    let candidates: Vec<String> = buckets
+    let candidates: Vec<_> = buckets
         .into_values()
         .filter(|v| v.len() > 1)
         .flatten()
         .collect();
-    let mut hashes: HashMap<String, Vec<String>> = HashMap::new();
+    let candidate_count = candidates.len();
     let mut verified = Vec::new();
     let mut failures = 0;
-    for (n, aid) in candidates.iter().enumerate() {
+    for (n, (aid, path, version)) in candidates.into_iter().enumerate() {
         safe_point(cat, jid)?;
-        let calculated = files::source_path(&c, aid).and_then(|path| {
-            let hash = files::sha256(&path, Some((cat, jid)))?;
-            let (size, mtime) = files::stamp(&path)?;
-            Ok((hash, size, mtime))
-        });
-        match calculated {
-            Ok((hash, size, mtime)) => {
-                verified.push((aid, hash.clone(), size, mtime));
-                hashes.entry(hash).or_default().push(aid.clone());
-            }
+        match ExactMember::inspect(&c, aid.clone(), path, version).and_then(|mut member| {
+            member.hash = Some(files::sha256_at_version(
+                &member.path,
+                &member.version,
+                Some((cat, jid)),
+            )?);
+            Ok(member)
+        }) {
+            Ok(member) => verified.push(member),
             Err(e) => {
                 if e.code == "CANCELLED" {
                     return Err(e);
                 }
                 failures += 1;
-                record_error(&c, jid, Some(aid), &e.message)?;
+                record_error(&c, jid, Some(&aid), &e.message)?;
             }
         }
         if n % 8 == 0 {
-            progress(&c, jid, n + 1, Some(candidates.len()), failures)?;
+            progress(&c, jid, n + 1, Some(candidate_count), failures)?;
         }
     }
-    let tx = c.transaction()?;
-    for (aid, hash, size, mtime) in verified {
-        store_exact_hash(&tx, aid, &hash, (size, mtime))?;
+    safe_point(cat, jid)?;
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let mut hashes = HashMap::<String, Vec<(String, Option<u32>)>>::new();
+    let mut changed_sources = HashSet::new();
+    for member in verified {
+        match member.publish(&tx) {
+            Ok(changed_source) => {
+                changed_sources.extend(changed_source);
+                if let Some(hash) = member.hash {
+                    hashes.entry(hash).or_default().push((member.aid, None));
+                }
+            }
+            Err(e) if e.code == "DB_CONFLICT" => {
+                failures += 1;
+                record_error(&tx, jid, Some(&member.aid), &e.message)?;
+            }
+            Err(e) => return Err(e),
+        }
     }
     let mut decisions = clear_scoped_groups(&tx, "exact", "SHA-256", &ids)?;
     for members in hashes.into_values().filter(|v| v.len() > 1) {
-        let members = members.into_iter().map(|aid| (aid, None)).collect::<Vec<_>>();
         insert_group(&tx, "exact", "SHA-256", &members, &mut decisions)?;
+    }
+    for sid in changed_sources {
+        refresh_pairs(&tx, &sid)?;
     }
     db::bump(&tx)?;
     tx.commit()?;
-    progress(&c, jid, candidates.len(), Some(candidates.len()), failures)?;
-    Ok(())
-}
-
-fn store_exact_hash(c: &Connection, aid: &str, hash: &str, (size, mtime): (u64, i64)) -> Result<()> {
-    c.execute(
-        "UPDATE media_assets SET sha256=?,sha256_byte_size=?,sha256_mtime_ms=? WHERE id=?",
-        params![hash, size, mtime, aid],
-    )?;
+    progress(&c, jid, candidate_count, Some(candidate_count), failures)?;
     Ok(())
 }
 
@@ -728,9 +749,87 @@ fn exact_group_ids(c: &Connection, gid: &str) -> Result<Vec<String>> {
 struct ExactMember {
     aid: String,
     path: PathBuf,
-    stamp: (u64, i64),
+    version: files::FileVersion,
     metadata: Option<media::Metadata>,
     hash: Option<String>,
+}
+
+impl ExactMember {
+    fn inspect(
+        c: &Connection,
+        aid: String,
+        path: PathBuf,
+        version: files::FileVersion,
+    ) -> Result<Self> {
+        let (size, mtime, token, legacy_hash, ext, kind) = c.query_row(
+            "SELECT byte_size,mtime_ms,file_version,sha256 IS NOT NULL AND sha256_file_version IS NULL,
+                    extension,media_kind FROM media_assets WHERE id=?",
+            [&aid],
+            |r| Ok((r.get::<_,u64>(0)?, r.get::<_,Option<i64>>(1)?, r.get::<_,Option<String>>(2)?,
+                    r.get::<_,bool>(3)?, r.get::<_,String>(4)?, r.get::<_,String>(5)?)),
+        )?;
+        // Old hashes have no file-version evidence. Refresh their derivatives
+        // when the group is rebuilt, even if a scan has adopted a new baseline.
+        let metadata = (legacy_hash || !version.matches_index(size, mtime, token.as_deref()))
+            .then(|| media::metadata(&path, &ext, &kind, version.mtime_ms));
+        Ok(Self {
+            aid,
+            path,
+            version,
+            metadata,
+            hash: None,
+        })
+    }
+
+    fn publish(&self, c: &Connection) -> Result<Option<String>> {
+        if files::source_path(c, &self.aid).as_ref().ok() != Some(&self.path)
+            || files::FileVersion::read(&self.path).as_ref().ok() != Some(&self.version)
+        {
+            return Err(exact_change_conflict());
+        }
+        let (sid, rel, ext, kind, size, mtime, generation, token, legacy_hash) = c.query_row(
+            "SELECT source_id,relative_path,extension,media_kind,byte_size,mtime_ms,
+                    last_seen_scan_generation,file_version,sha256 IS NOT NULL AND sha256_file_version IS NULL
+             FROM media_assets WHERE id=?",
+            [&self.aid],
+            |r| Ok((r.get::<_,String>(0)?, r.get::<_,String>(1)?, r.get::<_,String>(2)?,
+                    r.get::<_,String>(3)?, r.get::<_,u64>(4)?, r.get::<_,Option<i64>>(5)?,
+                    r.get::<_,i64>(6)?, r.get::<_,Option<String>>(7)?, r.get::<_,bool>(8)?)),
+        )?;
+        let mut changed_source = None;
+        if legacy_hash || !self.version.matches_index(size, mtime, token.as_deref()) {
+            let meta = self.metadata.as_ref().ok_or_else(exact_change_conflict)?;
+            invalidate_indexed_file(c, &self.aid)?;
+            IndexedFile {
+                aid: &self.aid,
+                sid: &sid,
+                rel: &rel,
+                path: Path::new(&rel),
+                ext: &ext,
+                kind: &kind,
+                version: &self.version,
+                generation,
+            }
+            .save(c, meta)?;
+            changed_source = Some(sid);
+        }
+        if let Some(hash) = &self.hash {
+            c.execute(
+                "UPDATE media_assets SET sha256=?,sha256_byte_size=?,sha256_mtime_ms=?,
+                    sha256_file_version=?,file_version=?,file_identity=? WHERE id=?",
+                params![
+                    hash,
+                    self.version.size,
+                    self.version.mtime_ms,
+                    self.version.token,
+                    self.version.token,
+                    self.version.identity,
+                    self.aid
+                ],
+            )?;
+        }
+        Ok(changed_source)
+    }
 }
 
 fn recompute_exact(cat: &Catalog, c: &mut Connection, jid: &str, r: &Value) -> Result<()> {
@@ -761,13 +860,6 @@ fn exact_change_conflict() -> AppError {
     AppError::new("DB_CONFLICT", "重算期间分组或文件发生变化，请重试")
 }
 
-fn exact_stamp(path: &Path) -> Result<(u64, i64)> {
-    if !path.is_file() {
-        return Err(AppError::new("ASSET_NOT_FOUND", "原文件缺失或不是普通文件"));
-    }
-    files::stamp(path)
-}
-
 fn recompute_exact_group(cat: &Catalog, c: &mut Connection, jid: &str, gid: &str) -> Result<()> {
     let ids = exact_group_ids(c, gid)?;
     if ids.is_empty() {
@@ -779,44 +871,15 @@ fn recompute_exact_group(cat: &Catalog, c: &mut Connection, jid: &str, gid: &str
     for aid in &ids {
         safe_point(cat, jid)?;
         let path = files::source_path(c, aid)?;
-        let stamp = exact_stamp(&path)?;
-        let (size, mtime, ext, kind) = c.query_row(
-            "SELECT byte_size,mtime_ms,extension,media_kind FROM media_assets WHERE id=?",
-            [aid],
-            |row| {
-                Ok((
-                    row.get::<_, u64>(0)?,
-                    row.get::<_, Option<i64>>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            },
-        )?;
-        let metadata = ((size, mtime) != (stamp.0, Some(stamp.1)))
-            .then(|| media::metadata(&path, &ext, &kind, stamp.1));
-        if exact_stamp(&path)? != stamp {
-            return Err(exact_change_conflict());
-        }
-        *buckets.entry(stamp.0).or_default() += 1;
-        members.push(ExactMember {
-            aid: aid.clone(),
-            path,
-            stamp,
-            metadata,
-            hash: None,
-        });
+        let version = files::FileVersion::read(&path)?;
+        *buckets.entry(version.size).or_default() += 1;
+        members.push(ExactMember::inspect(c, aid.clone(), path, version)?);
     }
     let mut hashes = HashMap::<String, Vec<(String, Option<u32>)>>::new();
     for member in &mut members {
         safe_point(cat, jid)?;
-        if buckets[&member.stamp.0] > 1 {
-            if exact_stamp(&member.path)? != member.stamp {
-                return Err(exact_change_conflict());
-            }
-            let hash = files::sha256(&member.path, Some((cat, jid)))?;
-            if exact_stamp(&member.path)? != member.stamp {
-                return Err(exact_change_conflict());
-            }
+        if buckets[&member.version.size] > 1 {
+            let hash = files::sha256_at_version(&member.path, &member.version, Some((cat, jid)))?;
             hashes
                 .entry(hash.clone())
                 .or_default()
@@ -832,48 +895,7 @@ fn recompute_exact_group(cat: &Catalog, c: &mut Connection, jid: &str, gid: &str
     }
     let mut changed_sources = HashSet::new();
     for member in members {
-        if files::source_path(&tx, &member.aid)? != member.path
-            || exact_stamp(&member.path)? != member.stamp
-        {
-            return Err(exact_change_conflict());
-        }
-        let (sid, rel, ext, kind, size, mtime, generation) = tx.query_row(
-            "SELECT source_id,relative_path,extension,media_kind,byte_size,mtime_ms,
-             last_seen_scan_generation FROM media_assets WHERE id=?",
-            [&member.aid],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, u64>(4)?,
-                    row.get::<_, Option<i64>>(5)?,
-                    row.get::<_, i64>(6)?,
-                ))
-            },
-        )?;
-        if (size, mtime) != (member.stamp.0, Some(member.stamp.1)) {
-            let meta = member.metadata.as_ref().ok_or_else(exact_change_conflict)?;
-            let identity = files::identity(&member.path);
-            invalidate_indexed_file(&tx, &member.aid)?;
-            IndexedFile {
-                aid: &member.aid,
-                sid: &sid,
-                rel: &rel,
-                path: Path::new(&rel),
-                ext: &ext,
-                kind: &kind,
-                stamp: member.stamp,
-                identity: identity.as_deref(),
-                generation,
-            }
-            .save(&tx, meta)?;
-            changed_sources.insert(sid);
-        }
-        if let Some(hash) = member.hash {
-            store_exact_hash(&tx, &member.aid, &hash, member.stamp)?;
-        }
+        changed_sources.extend(member.publish(&tx)?);
     }
     let mut decisions = clear_scoped_groups(&tx, "exact", "SHA-256", &ids)?;
     for members in hashes.into_values().filter(|v| v.len() > 1) {
@@ -1094,7 +1116,8 @@ struct GroupStaleness {
 
 fn group_staleness(c: &Connection, gid: &str, kind: &str, limit: i64) -> Result<GroupStaleness> {
     let mut st = c.prepare(
-        "SELECT a.id,a.byte_size,a.mtime_ms,a.sha256 IS NOT NULL,a.sha256_byte_size,a.sha256_mtime_ms
+        "SELECT a.id,a.byte_size,a.mtime_ms,a.sha256 IS NOT NULL,a.sha256_byte_size,a.sha256_mtime_ms,
+                a.file_version,a.sha256_file_version
          FROM similar_group_items gi JOIN media_assets a ON a.id=gi.asset_id
          WHERE gi.group_id=? ORDER BY gi.asset_id LIMIT ?",
     )?;
@@ -1106,17 +1129,31 @@ fn group_staleness(c: &Connection, gid: &str, kind: &str, limit: i64) -> Result<
             row.get::<_, bool>(3)?,
             row.get::<_, Option<u64>>(4)?,
             row.get::<_, Option<i64>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
         ))
     })?;
     let mut state = GroupStaleness::default();
     for row in rows {
-        let (aid, indexed_size, indexed_mtime, hashed, hash_size, hash_mtime) = row?;
-        match files::source_path(c, &aid).and_then(|path| exact_stamp(&path)) {
-            Ok((size, mtime)) => {
-                state.changed |= indexed_size != size || indexed_mtime != Some(mtime);
+        let (
+            aid,
+            indexed_size,
+            indexed_mtime,
+            hashed,
+            hash_size,
+            hash_mtime,
+            indexed_token,
+            hash_token,
+        ) = row?;
+        match files::source_path(c, &aid).and_then(|path| files::FileVersion::read(&path)) {
+            Ok(version) => {
+                state.changed |=
+                    !version.matches_index(indexed_size, indexed_mtime, indexed_token.as_deref());
                 if kind == "exact" {
-                    state.changed |=
-                        !hashed || hash_size != Some(size) || hash_mtime != Some(mtime);
+                    state.changed |= !hashed
+                        || hash_size != Some(version.size)
+                        || hash_mtime != Some(version.mtime_ms)
+                        || hash_token.as_deref() != Some(version.token.as_str());
                 }
             }
             Err(_) => state.unavailable = true,
@@ -1257,7 +1294,9 @@ pub fn group_action(c: &mut Connection, name: &str, r: &Value) -> Result<Value> 
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     if kind == "exact" && tx.query_row(
         "SELECT EXISTS(SELECT 1 FROM similar_group_items gi JOIN media_assets a ON a.id=gi.asset_id
-         WHERE gi.group_id=? AND (a.sha256 IS NULL OR a.sha256_byte_size IS NOT a.byte_size OR a.sha256_mtime_ms IS NOT a.mtime_ms))",
+         WHERE gi.group_id=? AND (a.sha256 IS NULL OR a.sha256_byte_size IS NOT a.byte_size
+              OR a.sha256_mtime_ms IS NOT a.mtime_ms OR a.sha256_file_version IS NULL
+              OR a.sha256_file_version IS NOT a.file_version))",
         [gid], |row| row.get::<_, bool>(0),
     )? {
         return Err(AppError::new("DB_CONFLICT", "分组结果已过期，请刷新分组后重试"));

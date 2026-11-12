@@ -4,7 +4,7 @@ use crate::{
 };
 use rusqlite::{Connection, OptionalExtension};
 use std::{path::Path, time::Duration};
-pub const CATALOG_VERSION: i64 = 9;
+pub const CATALOG_VERSION: i64 = 10;
 
 pub fn connect(path: &Path) -> Result<Connection> {
     let c = Connection::open(path)?;
@@ -77,6 +77,9 @@ pub fn initialize(path: &Path) -> Result<()> {
     }
     if version < 9 {
         c.execute_batch(include_str!("../migrations/009_heif_preview_orientation.sql"))?;
+    }
+    if version < 10 {
+        c.execute_batch(include_str!("../migrations/010_exact_file_version.sql"))?;
     }
     c.execute("UPDATE jobs SET status='failed',error_summary='上次运行被中断，可安全重试',updated_at=? WHERE status IN ('running','queued','paused')", [now()])?;
     c.execute("DELETE FROM query_contexts WHERE expires_at<?", [now()])?;
@@ -185,11 +188,20 @@ mod tests {
             c.execute("INSERT INTO similar_group_items VALUES(?,'heif',0,0)", [kind]).unwrap();
             c.execute("INSERT INTO similar_group_items VALUES(?,'jpeg',0,0)", [kind]).unwrap();
         }
-        c.pragma_update(None, "user_version", 8).unwrap();
+        c.execute_batch(
+            "ALTER TABLE media_assets DROP COLUMN file_version;
+                         ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+                         PRAGMA user_version=8;",
+        )
+        .unwrap();
         drop(c);
         initialize(&path).unwrap();
         let c = connect(&path).unwrap();
-        assert_eq!(c.pragma_query_value::<i64,_>(None,"user_version",|r|r.get(0)).unwrap(),9);
+        assert_eq!(
+            c.pragma_query_value::<i64, _>(None, "user_version", |r| r.get(0))
+                .unwrap(),
+            CATALOG_VERSION
+        );
         for table in ["ai_embeddings", "quality_observations"] {
             assert_eq!(c.query_row(&format!("SELECT count(*) FROM {table} WHERE asset_id='heif'"),[],|r|r.get::<_,i64>(0)).unwrap(),0);
             assert_eq!(c.query_row(&format!("SELECT count(*) FROM {table} WHERE asset_id='jpeg'"),[],|r|r.get::<_,i64>(0)).unwrap(),1);

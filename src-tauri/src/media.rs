@@ -609,7 +609,21 @@ fn thumbnail_with_priority(
     if !["small", "medium", "screen", "poster"].contains(&variant) {
         return Err(AppError::new("INVALID_FILTER", "预览尺寸无效"));
     }
-    let row:(Option<i64>,i64,i64,String,String)=c.query_row("SELECT mtime_ms,byte_size,COALESCE(orientation,1),media_kind,extension FROM media_assets WHERE id=?",[aid],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)))?;
+    let row: (Option<i64>, i64, i64, String, String, Option<String>) = c.query_row(
+        "SELECT mtime_ms,byte_size,COALESCE(orientation,1),media_kind,extension,file_version
+         FROM media_assets WHERE id=?",
+        [aid],
+        |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+            ))
+        },
+    )?;
     let pixel_version = preview_format_version(&row.4);
     if let Some(path) = cached_thumbnail(cat, c, aid, variant, row.1, row.0, pixel_version)? {
         return Ok(path);
@@ -620,8 +634,8 @@ fn thumbnail_with_priority(
         return Ok(path);
     }
     let path = files::source_path(c, aid)?;
-    let before = files::stamp(&path)?;
-    if before.0 != row.1 as u64 || Some(before.1) != row.0 {
+    let before = files::FileVersion::read(&path)?;
+    if !before.matches_index(row.1 as u64, row.0, row.5.as_deref()) {
         return Err(AppError::new(
             "DB_CONFLICT",
             "媒体内容已变化，请重新扫描来源",
@@ -630,8 +644,8 @@ fn thumbnail_with_priority(
     let key = format!(
         "{:x}",
         Sha256::digest(format!(
-            "{aid}-{variant}-{:?}-{}-{}-v{pixel_version}",
-            row.0, row.1, row.2
+            "{aid}-{variant}-{}-{}-v{pixel_version}-{}",
+            row.1, row.2, before.token
         ))
     );
     let cache_name = format!("{key}.jpg");
@@ -643,6 +657,7 @@ fn thumbnail_with_priority(
         _ => 2560,
     };
     let result = (|| -> Result<()> {
+        let mut dimensions = None;
         if row.3 == "video" {
             let mut cmd = Command::new(tool("ffmpeg"));
             cmd.args(["-v", "error", "-nostdin", "-ss", "0", "-i"])
@@ -678,18 +693,12 @@ fn thumbnail_with_priority(
             }
             let img = decoded?;
             if ["heic", "heif"].contains(&row.4.as_str()) {
-                c.execute("UPDATE media_assets SET width=COALESCE(width,?),height=COALESCE(height,?) WHERE id=?",params![img.width(),img.height(),aid])?;
+                dimensions = Some((img.width(), img.height()));
             }
             let thumb = img.thumbnail(max, max).to_rgb8();
             image::codecs::jpeg::JpegEncoder::new_with_quality(File::create(&temp)?, 86)
                 .encode_image(&thumb)
                 .map_err(|_| AppError::new("ASSET_CORRUPT", "缩略图生成失败"))?;
-        }
-        if files::stamp(&path)? != before {
-            return Err(AppError::new(
-                "DB_CONFLICT",
-                "媒体在生成预览时已变化，请重新扫描",
-            ));
         }
         std::fs::OpenOptions::new()
             .write(true)
@@ -698,18 +707,42 @@ fn thumbnail_with_priority(
         // Publish the file and its database reference together with respect to
         // quota collection, including when an old key is regenerated.
         let _publish = cat.inner.cache_publish.lock().unwrap();
+        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let current: bool = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM media_assets WHERE id=? AND mtime_ms IS ?
+             AND byte_size=? AND COALESCE(orientation,1)=? AND media_kind=? AND extension=?
+             AND (file_version IS NULL OR file_version=?))",
+            params![aid, row.0, row.1, row.2, row.3, row.4, before.token],
+            |r| r.get(0),
+        )?;
+        if !current
+            || files::source_path(&tx, aid)? != path
+            || files::FileVersion::read(&path)? != before
+        {
+            return Err(AppError::new(
+                "DB_CONFLICT",
+                "媒体在生成预览时已变化，请重新扫描",
+            ));
+        }
         fs::rename(&temp, &target)?;
-        c.execute(
+        tx.execute(
             "INSERT OR REPLACE INTO thumbnail_cache VALUES(?,?,?,?,?,?,?)",
             params![aid, variant, cache_name, row.0, row.1, pixel_version, now()],
         )?;
-        c.execute(
+        tx.execute(
             "INSERT OR REPLACE INTO cache_access VALUES(?,?,?)",
             params![aid, variant, now()],
         )?;
-        if row.4 == "heic" || row.4 == "heif" || is_raw(&row.4) {
-            c.execute("UPDATE media_assets SET file_state='available' WHERE id=? AND file_state='unsupported'",[aid])?;
+        if let Some((width, height)) = dimensions {
+            tx.execute(
+                "UPDATE media_assets SET width=COALESCE(width,?),height=COALESCE(height,?) WHERE id=?",
+                params![width, height, aid],
+            )?;
         }
+        if row.4 == "heic" || row.4 == "heif" || is_raw(&row.4) {
+            tx.execute("UPDATE media_assets SET file_state='available' WHERE id=? AND file_state='unsupported'",[aid])?;
+        }
+        tx.commit()?;
         Ok(())
     })();
     if result.is_err() {
