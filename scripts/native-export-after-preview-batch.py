@@ -1,4 +1,5 @@
 """Exercise native export after changes to one source and two destinations."""
+import argparse
 from contextlib import closing
 import csv
 import hashlib
@@ -26,6 +27,7 @@ write_pngs = reuse.write_sources
 MEDIA = {f'owned-{index}.png' for index in range(reuse.SOURCE_FILES)}
 SENTINELS = {'owned-1.xmp': b'external XMP conflict', 'owned-2.png': b'external media conflict'}
 changed = None
+same_stamp = False
 
 
 def write_sources(source):
@@ -61,6 +63,22 @@ def arm_race(conn, source, output):
     original = path.read_bytes()
     stat = path.stat()
     changed = path, original, stat.st_atime_ns, stat.st_mtime_ns
+    if same_stamp:
+        replacement = (source / 'owned-3.png').read_bytes()
+        item = next(item for item in plan['items'] if item['relative'] == path.name)
+        assert len(replacement) == len(original) and replacement != original
+        assert item['mtime'] == stat.st_mtime_ns // 1_000_000
+        path.write_bytes(replacement)
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        modified = path.stat()
+        assert (modified.st_size, modified.st_mtime_ns, modified.st_ino) == (
+            stat.st_size, stat.st_mtime_ns, stat.st_ino)
+        assert modified.st_ctime_ns != stat.st_ctime_ns
+        b.event('sameStampRewriteAfterPreview', plannedMedia=len(MEDIA), plannedXmp=len(MEDIA),
+                changedSource=path.name, sameSize=True, sameNanosecondMtime=True, sameInode=True,
+                ctimeChanged=True, previewSourceSha256=hashlib.sha256(original).hexdigest(),
+                changedSourceSha256=digest(path))
+        return
     with path.open('ab') as stream:
         stream.write(b'changed after preview')
     for name, data in SENTINELS.items():
@@ -73,7 +91,7 @@ def arm_race(conn, source, output):
 def verify_export(conn, source, output):
     assert changed is not None
     jobs = conn.execute("SELECT id,status,progress_done,progress_total,failure_count FROM jobs WHERE type='EXPORT'").fetchall()
-    assert len(jobs) == 1 and jobs[0][1:] == ('completed', 5, 5, 3), jobs
+    assert len(jobs) == 1 and jobs[0][1:4] == ('completed', 5, 5), jobs
     job = jobs[0][0]
     manifest = output / f'travel-gallery-{job}.csv'
     expected = {
@@ -85,6 +103,17 @@ def verify_export(conn, source, output):
     }
     copied = {('media', name) for name in ('owned-1.png', 'owned-3.png', 'owned-4.png')}
     copied |= {('xmp', name) for name in ('owned-3.xmp', 'owned-4.xmp')}
+    if same_stamp:
+        assert jobs[0][4] in (0, 1), jobs
+        expected = {}
+        copied = {('media', name) for name in MEDIA}
+        copied |= {('xmp', Path(name).with_suffix('.xmp').name) for name in MEDIA}
+        if jobs[0][4] == 1:
+            expected = {('media', 'owned-0.png'): ('failed', 'DB_CONFLICT'),
+                        ('xmp', 'owned-0.xmp'): ('skipped', 'MEDIA_EXPORT_FAILED')}
+            copied.difference_update(expected)
+    else:
+        assert jobs[0][4] == 3, jobs
     expected.update(dict.fromkeys(copied, ('copied', '')))
     with manifest.open(encoding='utf-8-sig', newline='') as stream:
         reports = {(row['type'], row['filename']): row for row in csv.DictReader(stream)}
@@ -107,15 +136,30 @@ def verify_export(conn, source, output):
             else:
                 assert size == 0 and not sha
     assert actual == expected and reports.keys() == expected.keys(), actual
-    assert {path.name for path in output.iterdir()} == {manifest.name, *SENTINELS, *(name for _, name in copied)}
-    assert all((output / name).read_bytes() == value for name, value in SENTINELS.items())
+    sentinels = {} if same_stamp else SENTINELS
+    assert {path.name for path in output.iterdir()} == {manifest.name, *sentinels, *(name for _, name in copied)}
+    assert all((output / name).read_bytes() == value for name, value in sentinels.items())
     modified = reuse.source_state()
     assert [row for row in modified if row['name'] != changed[0].name] == [
         row for row in b.STATE['sourceBefore'] if row['name'] != changed[0].name
     ]
-    assert changed[0].read_bytes() == changed[1] + b'changed after preview'
+    if same_stamp:
+        assert changed[0].read_bytes() == (source / 'owned-3.png').read_bytes()
+        assert changed[0].read_bytes() != changed[1]
+        exported = output / changed[0].name
+        b.event('sameStampExportOutcome', changedItemAccepted=exported.exists(),
+                exportedSha256=digest(exported) if exported.exists() else None,
+                mediaCopied=sum(kind == 'media' for kind, _ in copied),
+                xmpCopied=sum(kind == 'xmp' for kind, _ in copied), csvRows=len(reports), partialFiles=0,
+                itemResults=[dict(type=kind, filename=name, status=status, code=code)
+                             for (kind, name), (status, code) in sorted(actual.items())])
+    else:
+        assert changed[0].read_bytes() == changed[1] + b'changed after preview'
     restore_source()
     assert reuse.source_state() == b.STATE['sourceBefore']
+    if same_stamp:
+        b.event('ownedSourcesRestored', sourceCount=len(MEDIA))
+        return
     b.event('exportVerified', csvRows=len(reports), mediaCopied=3, mediaFailed=2,
             xmpCopied=2, xmpFailed=1, xmpSkipped=2, partialFiles=0,
             itemResults=[dict(type=kind, filename=name, status=status, code=code)
@@ -153,6 +197,14 @@ def snapshot(label):
 reuse.write_sources, reuse.snapshot = write_sources, snapshot
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--same-stamp', action='store_true', help='Only rewrite one source with unchanged size and modification time')
+    same_stamp = parser.parse_args().same_stamp
+    if same_stamp:
+        b.APPROVAL = reuse.ROOT / 'docs/native-export-same-stamp-default-budget.json'
+        b.RECEIPT = reuse.ROOT / 'docs/native-export-same-stamp-latest.json'
+        reuse.SCOPE = 'Native export after same-size same-mtime source rewrite following preview'
+        reuse.RUN_PREFIX = 'travel-gallery-native-export-same-stamp-'
     timer = Timer(900, lambda: os.kill(os.getpid(), signal.SIGTERM))
     timer.daemon = True
     timer.start()
