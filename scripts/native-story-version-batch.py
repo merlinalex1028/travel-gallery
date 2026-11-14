@@ -29,7 +29,7 @@ def restore():
         assert reuse.source_state() == b.STATE['sourceBefore']
 
 
-def arm(conn, source, output):
+def arm(conn, source, output, require_versions=False):
     global pending
     assert pending is None and not any(output.iterdir())
     assert reuse.source_state() == b.STATE['sourceBefore']
@@ -41,6 +41,10 @@ def arm(conn, source, output):
     plan = json.loads(plans[0][0])
     assert Path(plan['destination']) == output and not plan['includeNotes']
     assert {item['filename'] for item in plan['items']} == export.MEDIA
+    if require_versions:
+        indexed = dict(conn.execute('SELECT id,file_version FROM media_assets'))
+        assert all(item['sourceVersion'] and item['sourceVersion'] == indexed[item['assetId']]
+                   for item in plan['items'])
     cache = dict(conn.execute("SELECT asset_id,cache_rel_path FROM thumbnail_cache WHERE variant='screen'"))
     item = next(item for item in plan['items'] if item['assetId'] in cache)
     path = source / item['filename']
@@ -78,18 +82,13 @@ def verify(conn, output, expected_failures=None):
     assert manifest['itemCount'] == 5 and manifest['previewCount'] == 5 - failures
     assert manifest['failedCount'] == failures and not manifest['includesNotes']
     assert not manifest['originalsIncluded']
-    assert {entry.name for entry in folder.iterdir()} == {
-        'manifest.json', *(item['relative'] for item in manifest['files'])
-    }
-    for item in manifest['files']:
-        content = (folder / item['relative']).read_bytes()
-        assert len(content) == item['bytes'] and hashlib.sha256(content).hexdigest() == item['sha256']
+    exported = verify_files(folder, manifest, 6 - failures)
     rows = conn.execute("""
         SELECT asset_id,dest_relative_path,state,error_code,verified_sha256
         FROM export_run_items WHERE job_id=?
     """, (job,)).fetchall()
     assert len(rows) == 5
-    exported = {item['relative']: item['sha256'] for item in manifest['files']}
+    html = (folder / 'index.html').read_text()
     for asset, relative, state, code, sha in rows:
         name = Path(relative).relative_to(check['folder']).as_posix()
         if asset == check['asset'] and failures:
@@ -97,7 +96,7 @@ def verify(conn, output, expected_failures=None):
             assert name not in exported
         else:
             assert state == 'copied' and code is None and sha == exported[name]
-    html = (folder / 'index.html').read_text()
+            assert f'src="{name}"' in html
     assert (f'src="{check["relative"]}"' in html) == (not failures)
     assert ('此项预览未导出' in html) == bool(failures)
     restore()
@@ -106,7 +105,22 @@ def verify(conn, output, expected_failures=None):
             sourceRestored=True)
 
 
+def verify_files(folder, manifest, expected_count):
+    files = {item['relative']: item for item in manifest['files']}
+    assert len(files) == len(manifest['files']) == expected_count and 'index.html' in files
+    assert {path.name for path in folder.iterdir()} == {*files, 'manifest.json'}
+    for name, item in files.items():
+        content = (folder / name).read_bytes()
+        assert len(content) == item['bytes'] and hashlib.sha256(content).hexdigest() == item['sha256']
+        if name != 'index.html':
+            assert name.endswith('.jpg') and content.startswith(b'\xff\xd8') and content.endswith(b'\xff\xd9')
+    return {name: item['sha256'] for name, item in files.items()}
+
+
 def verify_recovery(conn, output):
+    if 'initialScanIds' in b.STATE:
+        scans = successful_scans(conn)
+        assert scans > set(b.STATE['initialScanIds'])
     rows = conn.execute("""
         SELECT id,checkpoint_json,status,progress_done,failure_count FROM jobs
         WHERE json_extract(checkpoint_json,'$.operation')='storyExport'
@@ -121,12 +135,7 @@ def verify_recovery(conn, output):
     manifest = json.loads((folder / 'manifest.json').read_text())
     assert (manifest['itemCount'], manifest['previewCount'], manifest['failedCount']) == (5, 5, 0)
     assert not manifest['includesNotes'] and not manifest['originalsIncluded']
-    files = {item['relative']: item for item in manifest['files']}
-    assert len(files) == 6 and 'index.html' in files
-    for name, item in files.items():
-        content = (folder / name).read_bytes()
-        assert len(content) == item['bytes'] and hashlib.sha256(content).hexdigest() == item['sha256']
-    assert {p.name for p in folder.iterdir()} == {*files, 'manifest.json'}
+    files = verify_files(folder, manifest, 6)
     html = (folder / 'index.html').read_text()
     assert '此项预览未导出' not in html
     items = conn.execute("""
@@ -135,10 +144,16 @@ def verify_recovery(conn, output):
     assert len(items) == 5
     for relative, state, error, sha in items:
         name = Path(relative).relative_to(plan['folder']).as_posix()
-        assert (state, error, sha) == ('copied', None, files[name]['sha256'])
+        assert (state, error, sha) == ('copied', None, files[name])
         assert f'src="{name}"' in html
     assert reuse.source_state() == b.STATE['sourceBefore']
-    b.event('storyRescanRecoveryVerified', previews=5, failedItems=0, manifestFiles=6)
+    b.event('storyRescanRecoveryVerified', previews=5, failedItems=0, manifestFiles=6,
+            scanVerified='initialScanIds' in b.STATE)
+
+
+def successful_scans(conn):
+    return {row[0] for row in conn.execute("""SELECT id FROM jobs
+        WHERE type='SCAN' AND status='completed' AND progress_done=5 AND failure_count=0""")}
 
 
 def snapshot(label):
@@ -147,16 +162,28 @@ def snapshot(label):
         return
     database = b.DATA / 'catalog.sqlite'
     pid = picker.verified_process(database)
-    assert pid == b.STATE['verifiedPid'] and reuse.normal_state() == b.STATE['normalBefore']
+    assert reuse.normal_state() == b.STATE['normalBefore']
+    assert label == 'after-import' or pid == b.STATE['verifiedPid']
     fixture = (b.WORK / 'fixture').resolve(strict=True)
     with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True)) as conn:
         conn.execute('BEGIN')
         assert conn.execute('PRAGMA quick_check').fetchone() == ('ok',)
         assert not conn.execute('PRAGMA foreign_key_check').fetchall()
-        if label == 'arm':
-            arm(conn, fixture/'source', fixture/'output')
+        if label == 'after-import':
+            assert conn.execute('SELECT absolute_path FROM source_roots').fetchall() == [(str(fixture/'source'),)]
+            assert {row[0] for row in conn.execute("SELECT relative_path FROM media_assets WHERE file_state='available'")} == export.MEDIA
+            scans = successful_scans(conn)
+            assert scans
+            b.STATE.update(verifiedPid=pid, initialScanIds=sorted(scans))
+            b.event('nativePickerSourceScanned', sourceCount=len(export.MEDIA))
+        elif label == 'arm':
+            arm(conn, fixture/'source', fixture/'output', require_versions='initialScanIds' in b.STATE)
         elif label == 'verify':
             verify(conn, fixture/'output')
+        elif label == 'verify-fixed':
+            verify(conn, fixture/'output', expected_failures=1)
+        elif label == 'recovery':
+            verify_recovery(conn, fixture/'output')
         else:
             raise ValueError(f'Unknown story checkpoint: {label}')
 
