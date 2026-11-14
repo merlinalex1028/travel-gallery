@@ -61,7 +61,7 @@ def arm(conn, source, output):
             sameSizeMtimeAndInode=True, changeTimeAdvanced=True)
 
 
-def verify(conn, output):
+def verify(conn, output, expected_failures=None):
     check = b.STATE['storyCheck']
     assert pending is not None
     rows = conn.execute("""
@@ -71,6 +71,8 @@ def verify(conn, output):
     assert len(rows) == 1 and rows[0][1:3] == ('completed', 7)
     job, _, _, failures = rows[0]
     assert failures in (0, 1)
+    if expected_failures is not None:
+        assert failures == expected_failures
     folder = output / check['folder']
     manifest = json.loads((folder / 'manifest.json').read_text())
     assert manifest['itemCount'] == 5 and manifest['previewCount'] == 5 - failures
@@ -102,6 +104,41 @@ def verify(conn, output):
     b.event('storyVersionOutcome', changedItemPublished=not failures, previews=5-failures,
             failedItems=failures, manifestFiles=len(exported), htmlAndHashesVerified=True,
             sourceRestored=True)
+
+
+def verify_recovery(conn, output):
+    rows = conn.execute("""
+        SELECT id,checkpoint_json,status,progress_done,failure_count FROM jobs
+        WHERE json_extract(checkpoint_json,'$.operation')='storyExport'
+        ORDER BY created_at,rowid
+    """).fetchall()
+    assert len(rows) == 2 and rows[0][2:] == ('completed', 7, 1)
+    job, data, status, done, failed_count = rows[1]
+    assert (status, done, failed_count) == ('completed', 7, 0)
+    plan = json.loads(data)
+    folder = output / plan['folder']
+    assert folder != output / b.STATE['storyCheck']['folder']
+    manifest = json.loads((folder / 'manifest.json').read_text())
+    assert (manifest['itemCount'], manifest['previewCount'], manifest['failedCount']) == (5, 5, 0)
+    assert not manifest['includesNotes'] and not manifest['originalsIncluded']
+    files = {item['relative']: item for item in manifest['files']}
+    assert len(files) == 6 and 'index.html' in files
+    for name, item in files.items():
+        content = (folder / name).read_bytes()
+        assert len(content) == item['bytes'] and hashlib.sha256(content).hexdigest() == item['sha256']
+    assert {p.name for p in folder.iterdir()} == {*files, 'manifest.json'}
+    html = (folder / 'index.html').read_text()
+    assert '此项预览未导出' not in html
+    items = conn.execute("""
+        SELECT dest_relative_path,state,error_code,verified_sha256 FROM export_run_items WHERE job_id=?
+    """, (job,)).fetchall()
+    assert len(items) == 5
+    for relative, state, error, sha in items:
+        name = Path(relative).relative_to(plan['folder']).as_posix()
+        assert (state, error, sha) == ('copied', None, files[name]['sha256'])
+        assert f'src="{name}"' in html
+    assert reuse.source_state() == b.STATE['sourceBefore']
+    b.event('storyRescanRecoveryVerified', previews=5, failedItems=0, manifestFiles=6)
 
 
 def snapshot(label):
