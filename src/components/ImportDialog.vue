@@ -8,6 +8,8 @@ import Icon from './Icon.vue';
 const app = useApp(),
   lib = useLibrary(),
   router = useRouter();
+// Dismiss the overlay even when WKWebView defers animation frames.
+const dialogTransition = { name: 'dialog-fade', css: false };
 const path = shallowRef(''),
   recursive = shallowRef(true),
   skipHidden = shallowRef(true),
@@ -45,7 +47,12 @@ async function start() {
 }
 </script>
 <template>
-  <ElDialog v-model="app.importOpen" title="把一段旅程，放进旅图" width="540px" :close-on-click-modal="false"
+  <ElDialog
+    v-model="app.importOpen"
+    title="把一段旅程，放进旅图"
+    width="540px"
+    :close-on-click-modal="false"
+    :transition="dialogTransition"
     ><p class="dialog-lead">选择照片所在的目录。旅图只建立索引，照片和视频会留在原处。</p>
     <button class="folder-picker" @click="choose">
       <Icon name="folder" :size="28" /><span>{{ path || '选择本地文件夹' }}</span
