@@ -63,7 +63,7 @@ def accept(candidate, fixture, release, env):
         story.restore()
 
 
-def run(approval):
+def build_candidate(approval, batch_name, label, write_sources, *, picker_only=False):
     assert not any(p.exists() or p.is_symlink() for p in [*reuse.OWNED, *b.EXTRA, b.GENERATED])
     assert shutil.disk_usage(ROOT).free >= approval['requiredFreeBytes']
     subprocess.run(BUDGET + ['--approval-file', str(b.APPROVAL), '--planned-files', str(LIMITS['files']),
@@ -73,7 +73,7 @@ def run(approval):
     exact.check_release(release, b.NORMAL)
     b.STATE.update(sourceCommit=batch.verify_inputs(), normalBefore=reuse.normal_state(),
                    acceptedReleaseBefore=release['sha256'])
-    b.TEMP = tempfile.TemporaryDirectory(prefix='travel-gallery-story-version-')
+    b.TEMP = tempfile.TemporaryDirectory(prefix=f'travel-gallery-{batch_name}-')
     b.WORK = Path(b.TEMP.name).resolve()
     b.OWNS_GENERATED = True
     b.STATE['temporaryRoot'] = str(b.WORK)
@@ -91,12 +91,17 @@ def run(approval):
     fixture = b.WORK / 'fixture'
     source = fixture / 'source'
     source.mkdir(parents=True)
-    story.export.write_sources(source)
+    write_sources(source)
     b.STATE['sourceBefore'] = reuse.source_state()
-    marker = dict(identifier=b.IDENTIFIER, count=len(story.export.MEDIA), fixtureRoot=str(source), scope=BATCH)
+    marker = dict(identifier=b.IDENTIFIER, count=len(b.STATE['sourceBefore']), fixtureRoot=str(source), scope=batch_name)
     (fixture / 'OWNED_NATIVE_BENCHMARK.json').write_text(json.dumps(marker))
-    b.APP_PATH = exact.seal_for_qa(candidate, 'Story', fixture, env)
+    b.APP_PATH = exact.seal_for_qa(candidate, label, fixture, env, picker_only=picker_only)
     b.OWNED_PATHS.extend(reuse.OWNED)
+    return candidate, fixture, release, env
+
+
+def run(approval):
+    candidate, fixture, release, env = build_candidate(approval, BATCH, 'Story', story.export.write_sources)
     accept(candidate, fixture, release, env)
 
 

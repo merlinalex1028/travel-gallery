@@ -38,7 +38,7 @@ def check_release(info, app):
     subprocess.run(['/usr/bin/unzip', '-tq', str(archive)], check=True)
 
 
-def seal_for_qa(app, label, fixture, env):
+def seal_for_qa(app, label, fixture, env, *, picker_only=False):
     unsigned = b.WORK / f'unsigned-{label}' / 'Travel Gallery Offline Bench.app'
     unsigned.parent.mkdir()
     b.command('copyForQA' + label, ['ditto', str(app), str(unsigned)], env)
@@ -48,9 +48,12 @@ def seal_for_qa(app, label, fixture, env):
     info.update(CFBundleIdentifier=b.IDENTIFIER, CFBundleName=unsigned.stem, CFBundleDisplayName=unsigned.stem)
     plist.write_bytes(plistlib.dumps(info))
     output = b.WORK / f'qa-{label}'
+    sandbox_options = ['--webkit-mach-lookup']
+    if picker_only:
+        sandbox_options.append('--picker-only')
     b.command('sealForQA' + label, [sys.executable, 'scripts/prepare-offline-sandbox.py',
               '--source', str(unsigned), '--fixture', str(fixture), '--output', str(output),
-              '--webkit-mach-lookup'], env)
+              *sandbox_options], env)
     shutil.rmtree(unsigned.parent)
     return output / unsigned.name
 
