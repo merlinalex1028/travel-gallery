@@ -56,10 +56,22 @@ struct Frozen {
     #[serde(flatten)]
     item: Item,
     source_path: Option<PathBuf>,
+    source_version: Option<String>,
     size: u64,
     mtime: Option<i64>,
     orientation: i64,
     relative: String,
+}
+impl Frozen {
+    fn matches_index(&self, c: &Connection, version: &str) -> Result<bool> {
+        Ok(c.query_row(
+            "SELECT EXISTS(SELECT 1 FROM media_assets WHERE id=? AND byte_size=?
+             AND mtime_ms IS ? AND COALESCE(orientation,1)=?
+             AND (file_version IS NULL OR file_version=?))",
+            params![self.item.asset_id, self.size, self.mtime, self.orientation, version],
+            |r| r.get(0),
+        )?)
+    }
 }
 fn trip(c: &Connection, tid: &str) -> Result<Value> {
     c.query_row("SELECT id,name,description,start_at,end_at,cover_asset_id,(SELECT count(*) FROM collection_assets WHERE collection_id=t.id) FROM collections t WHERE id=? AND kind='trip'", [tid], |r| Ok(json!({"id":r.get::<_,String>(0)?,"name":r.get::<_,String>(1)?,"description":r.get::<_,Option<String>>(2)?,"startAt":r.get::<_,Option<i64>>(3)?,"endAt":r.get::<_,Option<i64>>(4)?,"coverAssetId":r.get::<_,Option<String>>(5)?,"count":r.get::<_,i64>(6)?}))).optional()?.ok_or_else(||AppError::new("INVALID_SELECTION","旅行相册不存在"))
@@ -89,7 +101,7 @@ fn rows(
 ) -> Result<Vec<Frozen>> {
     let date = query::CAPTURE_DATE;
     let note = if include_notes { "r.note" } else { "''" };
-    let sql=format!("SELECT a.id,a.filename,a.media_kind,a.file_state,({date}),a.capture_tz_min,{note},a.byte_size,a.mtime_ms,COALESCE(a.orientation,1) {} WHERE {condition} ORDER BY ({date}) IS NULL,({date}),CASE WHEN ({date}) IS NOT NULL THEN a.capture_local END,a.id LIMIT ? OFFSET ?",query::FROM);
+    let sql=format!("SELECT a.id,a.filename,a.media_kind,a.file_state,({date}),a.capture_tz_min,{note},a.byte_size,a.mtime_ms,COALESCE(a.orientation,1),a.file_version {} WHERE {condition} ORDER BY ({date}) IS NULL,({date}),CASE WHEN ({date}) IS NOT NULL THEN a.capture_local END,a.id LIMIT ? OFFSET ?",query::FROM);
     let mut args = args.to_vec();
     args.push(Sql::Integer(limit as i64));
     args.push(Sql::Integer(offset as i64));
@@ -108,6 +120,7 @@ fn rows(
                     note: r.get(6)?,
                 },
                 source_path: None,
+                source_version: r.get(10)?,
                 size: r.get(7)?,
                 mtime: r.get(8)?,
                 orientation: r.get(9)?,
@@ -176,7 +189,13 @@ pub fn preview(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Value> {
     let mut items = rows(&tx, &condition, &args, 0, MAX_EXPORT_ITEMS, r.include_notes)?;
     let mut offline = 0;
     for (index, item) in items.iter_mut().enumerate() {
-        item.source_path = files::source_path(&tx, &item.item.asset_id).ok();
+        if let Ok((path, version)) = files::source_path(&tx, &item.item.asset_id).and_then(|path| {
+            let version = files::FileVersion::read(&path)?;
+            Ok((path, version))
+        }) {
+            item.source_path = Some(path);
+            item.source_version.get_or_insert(version.token);
+        }
         offline += usize::from(item.source_path.is_none());
         item.relative = format!("{:05}.jpg", index + 1);
     }
@@ -363,23 +382,22 @@ pub fn run(cat: &Catalog, jid: &str, plan: &Value) -> Result<()> {
         tasks::safe_point(cat, jid)?;
         let result = (|| -> Result<(u64, String)> {
             let path = files::source_path(&c, &item.item.asset_id)?;
+            let version = files::FileVersion::read(&path)?;
+            let expected = item.source_version.as_deref().ok_or_else(|| {
+                AppError::new("DB_CONFLICT", "故事预演缺少源文件版本，请重新预演")
+            })?;
             if item.source_path.as_ref() != Some(&path)
-                || files::stamp(&path)? != (item.size, item.mtime.unwrap_or(-1))
+                || !version.matches_index(item.size, item.mtime, Some(expected))
             {
                 return Err(AppError::new(
                     "DB_CONFLICT",
                     "素材自预演后已变化，请重新预演",
                 ));
             }
-            let current: (u64, Option<i64>, i64) = c.query_row(
-                "SELECT byte_size,mtime_ms,COALESCE(orientation,1) FROM media_assets WHERE id=?",
-                [&item.item.asset_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )?;
-            if current != (item.size, item.mtime, item.orientation) {
+            if !item.matches_index(&c, expected)? {
                 return Err(AppError::new("DB_CONFLICT", "媒体元数据自预演后已变化"));
             }
-            let cache = media::thumbnail(cat, &mut c, &item.item.asset_id, "screen")?;
+            let cache = media::screen_thumbnail_at_version(cat, &mut c, &item.item.asset_id, &version)?;
             tasks::safe_point(cat, jid)?;
             // Re-encode pixels rather than copying cache metadata (EXIF/GPS/XMP).
             let img = image::open(&cache)
@@ -389,12 +407,21 @@ pub fn run(cat: &Catalog, jid: &str, plan: &Value) -> Result<()> {
             image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, 86)
                 .encode_image(&img)
                 .map_err(|_| AppError::new("ASSET_CORRUPT", "故事预览无法生成"))?;
-            if files::stamp(&path)? != (item.size, item.mtime.unwrap_or(-1)) {
-                return Err(AppError::new("DB_CONFLICT", "素材在生成故事预览期间已变化"));
-            }
-            files::write_generated(&dir, Path::new(&item.relative), &bytes, || {
-                tasks::safe_point(cat, jid)
-            })
+            files::write_generated_checked(
+                &dir,
+                Path::new(&item.relative),
+                &bytes,
+                || tasks::safe_point(cat, jid),
+                || {
+                    if files::source_path(&c, &item.item.asset_id).as_ref().ok() != Some(&path)
+                        || files::FileVersion::read(&path).as_ref().ok() != Some(&version)
+                        || !item.matches_index(&c, expected)?
+                    {
+                        return Err(AppError::new("DB_CONFLICT", "素材在生成故事预览期间已变化"));
+                    }
+                    Ok(())
+                },
+            )
         })();
         match result {
             Ok((bytes, hash)) => {
@@ -451,6 +478,7 @@ mod tests {
                 note: "</p><script>oops()</script>".into(),
             },
             source_path: Some(PathBuf::from("/private/secret.jpg")),
+            source_version: None,
             size: 10,
             mtime: Some(1),
             orientation: 1,

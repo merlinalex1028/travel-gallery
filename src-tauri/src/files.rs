@@ -678,7 +678,16 @@ pub(crate) fn write_generated(
     dir: &Dir,
     relative: &Path,
     content: &[u8],
+    control: impl FnMut() -> Result<()>,
+) -> Result<(u64, String)> {
+    write_generated_checked(dir, relative, content, control, || Ok(()))
+}
+pub(crate) fn write_generated_checked(
+    dir: &Dir,
+    relative: &Path,
+    content: &[u8],
     mut control: impl FnMut() -> Result<()>,
+    before_publish: impl FnOnce() -> Result<()>,
 ) -> Result<(u64, String)> {
     safe_relative(relative)?;
     let part = relative.with_file_name(format!(
@@ -716,6 +725,7 @@ pub(crate) fn write_generated(
             return Err(AppError::new("ASSET_CORRUPT", "导出文件副本校验失败"));
         }
         control()?;
+        before_publish()?;
         staged.commit().map_err(export_publish_error)?;
         Ok((bytes as u64, hash))
     })();

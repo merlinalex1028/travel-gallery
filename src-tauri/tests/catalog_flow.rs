@@ -4194,6 +4194,99 @@ fn story_export_includes_only_opted_in_frozen_notes_and_reports_changed_sources(
         .unwrap();
     assert!(!html.contains(&format!("src=\"{failed_name}\"")));
 }
+#[cfg(unix)]
+#[test]
+fn story_export_rejects_same_stamp_rewrite_with_warm_cache_and_rebuilds_after_rescan() {
+    let f = Fixture::new();
+    let a = f.source.join("a.bmp");
+    let b = f.source.join("b.bmp");
+    image::RgbImage::from_pixel(16, 16, image::Rgb([240, 0, 0]))
+        .save(&a)
+        .unwrap();
+    image::RgbImage::from_pixel(16, 16, image::Rgb([0, 240, 0]))
+        .save(&b)
+        .unwrap();
+    let source = f.add();
+    let trip = story_trip(&f);
+    let assets = f.assets();
+    let aid = assets[0]["id"].as_str().unwrap();
+    let bid = assets[1]["id"].as_str().unwrap();
+    let mut c = f.cat.connection().unwrap();
+    let old_screen = media::thumbnail(&f.cat, &mut c, aid, "screen").unwrap();
+    let fresh_screen = media::thumbnail(&f.cat, &mut c, bid, "screen").unwrap();
+    // Model a cache from before filenames were derived from the file version.
+    let old_name = old_screen.file_name().unwrap().to_str().unwrap();
+    c.execute(
+        "UPDATE media_assets SET file_version=NULL WHERE id=?",
+        [bid],
+    )
+    .unwrap();
+    c.execute(
+        "UPDATE thumbnail_cache SET cache_rel_path=? WHERE asset_id=? AND variant='screen'",
+        rusqlite::params![old_name, bid],
+    )
+    .unwrap();
+
+    let frozen = story_plan(&f, &trip, false);
+    let mtime = fs::metadata(&a).unwrap().modified().unwrap();
+    let stamp = files::stamp(&a).unwrap();
+    let bytes = fs::read(&b).unwrap();
+    assert_eq!(bytes.len() as u64, stamp.0);
+    assert_ne!(fs::read(&a).unwrap(), bytes);
+    fs::write(&a, &bytes).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&a)
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(mtime))
+        .unwrap();
+    assert_eq!(fs::metadata(&a).unwrap().modified().unwrap(), mtime);
+    assert_eq!(files::stamp(&a).unwrap(), stamp);
+
+    let export = |plan: &Value, mutation: &str| {
+        let job = f
+            .cat
+            .call(
+                "start_story_export",
+                json!({
+                    "planToken":plan["planToken"], "clientMutationId":mutation
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            wait(&f.cat, job["jobId"].as_str().unwrap())["status"],
+            "completed"
+        );
+        f.cat
+            .call("get_export_report", json!({"jobId":job["jobId"]}))
+            .unwrap()
+    };
+    let report = export(&frozen, "story-same-stamp");
+    assert_eq!(report["verifiedCount"], 1);
+    assert_eq!(report["failedCount"], 1);
+    let items = report["items"].as_array().unwrap();
+    let failed = items.iter().find(|row| row["assetId"] == aid).unwrap();
+    let success = items.iter().find(|row| row["assetId"] == bid).unwrap();
+    assert_eq!(failed["errorCode"], "DB_CONFLICT");
+    let failed_path = f.output.join(failed["destination"].as_str().unwrap());
+    assert!(!failed_path.exists());
+    let folder = failed_path.parent().unwrap();
+    let html = fs::read_to_string(folder.join("index.html")).unwrap();
+    assert!(html.contains("此项预览未导出"));
+    assert!(!html.contains(failed_path.file_name().unwrap().to_str().unwrap()));
+    assert_eq!(fs::read_dir(folder).unwrap().count(), 3);
+    let pixel = image::open(f.output.join(success["destination"].as_str().unwrap()))
+        .unwrap()
+        .to_rgb8();
+    assert!(pixel.get_pixel(0, 0)[1] > 200);
+    assert_ne!(old_screen, fresh_screen);
+
+    assert_eq!(scan(&f.cat, &source)["status"], "completed");
+    let fresh = story_plan(&f, &trip, false);
+    assert_eq!(export(&fresh, "story-rescanned")["verifiedCount"], 2);
+    assert_eq!(fs::read(&a).unwrap(), bytes);
+}
+
 #[test]
 fn story_plans_require_authority_correct_operation_ttl_and_fresh_directory() {
     let f = Fixture::new();

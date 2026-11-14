@@ -572,7 +572,28 @@ pub fn decode(path: &Path, orientation: u32) -> Result<DynamicImage> {
     Ok(img)
 }
 pub fn thumbnail(cat: &Catalog, c: &mut Connection, aid: &str, variant: &str) -> Result<PathBuf> {
-    thumbnail_with_priority(cat, c, aid, variant, false)
+    thumbnail_with_priority(cat, c, aid, variant, false, None)
+}
+pub(crate) fn screen_thumbnail_at_version(
+    cat: &Catalog,
+    c: &mut Connection,
+    aid: &str,
+    version: &files::FileVersion,
+) -> Result<PathBuf> {
+    thumbnail_with_priority(cat, c, aid, "screen", false, Some(version))
+}
+fn thumbnail_name(
+    aid: &str,
+    variant: &str,
+    size: i64,
+    orientation: i64,
+    format: i64,
+    version: &str,
+) -> String {
+    let key = Sha256::digest(format!(
+        "{aid}-{variant}-{size}-{orientation}-v{format}-{version}"
+    ));
+    format!("{key:x}.jpg")
 }
 fn cached_thumbnail(
     cat: &Catalog,
@@ -605,6 +626,7 @@ fn thumbnail_with_priority(
     aid: &str,
     variant: &str,
     foreground: bool,
+    expected_version: Option<&files::FileVersion>,
 ) -> Result<PathBuf> {
     if !["small", "medium", "screen", "poster"].contains(&variant) {
         return Err(AppError::new("INVALID_FILTER", "预览尺寸无效"));
@@ -625,30 +647,36 @@ fn thumbnail_with_priority(
         },
     )?;
     let pixel_version = preview_format_version(&row.4);
-    if let Some(path) = cached_thumbnail(cat, c, aid, variant, row.1, row.0, pixel_version)? {
+    let expected_cache = expected_version
+        .map(|version| thumbnail_name(aid, variant, row.1, row.2, pixel_version, &version.token));
+    let matches_cache = |path: &PathBuf| {
+        expected_cache
+            .as_ref()
+            .is_none_or(|name| path.file_name() == Some(std::ffi::OsStr::new(name)))
+    };
+    if let Some(path) =
+        cached_thumbnail(cat, c, aid, variant, row.1, row.0, pixel_version)?.filter(matches_cache)
+    {
         return Ok(path);
     }
     let _permit = DecodePermit::acquire(cat, foreground);
     // Another queued worker may have completed this preview while we waited.
-    if let Some(path) = cached_thumbnail(cat, c, aid, variant, row.1, row.0, pixel_version)? {
+    if let Some(path) =
+        cached_thumbnail(cat, c, aid, variant, row.1, row.0, pixel_version)?.filter(matches_cache)
+    {
         return Ok(path);
     }
     let path = files::source_path(c, aid)?;
     let before = files::FileVersion::read(&path)?;
-    if !before.matches_index(row.1 as u64, row.0, row.5.as_deref()) {
+    if !before.matches_index(row.1 as u64, row.0, row.5.as_deref())
+        || expected_version.is_some_and(|expected| expected != &before)
+    {
         return Err(AppError::new(
             "DB_CONFLICT",
             "媒体内容已变化，请重新扫描来源",
         ));
     }
-    let key = format!(
-        "{:x}",
-        Sha256::digest(format!(
-            "{aid}-{variant}-{}-{}-v{pixel_version}-{}",
-            row.1, row.2, before.token
-        ))
-    );
-    let cache_name = format!("{key}.jpg");
+    let cache_name = thumbnail_name(aid, variant, row.1, row.2, pixel_version, &before.token);
     let target = cat.inner.cache.join(&cache_name);
     let temp = cat.inner.cache.join(format!("{}.part.jpg", id()));
     let max = match variant {
@@ -765,7 +793,7 @@ pub fn resolve(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Value> {
             .interactive_until
             .store(now() + 200, std::sync::atomic::Ordering::Relaxed);
     }
-    match thumbnail_with_priority(cat, c, aid, variant, foreground) {
+    match thumbnail_with_priority(cat, c, aid, variant, foreground, None) {
         Ok(path) => {
             let token = id();
             let mut previews = cat.inner.previews.lock().unwrap();
