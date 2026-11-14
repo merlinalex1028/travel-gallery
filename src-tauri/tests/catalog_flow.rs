@@ -2039,10 +2039,21 @@ fn confirmed_source_overlap_rechecks_the_scope_and_keeps_picker_and_destination_
     changed["options"]["recursive"] = json!(false);
     assert_eq!(f.cat.call("add_source", changed).unwrap_err().code, "SOURCE_OVERLAP");
     let bytes = fs::read(child.join("a.jpg")).unwrap();
-    let accepted = f.cat.call("add_source", confirmed.clone()).unwrap();
-    wait(&f.cat, accepted["jobId"].as_str().unwrap());
+    let results = thread::scope(|scope| {
+        let first = scope.spawn(|| f.cat.call("add_source", confirmed.clone()));
+        let second = scope.spawn(|| f.cat.call("add_source", confirmed.clone()));
+        [first.join().unwrap(), second.join().unwrap()]
+    });
+    let mut accepted = results.iter().filter_map(|result| result.as_ref().ok());
+    let result = accepted.next().unwrap();
+    assert!(accepted.next().is_none());
+    assert_eq!(
+        results.iter().find_map(|result| result.as_ref().err()).unwrap().code,
+        "SOURCE_EXISTS"
+    );
+    wait(&f.cat, result["jobId"].as_str().unwrap());
     wait_all(&f.cat);
-    let nested = accepted["sourceId"].as_str().unwrap();
+    let nested = result["sourceId"].as_str().unwrap();
     assert_ne!(nested, parent);
     let after = f.assets();
     assert_eq!(after.len(), 6);
