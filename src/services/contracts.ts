@@ -735,7 +735,7 @@ export interface Commands {
   };
   list_sources: { request: void; result: SourceRoot[] };
   add_source: {
-    request: { selectedPath: string; options: SourceOptions };
+    request: { selectedPath: string; options: SourceOptions; overlapConfirmation?: string };
     result: { sourceId: Id; jobId: Id };
   };
   rescan_source: { request: { sourceId: Id }; result: { jobId: Id } };

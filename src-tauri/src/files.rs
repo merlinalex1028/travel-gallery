@@ -919,7 +919,9 @@ pub fn preview_relink(cat: &Catalog, c: &Connection, r: &Value) -> Result<Value>
     let mut roots = c.prepare("SELECT absolute_path FROM source_roots WHERE id<>?")?;
     for root in roots.query_map([sid], |r| r.get::<_, String>(0))? {
         let root = PathBuf::from(root?);
-        if path.starts_with(&root) || root.starts_with(&path) {
+        if path == root
+            || (path != Path::new(&old_path) && (path.starts_with(&root) || root.starts_with(&path)))
+        {
             return Err(AppError::new("SOURCE_OVERLAP", "新路径与其他来源重叠"));
         }
     }

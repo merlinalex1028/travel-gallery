@@ -3,8 +3,9 @@ use crate::{
     error::{required, AppError, Result},
     files, id, media, now, query, review, tasks,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -34,6 +35,48 @@ pub(crate) struct Inner {
     pub ai: crate::ai_runtime::Runtime,
     pub eyes: crate::ai_runtime::Runtime,
 }
+
+fn source_overlaps(c: &Connection, selected: &Path) -> Result<Vec<(String, PathBuf, i64)>> {
+    let mut roots = c.prepare("SELECT id,absolute_path FROM source_roots ORDER BY id")?;
+    let roots = roots.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+    let mut overlaps = Vec::new();
+    for root in roots {
+        let (sid, path) = root?;
+        let path = PathBuf::from(path);
+        let path = path.canonicalize().unwrap_or(path);
+        if selected == path {
+            return Err(AppError::new("SOURCE_EXISTS", "此目录已加入资料库")
+                .details(json!({"sourceId":sid})));
+        }
+        let count = if let Ok(relative) = selected.strip_prefix(&path) {
+            let relative = relative.to_string_lossy();
+            let relative = if cfg!(windows) {
+                relative.replace('\\', "/").into()
+            } else {
+                relative
+            };
+            let prefix = format!("{relative}/");
+            let upper_bound = format!("{relative}0");
+            // '/' and '0' are adjacent in binary order.
+            c.query_row(
+                "SELECT count(*) FROM media_assets WHERE source_id=? AND relative_path>=? AND relative_path<?",
+                params![sid, prefix, upper_bound],
+                |row| row.get(0),
+            )?
+        } else if path.starts_with(selected) {
+            c.query_row(
+                "SELECT count(*) FROM media_assets WHERE source_id=?",
+                [&sid],
+                |row| row.get(0),
+            )?
+        } else {
+            continue;
+        };
+        overlaps.push((sid, path, count));
+    }
+    Ok(overlaps)
+}
+
 impl Catalog {
     pub fn new(data: &Path, cache: &Path) -> Result<Self> {
         std::fs::create_dir_all(data)?;
@@ -403,36 +446,37 @@ impl Catalog {
         }
         files::assert_not_app_path(self, &path)?;
         files::check_source_access(&path)?;
-        let mut st = c.prepare("SELECT id,absolute_path FROM source_roots")?;
-        let old = st
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        drop(st);
-        for (sid, p) in old {
-            let p = PathBuf::from(p);
-            if path == p {
-                return Err(AppError::new("SOURCE_EXISTS", "此目录已加入资料库")
-                    .details(json!({"sourceId":sid})));
-            }
-            if path.starts_with(&p) || p.starts_with(&path) {
-                return Err(AppError::new(
-                    "SOURCE_OVERLAP",
-                    "此目录与已有来源重叠，请选择互不包含的目录",
-                ));
-            }
-        }
+        let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let overlaps = source_overlaps(&tx, &path)?;
         let opts = tasks::SourceOptions::parse(&r["options"])?;
+        let confirmation = r["overlapConfirmation"].as_str();
+        if !overlaps.is_empty() {
+            let signature = format!("{:x}", Sha256::digest(serde_json::to_vec(&(
+                &path, &opts, &overlaps,
+            ))?));
+            if confirmation != Some(signature.as_str()) {
+                let indexed_count: i64 = overlaps.iter().map(|(_, _, count)| count).sum();
+                return Err(AppError::new("SOURCE_OVERLAP", "此目录与已有来源重叠，继续可能重复索引照片")
+                    .details(json!({"sourceCount":overlaps.len(),"indexedCount":indexed_count,
+                        "overlapConfirmation":signature})));
+            }
+        } else if confirmation.is_some() {
+            return Err(AppError::new("DB_CONFLICT", "重叠范围已变化，请重新检查来源"));
+        }
         let sid = id();
+        let jid = id();
         let at = now();
-        let tx = c.transaction()?;
         tx.execute("INSERT INTO source_roots(id,display_name,absolute_path,created_at,updated_at) VALUES(?,?,?,?,?)",params![sid,path.file_name().map(|s|s.to_string_lossy().into_owned()).unwrap_or("照片目录".into()),path.to_string_lossy(),at,at])?;
         tx.execute(
             "INSERT INTO source_options VALUES(?,?)",
             params![sid, serde_json::to_string(&opts)?],
         )?;
+        let request = json!({"sourceId":sid});
+        tasks::insert(&tx, &jid, "SCAN", &request)?;
+        db::bump(&tx)?;
         tx.commit()?;
-        let j = self.queue(c, "SCAN", json!({"sourceId":sid}))?;
-        Ok(json!({"sourceId":sid,"jobId":j["jobId"]}))
+        self.spawn_job(jid.clone(), "SCAN".into(), request);
+        Ok(json!({"sourceId":sid,"jobId":jid}))
     }
     fn remove_source(&self, c: &mut Connection, r: &Value) -> Result<Value> {
         let sid = required(r, "sourceId")?;

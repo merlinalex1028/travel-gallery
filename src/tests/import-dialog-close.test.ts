@@ -64,3 +64,66 @@ it.each(['取消', 'Escape', '标题栏关闭', '开始索引'])(
     }
   },
 );
+
+it('shows an updated overlap warning and only submits its confirmation on an explicit click', async () => {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const app = useApp();
+  vi.spyOn(app, 'refresh').mockResolvedValue();
+  vi.spyOn(useLibrary(), 'search').mockResolvedValue();
+  const add = vi
+    .fn()
+    .mockRejectedValueOnce({
+      code: 'SOURCE_OVERLAP',
+      details: { sourceCount: 1, indexedCount: 2, overlapConfirmation: 'first' },
+    })
+    .mockRejectedValueOnce({
+      code: 'SOURCE_OVERLAP',
+      details: { sourceCount: 1, indexedCount: 3, overlapConfirmation: 'changed' },
+    })
+    .mockResolvedValue({ sourceId: 'new-source' });
+  invoke.mockReset().mockImplementation(async (command: string, request: unknown) => {
+    if (command === 'pick_directory') return { path: '/owned-fixture' };
+    if (command === 'add_source') return add(request);
+    throw new Error(command);
+  });
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: ['/welcome', '/library'].map((path) => ({ path, component: { render: () => null } })),
+  });
+  await router.push('/welcome');
+  const wrapper = mount(ImportDialog, {
+    attachTo: document.body,
+    global: { plugins: [pinia, router], components: { ElDialog } },
+  });
+  const button = (name: string) => wrapper.findAll('button').find((item) => item.text() === name)!;
+  const submit = async (name: string) => {
+    await button(name).trigger('click');
+    await flushPromises();
+  };
+  try {
+    app.importOpen = true;
+    await nextTick();
+    await wrapper.get('.folder-picker').trigger('click');
+    await flushPromises();
+    await submit('开始索引');
+    expect(add).toHaveBeenCalledTimes(1);
+    expect(add).toHaveBeenLastCalledWith(expect.objectContaining({ overlapConfirmation: undefined }));
+    expect(wrapper.get('[role="alert"]').text()).toContain('已有 2 条索引记录');
+    expect(button('开始索引').attributes()).toHaveProperty('disabled');
+    await submit('开始索引');
+    expect(add).toHaveBeenCalledTimes(1);
+    await submit('确认并开始索引');
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(add).toHaveBeenLastCalledWith(expect.objectContaining({ overlapConfirmation: 'first' }));
+    expect(wrapper.get('[role="alert"]').text()).toContain('已有 3 条索引记录');
+    expect(router.currentRoute.value.path).toBe('/welcome');
+    await submit('确认并开始索引');
+    expect(add).toHaveBeenCalledTimes(3);
+    expect(add).toHaveBeenLastCalledWith(expect.objectContaining({ overlapConfirmation: 'changed' }));
+    expect(hasActiveModal()).toBe(false);
+    expect(router.currentRoute.value.path).toBe('/library');
+  } finally {
+    wrapper.unmount();
+  }
+});

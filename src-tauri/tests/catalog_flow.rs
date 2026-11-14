@@ -2002,6 +2002,69 @@ fn invalid_picker_grants_and_source_overlap_are_rejected() {
 }
 
 #[test]
+fn confirmed_source_overlap_rechecks_the_scope_and_keeps_picker_and_destination_guards() {
+    let f = Fixture::new();
+    f.picture("outside.jpg", 1);
+    f.picture("child_%/a.jpg", 2);
+    f.picture("child_AX/b.jpg", 3);
+    let parent = f.add();
+    let before = f.assets();
+    let child = f.source.join("child_%");
+    f.cat.authorize(&child, "source").unwrap();
+    let request = json!({"selectedPath":child,
+        "options":{"recursive":true,"skipHidden":true,"excludeGlobs":[],"followSymlinks":false}});
+    let warning = f.cat.call("add_source", request.clone()).unwrap_err();
+    assert_eq!(warning.code, "SOURCE_OVERLAP");
+    assert_eq!(warning.details["sourceCount"], 1);
+    assert_eq!(warning.details["indexedCount"], 1);
+    assert_eq!(f.cat.call("list_sources", json!({})).unwrap().as_array().unwrap().len(), 1);
+    assert_eq!(f.assets(), before);
+
+    let mut confirmed = request;
+    confirmed["overlapConfirmation"] = warning.details["overlapConfirmation"].clone();
+    f.picture("child_%/new.jpg", 4);
+    let scan = f.cat.call("rescan_source", json!({"sourceId":parent})).unwrap();
+    wait(&f.cat, scan["jobId"].as_str().unwrap());
+    wait_all(&f.cat);
+    let newer = f.cat.call("add_source", confirmed.clone()).unwrap_err();
+    assert_eq!(newer.code, "SOURCE_OVERLAP");
+    assert_eq!(newer.details["indexedCount"], 2);
+    assert_ne!(newer.details["overlapConfirmation"], confirmed["overlapConfirmation"]);
+    confirmed["overlapConfirmation"] = newer.details["overlapConfirmation"].clone();
+
+    f.cat.authorize(&child, "export").unwrap();
+    assert_eq!(f.cat.call("add_source", confirmed.clone()).unwrap_err().code, "PERMISSION_DENIED");
+    f.cat.authorize(&child, "source").unwrap();
+    let mut changed = confirmed.clone();
+    changed["options"]["recursive"] = json!(false);
+    assert_eq!(f.cat.call("add_source", changed).unwrap_err().code, "SOURCE_OVERLAP");
+    let bytes = fs::read(child.join("a.jpg")).unwrap();
+    let accepted = f.cat.call("add_source", confirmed.clone()).unwrap();
+    wait(&f.cat, accepted["jobId"].as_str().unwrap());
+    wait_all(&f.cat);
+    let nested = accepted["sourceId"].as_str().unwrap();
+    assert_ne!(nested, parent);
+    let after = f.assets();
+    assert_eq!(after.len(), 6);
+    for original in before {
+        let still_present = after.iter().find(|asset| asset["id"] == original["id"]).unwrap();
+        assert_eq!(still_present["review"], original["review"]);
+    }
+    assert_eq!(fs::read(child.join("a.jpg")).unwrap(), bytes);
+    assert_eq!(f.cat.call("add_source", confirmed).unwrap_err().code, "SOURCE_EXISTS");
+
+    f.cat.authorize(&child, "export").unwrap();
+    assert_eq!(files::safe_destination(&f.cat, &f.cat.connection().unwrap(), &child, "export")
+        .unwrap_err().code, "EXPORT_TARGET_UNSAFE");
+    f.cat.authorize(&child, "relink").unwrap();
+    let relink = f.cat.call("preview_relink_source", json!({"sourceId":nested,"selectedNewPath":child})).unwrap();
+    assert_eq!(relink["matched"], 2);
+    assert_eq!(f.cat.call("commit_relink_source",json!({
+        "sourceId":nested,"verificationToken":relink["verificationToken"]
+    })).unwrap()["updated"], true);
+}
+
+#[test]
 fn orientation_six_and_unknown_timezone_are_not_guessed() {
     let f = Fixture::new();
     f.picture("oriented.jpg", 1);
