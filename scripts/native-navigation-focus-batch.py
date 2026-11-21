@@ -30,6 +30,7 @@ reuse.PLANNED_FILES = 750
 reuse.SOURCE_FILES = 100
 STEPS = ('empty', 'imported', *(f'viewed-{count:03}' for count in range(10, 101, 10)))
 WIDTH, HEIGHT = 1600, 1000
+SCREEN_WIDTH, SCREEN_HEIGHT = 2560, 1600
 DIGITS = (
     '111101101101111', '010110010010111', '111001111100111',
     '111001111001111', '101101111001001', '111100111001111',
@@ -194,60 +195,85 @@ def snapshot(label):
             screenCaches=len(screen), sourceAndFormalUnchanged=True)
 
 
+def check_screen_pixels(raw, index):
+    name = f'frame-{index:03}.png'
+    assert len(raw) >= 54 and raw[:2] == b'BM', f'{name}: invalid BMP header'
+    offset, dib_size = struct.unpack_from('<II', raw, 10)
+    width, height, planes, bits, compression = struct.unpack_from('<iiHHI', raw, 18)
+    rows = abs(height)
+    assert (width, rows) in {(WIDTH, HEIGHT), (SCREEN_WIDTH, SCREEN_HEIGHT)}, (
+        f'{name}: unexpected screen dimensions {width}x{rows}')
+    assert planes == 1 and compression == 0 and bits in (24, 32), f'{name}: unsupported BMP layout'
+    stride = ((width * bits + 31) // 32) * 4
+    assert dib_size >= 40 and 14 + dib_size <= offset <= len(raw) - rows * stride, f'{name}: truncated BMP'
+
+    def matches(x, y, expected):
+        x, y = x * width // WIDTH, y * rows // HEIGHT
+        row = rows - 1 - y if height > 0 else y
+        start = offset + row * stride + x * (bits // 8)
+        rgb = raw[start:start + 3][::-1]
+        return all(abs(actual - channel) <= 6 for actual, channel in zip(rgb, expected))
+
+    base = colour(index)
+    assert matches(20, 20, base), f'{name}: corner colour differs'
+    for digit, character in enumerate(f'{index:03}'):
+        for cell, filled in enumerate(DIGITS[int(character)]):
+            x, y = 415 + digit * 300 + cell % 3 * 70, 330 + cell // 3 * 70
+            expected = (255, 255, 255) if filled == '1' else base
+            assert matches(x, y, expected), f'{name}: encoded digit {digit + 1}, cell {cell + 1} differs'
+    return f'{width}x{rows}'
+
+
 def decode_screen_caches():
     with closing(sqlite3.connect((b.DATA / 'catalog.sqlite').as_uri() + '?mode=ro', uri=True)) as db:
         rows = db.execute("""SELECT a.filename,t.cache_rel_path,t.source_byte_size,a.byte_size,
             t.source_mtime_ms,a.mtime_ms FROM thumbnail_cache t JOIN media_assets a ON a.id=t.asset_id
             WHERE t.variant='screen' ORDER BY a.filename""").fetchall()
-    assert len(rows) == 100
+    assert len(rows) == 100, f'Expected 100 screen cache references after exit, found {len(rows)}'
+    decoded = b.STATE['independentScreenDecode'] = dict(count=0, dimensions={},
+        decoder='macOS sips BMP', indexedVersionsMatched=False, colourTolerance=6,
+        scope='Cache contents and per-image digit and colour identity; not proof of displayed DOM variant or physical frames')
     bmp = b.WORK / 'decoded-screen.bmp'
     for index, (name, relative, cache_size, size, cache_mtime, mtime) in enumerate(rows, 1):
-        assert name == f'frame-{index:03}.png' and cache_size == size and cache_mtime == mtime
-        path = b.CACHE / 'thumbs' / relative
-        assert not path.is_symlink() and path.is_file()
+        assert name == f'frame-{index:03}.png', f'Unexpected asset at index {index}: {name}'
+        assert cache_size == size and cache_mtime == mtime, f'{name}: cache source version differs'
+        cache = b.CACHE / 'thumbs'
+        path = cache / relative
+        assert path.is_file() and not path.is_symlink() and path.resolve().is_relative_to(cache.resolve()), (
+            f'{name}: screen cache file is missing or outside the isolated cache')
         try:
-            subprocess.run(['/usr/bin/sips', '-s', 'format', 'bmp', str(path), '--out', str(bmp)],
-                           check=True, capture_output=True, timeout=15)
-            raw = bmp.read_bytes()
-            assert raw[:2] == b'BM'
-            offset = struct.unpack_from('<I', raw, 10)[0]
-            width, height, planes, bits, compression = struct.unpack_from('<iiHHI', raw, 18)
-            assert (width, abs(height), planes, compression) == (WIDTH, HEIGHT, 1, 0)
-            assert bits in (24, 32)
-            stride = ((width * bits + 31) // 32) * 4
-            y = HEIGHT - 21 if height > 0 else 20
-            start = offset + y * stride + 20 * (bits // 8)
-            blue, green, red = raw[start:start + 3]
-            assert max(abs(actual - expected) for actual, expected in
-                       zip((red, green, blue), colour(index))) <= 6, name
+            result = subprocess.run(['/usr/bin/sips', '-s', 'format', 'bmp', str(path), '--out', str(bmp)],
+                                    capture_output=True, text=True, timeout=15)
+            assert result.returncode == 0 and bmp.is_file(), f'{name}: sips failed: {result.stderr.strip()[:200]}'
+            dimensions = check_screen_pixels(bmp.read_bytes(), index)
+            decoded['count'] += 1
+            decoded['dimensions'][dimensions] = decoded['dimensions'].get(dimensions, 0) + 1
+            b.check()
         finally:
             bmp.unlink(missing_ok=True)
-        b.check()
-    b.STATE['independentScreenDecode'] = dict(count=100, width=WIDTH, height=HEIGHT,
-        decoder='macOS sips BMP', indexedVersionsMatched=True, cornerColourTolerance=6,
-        scope='Cache contents and per-image colour identity; not proof of displayed DOM variant or physical frames')
+    decoded['indexedVersionsMatched'] = True
 
 
 def main():
     try:
         base_main()
-        assert tuple(completed) == STEPS
+        assert tuple(completed) == STEPS, f'Missing database checkpoints: {STEPS[len(completed):]}'
         executable = str((b.APP_PATH / 'Contents/MacOS/travel-gallery').resolve(strict=True))
         processes = subprocess.check_output(['ps', '-axww', '-o', 'comm='], text=True).splitlines()
         assert executable not in {line.strip() for line in processes}, 'Quit QA before finish'
-        decode_screen_caches()
         b.STATE['qaQuitNormally'] = True
     finally:
         focus_stop.set()
         if focus_thread:
             focus_thread.join(timeout=4)
     focus = b.STATE['osFocusObservation']
-    assert not focus['errors'] and focus['samples'] > 0
     roles = [item['role'] for item in focus['transitions']
              if item['atMonotonic'] >= b.STATE['navigationStartedMonotonic']]
     returns = sum(a == 'other' and c == 'qa' for a, c in zip(roles, roles[1:]))
-    assert returns >= 20, f'Insufficient observed OS focus returns: {returns}'
     focus['returnsDuringNavigation'] = returns
+    decode_screen_caches()
+    assert not focus['errors'] and focus['samples'] > 0, 'OS focus sampler did not complete'
+    assert returns >= 20, f'Insufficient observed OS focus returns: {returns}'
 
 
 def save():
