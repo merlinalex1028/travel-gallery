@@ -1,5 +1,6 @@
 """Correlate native viewer RAF samples with actual preview responses and owned IDs."""
 import argparse
+from bisect import bisect_left
 import hashlib
 import json
 import math
@@ -13,6 +14,8 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
     installed = [e for e in events if e['type'] == 'navigationProbeInstalled']
     assert len(installed) == 1
     inputs = [e for e in events if e['type'] == 'navigationDelivered' and start_id <= e['id'] <= end_id]
+    deliveries = [e['deliveredAt'] for e in inputs]
+    assert all(a < b for a, b in zip(deliveries, deliveries[1:])), 'Navigation times must be strictly ordered.'
     handled = [e for e in events if e['type'] == 'navigationHandled' and start_id <= e['id'] <= end_id]
     assert [e['id'] for e in inputs] == list(range(start_id, start_id + len(inputs)))
     assert len({e['id'] for e in handled}) == len(handled)
@@ -39,6 +42,8 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
     next_delivery = min((e['deliveredAt'] for e in events
                          if e['type'] == 'navigationDelivered' and e['id'] > end_id), default=float('inf'))
     frames = [e for e in events if e['type'] == 'viewerFrame' and e['at'] < next_delivery]
+    frame_times = [f['at'] for f in frames]
+    assert all(a <= b for a, b in zip(frame_times, frame_times[1:])), 'Frame times must be ordered.'
 
     def image_state(frame):
         image = frame['image']
@@ -54,18 +59,24 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
     def image_variant(frame):
         return variants.get(frame['image']['src'].replace('http://media.localhost/', 'media://localhost/'))
 
-    completed, missing = [], []
-    for event, name in targets:
-        pair = next(((a, b) for a, b in zip(frames, frames[1:])
-                     if a['at'] >= event['deliveredAt'] and a['filename'] == b['filename'] == name
-                     and all(image_state(f) == 'decoded' and f['visibility'] == 'visible' and f['focused']
-                             for f in [a, b]) and b['at'] - a['at'] <= 100), None)
+    completed, missing, screen_targets = [], [], []
+    for (event, name), stop in zip(targets, (*deliveries[1:], next_delivery)):
+        window = frames[bisect_left(frame_times, event['deliveredAt']):bisect_left(frame_times, stop)]
+
+        def matches(frame):
+            return (frame.get('navigationId', event['id']) == event['id'] and frame['filename'] == name
+                    and frame['visibility'] == 'visible' and frame['focused'] and image_state(frame) == 'decoded')
+
+        pair = next(((a, b) for a, b in zip(window, window[1:])
+                     if b['at'] - a['at'] <= 100 and matches(a) and matches(b)), None)
         if pair:
             completed.append(dict(id=event['id'], filename=name,
                                   elapsedToSecondRafMs=pair[1]['at'] - event['deliveredAt'],
                                   secondRafAt=pair[1]['at'], previewVariantAtSecondRaf=image_variant(pair[1])))
         else:
             missing.append(dict(id=event['id'], filename=name))
+        if any(matches(f) and image_variant(f) == 'screen' for f in window):
+            screen_targets.append(event['id'])
     end = frames[-1]['at'] if missing and frames else max((e['secondRafAt'] for e in completed), default=0)
     start = inputs[0]['deliveredAt'] if inputs else 0
     observed = [f for f in frames if start <= f['at'] <= end]
@@ -102,10 +113,13 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
                 observerFailureSeen=failed,
                 missingDecodedTargets=missing, decodedTargetSecondRaf=ready, targets=completed,
                 allTargetsObservedDecoded=bool(targets) and not missing,
+                screenDecodedTargetIds=screen_targets,
+                allTargetsObservedScreenDecoded=bool(targets) and len(screen_targets) == len(targets),
                 completeNativeDomObservation=bool(complete_inputs and installed[0]['previewHandleMarksSupported']
                     and foreground and coverage and not missing and not unknown and not mismatches and not failed),
                 limits=['Every sampled image source is correlated with its actual preview response, variant and owned catalog ID.',
                         'A decoded small preview is not a full screen-resolution preview; quality coverage is reported separately.',
+                        'Each target can only use frames before the next navigation input, even when the same photo is revisited.',
                         'RAF/source/decode observations do not prove physical pixel presentation or exclude flashes between callbacks.',
                         'Decoded timing starts at DOM key delivery; queued navigation and preview loading are included.',
                         '100ms frame-gap criterion qualifies observation coverage; it is not a product latency threshold.'])

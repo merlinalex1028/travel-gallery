@@ -27,6 +27,7 @@ class NavigationEvidence(unittest.TestCase):
     def test_actual_handle_matches_expected_decoded_asset(self):
         self.assertTrue(self.result()['completeNativeDomObservation'])
         self.assertEqual(self.result()['decodedTargetSecondRaf']['maxMs'], 27)
+        self.assertTrue(self.result()['allTargetsObservedScreenDecoded'])
 
     def test_old_source_with_new_alt_is_a_mismatch(self):
         self.events.insert(1, dict(type='screenPreviewResolved', assetId='a', ready=True, resourceUrl='media://localhost/a'))
@@ -58,6 +59,30 @@ class NavigationEvidence(unittest.TestCase):
         self.assertEqual(result['decodedFrameVariants']['small'], 2)
         self.assertEqual(result['resolvedScreenHandles'], 0)
         self.assertEqual(result['targets'][0]['previewVariantAtSecondRaf'], 'small')
+        self.assertFalse(result['allTargetsObservedScreenDecoded'])
+
+    def test_later_visit_cannot_supply_frames_for_an_earlier_input(self):
+        del self.events[-2:]
+        self.events.append(dict(type='screenPreviewResolved', assetId='a', ready=True, resourceUrl='media://localhost/a'))
+        for ident, key, at, name in [(2, 'arrowleft', 50, 'a'), (3, 'arrowright', 100, 'b')]:
+            self.events.extend([
+                dict(type='navigationDelivered', id=ident, key=key, deliveredAt=at, repeat=False,
+                     focused=True, visibility='visible'),
+                dict(type='navigationHandled', id=ident, accepted=True),
+                *(dict(type='viewerFrame', navigationId=ident, at=at + delay, focused=True, visibility='visible',
+                       filename=f'{name}.jpg', image=dict(src=f'media://localhost/{name}', alt=f'{name}.jpg',
+                                                           complete=True, width=100, height=100)) for delay in (10, 27)),
+            ])
+        result = self.result()
+        self.assertEqual(result['missingDecodedTargets'], [dict(id=1, filename='b.jpg')])
+        self.assertEqual(result['screenDecodedTargetIds'], [2, 3])
+        self.assertFalse(result['completeNativeDomObservation'])
+
+    def test_frames_with_a_stale_navigation_id_do_not_count(self):
+        self.events[-1]['navigationId'] = 0
+        self.events[-2]['navigationId'] = 0
+        self.assertFalse(self.result()['allTargetsObservedDecoded'])
+        self.assertFalse(self.result()['allTargetsObservedScreenDecoded'])
 
     def test_stale_thumbnail_cannot_pass_under_a_different_photo_title(self):
         self.events[1].update(type='previewResolved', variant='small', assetId='a')
