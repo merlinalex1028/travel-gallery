@@ -6,7 +6,6 @@ import importlib.util
 import json
 from pathlib import Path
 import sqlite3
-import subprocess
 import sys
 import time
 
@@ -301,10 +300,6 @@ if __name__ == '__main__':
                 or approval.get('limits') != batch.LIMITS
                 or approval.get('requiredFreeBytes') != batch.LIMITS['logicalBytes']):
             raise SystemExit(f'This candidate needs fresh, unclaimed {batch_name} approval')
-        if batch_name == EPOCH_BATCH:
-            console = subprocess.check_output(['ioreg', '-n', 'Root', '-d1'], text=True)
-            if '"IOConsoleLocked" = No' not in console:
-                raise SystemExit('The Mac must be unlocked before claiming the native catalog-epoch batch')
         approval['claimedAt'] = datetime.now(timezone.utc).isoformat()
         handle.seek(0)
         json.dump(approval, handle, ensure_ascii=False, indent=2)
