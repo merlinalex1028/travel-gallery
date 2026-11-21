@@ -1,8 +1,10 @@
 """Exercise the two shipped macOS workers against pinned models, without the app."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import errno
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -12,6 +14,10 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+import urllib.error
+import urllib.request
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +40,92 @@ def stamp(path):
     return (sha(path), st.st_size, st.st_mtime_ns, st.st_ino)
 
 
+class HttpsRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, new_url):
+        if not new_url.startswith('https://'):
+            raise ValueError('Pinned model redirects must stay on HTTPS')
+        return super().redirect_request(request, response, code, message, headers, new_url)
+
+
+def download_weight(target, file, *, workers=6, block_bytes=16 * 1024**2, timeout=900):
+    """Keep one owned file; resume an interrupted range at the last written byte."""
+    assert file['url'].startswith('https://') and file['bytes'] > 0
+    assert workers > 0 and block_bytes > 0 and timeout > 0
+    opener = urllib.request.build_opener(HttpsRedirect())
+    stop, lock = threading.Event(), threading.Lock()
+    deadline = time.monotonic() + timeout
+    completed = 0
+    descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    succeeded = False
+
+    def transfer(begin):
+        nonlocal completed
+        end = min(begin + block_bytes, file['bytes']) - 1
+        offset = begin
+        for attempt in range(3):
+            if stop.is_set() or time.monotonic() >= deadline:
+                raise TimeoutError('Pinned model transfer stopped')
+            request = urllib.request.Request(file['url'], headers={'Range': f'bytes={offset}-{end}'})
+            try:
+                with opener.open(request, timeout=25) as response:
+                    if (response.status != 206 or response.headers.get('Content-Range')
+                            != f"bytes {offset}-{end}/{file['bytes']}"):
+                        raise ValueError('Model server did not return the requested byte range')
+                    while offset <= end:
+                        if stop.is_set() or time.monotonic() >= deadline:
+                            raise TimeoutError('Pinned model transfer stopped')
+                        data = response.read(min(1024**2, end + 1 - offset))
+                        if not data:
+                            raise EOFError('Pinned model range ended early')
+                        written = 0
+                        while written < len(data):
+                            count = os.pwrite(descriptor, data[written:], offset + written)
+                            if count <= 0:
+                                raise OSError('Model write made no progress')
+                            written += count
+                        offset += len(data)
+                        with lock:
+                            completed += len(data)
+                    if response.read(1):
+                        raise ValueError('Model response exceeded the requested byte range')
+                return
+            except (EOFError, TimeoutError, ConnectionError, http.client.IncompleteRead, urllib.error.URLError) as error:
+                if (isinstance(error, urllib.error.HTTPError) and error.code not in (408, 500, 502, 503, 504)
+                        or attempt == 2 or stop.is_set() or time.monotonic() >= deadline):
+                    raise
+        raise AssertionError('Unreachable range retry state')
+
+    try:
+        os.ftruncate(descriptor, file['bytes'])
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(transfer, begin) for begin in range(0, file['bytes'], block_bytes)]
+            last_update = time.monotonic()
+            try:
+                while not all(future.done() for future in futures):
+                    for future in futures:
+                        if future.done() and future.exception():
+                            raise future.exception()
+                    if time.monotonic() - last_update >= 20:
+                        print(f"{file['path']}: {completed} / {file['bytes']} bytes",
+                              file=sys.stderr, flush=True)
+                        last_update = time.monotonic()
+                    time.sleep(.1)
+                for future in futures:
+                    future.result()
+            finally:
+                stop.set()
+                for future in futures:
+                    future.cancel()
+        os.fsync(descriptor)
+        if completed != file['bytes'] or sha(target) != file['sha256']:
+            raise ValueError('Pinned model size or SHA-256 verification failed')
+        succeeded = True
+    finally:
+        os.close(descriptor)
+        if not succeeded:
+            target.unlink()
+
+
 def download_model(stage, model, prepare, profile):
     # The full downloader briefly hard-links its .part to the final name. For
     # the large weight in a private test directory, keep only one directory entry.
@@ -42,9 +134,7 @@ def download_model(stage, model, prepare, profile):
             continue
         assert Path(file['path']).name == file['path']
         print(f"Downloading pinned {file['path']} ({file['bytes']} bytes)", file=sys.stderr, flush=True)
-        subprocess.run(['/usr/bin/curl', '-qfsSL', '--proto', '=https', '--proto-redir', '=https',
-                        '--max-time', '420', '--max-filesize', str(file['bytes']),
-                        '--output', str(stage / file['path']), file['url']], check=True, timeout=425)
+        download_weight(stage / file['path'], file)
     subprocess.run(['node', str(ROOT / 'scripts' / prepare), '--download', '--destination', str(stage)],
                    stdout=sys.stderr, check=True, timeout=120)
     print(f'Pinned {model} model verified', file=sys.stderr, flush=True)
