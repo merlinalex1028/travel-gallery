@@ -18,6 +18,24 @@ function oldResult() {
   lib.fingerprint = 'old-query';
   return lib;
 }
+it('freezes only the catalog version shown in the gallery and retains the previous scope if it changed', async () => {
+  const lib = oldResult();
+  lib.snapshot = { id: 'frozen', count: 2, createdAt: 1, expiresAt: 100, queryFingerprint: 'old-query' };
+  lib.excluded = new Set(['excluded-member']);
+  invoke.mockResolvedValueOnce({
+    ...page('visible', 'old-query'),
+    catalogEpoch: 42,
+    selectionMembership: { snapshotId: 'frozen', assetIds: ['visible'] },
+  });
+  await lib.search();
+  const stale = { code: 'INVALID_FILTER', message: '资料库已变化，请刷新结果后重新选择' };
+  invoke.mockRejectedValueOnce(stale);
+  await expect(lib.selectAllMatching()).rejects.toEqual(stale);
+  expect(invoke).toHaveBeenLastCalledWith('create_selection_snapshot', {
+    filter: {}, sort: { field: 'captureUtcMs', direction: 'desc' }, expectedCatalogEpoch: 42,
+  });
+  expect(lib.target).toEqual({ kind: 'snapshot', snapshotId: 'frozen', excludeAssetIds: ['excluded-member'] });
+});
 function deferNext<T>() {
   let resolve!: (result: T) => void;
   let reject!: (error: unknown) => void;
@@ -29,7 +47,7 @@ function deferNext<T>() {
   return { resolve, reject };
 }
 function page(id: string, queryFingerprint: string, nextCursor: string | null = null): QueryAssetsResult {
-  return { items: [{ id } as AssetSummary], total: 2, nextCursor, queryFingerprint };
+  return { items: [{ id } as AssetSummary], total: 2, nextCursor, queryFingerprint, catalogEpoch: 1 };
 }
 it('blocks selecting cached rows or paging after a new query fails, then permits the recovered results', async () => {
   const lib = oldResult();

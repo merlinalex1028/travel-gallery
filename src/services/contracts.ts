@@ -177,6 +177,7 @@ export interface Page<T> {
   queryFingerprint: string;
 }
 export interface QueryAssetsResult extends Page<AssetSummary> {
+  catalogEpoch: number;
   selectionMembership?: { snapshotId: Id; assetIds: Id[] };
 }
 export type SelectionTarget =
@@ -185,6 +186,8 @@ export interface CreateSelectionSnapshotRequest {
   filter: AssetFilter;
   sort: AssetSort;
   target?: SelectionTarget;
+  /** Freeze the displayed query only if the catalog still has this version. */
+  expectedCatalogEpoch?: number;
 }
 export interface SelectionSnapshot {
   id: Id;

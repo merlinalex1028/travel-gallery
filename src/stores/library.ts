@@ -21,6 +21,7 @@ export const useLibrary = defineStore('library', () => {
     total = shallowRef(0),
     cursor = shallowRef<string | null>(null),
     fingerprint = shallowRef(''),
+    catalogEpoch = shallowRef<number>(),
     loading = shallowRef(false),
     loadingMore = shallowRef(false),
     needsFirstPage = shallowRef(false),
@@ -104,6 +105,7 @@ export const useLibrary = defineStore('library', () => {
       total.value = result.total;
       cursor.value = result.nextCursor;
       fingerprint.value = result.queryFingerprint;
+      catalogEpoch.value = result.catalogEpoch;
       needsFirstPage.value = false;
       error.value = '';
     } catch (e) {
@@ -176,7 +178,11 @@ export const useLibrary = defineStore('library', () => {
     if (queryUnavailable.value) return;
     const seq = ++selectionGeneration;
     try {
-      const result = await api('create_selection_snapshot', { filter: { ...filter }, sort: { ...sort } });
+      const result = await api('create_selection_snapshot', {
+        filter: { ...filter },
+        sort: { ...sort },
+        expectedCatalogEpoch: catalogEpoch.value,
+      });
       if (seq !== selectionGeneration) return;
       snapshot.value = result;
       selected.value = new Set();

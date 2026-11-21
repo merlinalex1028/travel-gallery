@@ -358,10 +358,7 @@ fn key_value(v: &Value) -> Result<Sql> {
     }
 }
 pub fn query(c: &Connection, q: Query) -> Result<Value> {
-    if q.selection_snapshot_id.is_none() {
-        return query_page(c, q);
-    }
-    // Query contexts also write: reserve before reading to avoid a WAL read-to-write upgrade race.
+    // Read the epoch, count and rows together. Query contexts also write, so reserve the writer up front.
     let tx = rusqlite::Transaction::new_unchecked(c, rusqlite::TransactionBehavior::Immediate)?;
     let result = query_page(&tx, q)?;
     tx.commit()?;
@@ -431,7 +428,7 @@ fn query_page(c: &Connection, q: Query) -> Result<Value> {
             now() + 86_400_000
         ],
     )?;
-    let mut result = json!({"items":entries.into_iter().map(|(a,_)|a).collect::<Vec<_>>(),"total":total,"nextCursor":next,"queryFingerprint":fp});
+    let mut result = json!({"items":entries.into_iter().map(|(a,_)|a).collect::<Vec<_>>(),"total":total,"nextCursor":next,"queryFingerprint":fp,"catalogEpoch":epoch});
     if let Some(id) = &q.selection_snapshot_id {
         let ids: Vec<&Value> = result["items"].as_array().unwrap().iter().map(|a| &a["id"]).collect();
         let mut statement = c.prepare("SELECT asset_id FROM selection_snapshot_items WHERE snapshot_id=? AND asset_id IN(SELECT value FROM json_each(?)) ORDER BY asset_id")?;
@@ -452,16 +449,28 @@ pub fn asset(c: &Connection, asset_id: &str) -> Result<Value> {
 }
 pub fn snapshot(c: &mut Connection, r: &Value) -> Result<Value> {
     let f: Filter = serde_json::from_value(r["filter"].clone())?;
-    if let Some(id) = &f.selection_snapshot_id {
-        validate_snapshot(c, id)?;
-    }
     let s: Sort = serde_json::from_value(r["sort"].clone())?;
     sort_column(&s)?;
     let (mut w, p) = conditions(&f)?;
     let key = fingerprint(&f, &s)?;
     let snap = id();
     let at = now();
-    let tx = c.transaction()?;
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    if let Some(expected) = r.get("expectedCatalogEpoch") {
+        let expected = expected
+            .as_i64()
+            .filter(|value| *value >= 0)
+            .ok_or_else(|| AppError::new("INVALID_FILTER", "资料库版本无效，请刷新结果后重新选择"))?;
+        if expected != db::epoch(&tx)? {
+            return Err(AppError::new(
+                "INVALID_FILTER",
+                "资料库已变化，请刷新结果后重新选择",
+            ));
+        }
+    }
+    if let Some(id) = &f.selection_snapshot_id {
+        validate_snapshot(&tx, id)?;
+    }
     if let Some(target) = r.get("target") {
         let ids = target_ids(&tx, target)?;
         tx.execute_batch("CREATE TEMP TABLE frozen_target_ids(id TEXT PRIMARY KEY)")?;

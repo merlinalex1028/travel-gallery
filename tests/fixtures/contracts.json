@@ -217,6 +217,7 @@
     "previousId": null
   },
   "page": {
+    "catalogEpoch": 0,
     "items": [
       {
         "byteSize": 12345,

@@ -874,6 +874,64 @@ fn query_keyset_snapshot_and_filter_validation() {
 }
 
 #[test]
+fn select_all_rejects_a_membership_change_even_when_the_result_count_is_unchanged() {
+    let f = Fixture::new();
+    f.picture("first.jpg", 1);
+    f.picture("second.jpg", 2);
+    f.add();
+    let assets = f.assets();
+    let first = assets[0]["id"].as_str().unwrap().to_owned();
+    let second = assets[1]["id"].as_str().unwrap().to_owned();
+    f.review(std::slice::from_ref(&first), json!({"pickState":"keep"}), &id());
+
+    let filter = json!({"pickStates":["keep"]});
+    let sort = json!({"field":"filename","direction":"asc"});
+    let page = || {
+        f.cat.call(
+            "query_assets",
+            json!({"filter":filter,"sort":sort,"cursor":null,"pageSize":120}),
+        ).unwrap()
+    };
+    let freeze = |epoch: &Value| {
+        f.cat.call(
+            "create_selection_snapshot",
+            json!({"filter":filter,"sort":sort,"expectedCatalogEpoch":epoch}),
+        )
+    };
+    let displayed = page();
+    assert_eq!(displayed["items"][0]["id"], first);
+    assert!(displayed["nextCursor"].is_null());
+    let original = freeze(&displayed["catalogEpoch"]).unwrap();
+
+    f.review(std::slice::from_ref(&first), json!({"pickState":"unreviewed"}), &id());
+    f.review(std::slice::from_ref(&second), json!({"pickState":"keep"}), &id());
+    let fresh = page();
+    assert_eq!(fresh["total"], displayed["total"]);
+    assert_eq!(fresh["queryFingerprint"], displayed["queryFingerprint"]);
+    assert_ne!(fresh["catalogEpoch"], displayed["catalogEpoch"]);
+    assert_eq!(fresh["items"][0]["id"], second);
+
+    let rejected = freeze(&displayed["catalogEpoch"]).unwrap_err();
+    assert_eq!(rejected.code, "INVALID_FILTER");
+    assert!(rejected.message.contains("刷新"));
+    let db = f.cat.connection().unwrap();
+    let snapshot_count: i64 = db.query_row("SELECT count(*) FROM selection_snapshots", [], |row| row.get(0)).unwrap();
+    assert_eq!(snapshot_count, 1);
+    let updated = freeze(&fresh["catalogEpoch"]).unwrap();
+    let read_member = |snapshot: &Value| -> String {
+        db.query_row(
+            "SELECT asset_id FROM selection_snapshot_items WHERE snapshot_id=?",
+            [snapshot["id"].as_str().unwrap()],
+            |row| row.get(0),
+        ).unwrap()
+    };
+    assert_eq!(read_member(&original), first);
+    assert_eq!(read_member(&updated), second);
+    assert_eq!(original["count"], 1);
+    assert_eq!(updated["count"], 1);
+}
+
+#[test]
 fn tags_merge_batch_and_unicode_search() {
     let f = Fixture::new();
     f.picture("雪山.jpg", 1);

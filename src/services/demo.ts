@@ -112,9 +112,9 @@ function load(): DemoState {
   };
 }
 let state = load();
-let storyEpoch = 0;
+let catalogEpoch = 0;
 function save() {
-  storyEpoch++;
+  catalogEpoch++;
   localStorage.setItem('travel-gallery-demo-v1', JSON.stringify(state));
 }
 type DemoSnapshot = { ids: string[]; expiresAt: number };
@@ -400,6 +400,7 @@ export async function demoCall(name: keyof Commands, request: unknown): Promise<
         total: list.length,
         nextCursor: offset + req.pageSize < list.length ? String(offset + req.pageSize) : null,
         queryFingerprint: fp,
+        catalogEpoch,
         ...(frozen
           ? {
               selectionMembership: {
@@ -542,6 +543,8 @@ export async function demoCall(name: keyof Commands, request: unknown): Promise<
     }
     case 'create_selection_snapshot': {
       const req = request as Commands['create_selection_snapshot']['request'];
+      if (req.expectedCatalogEpoch !== undefined && req.expectedCatalogEpoch !== catalogEpoch)
+        throw { code: 'INVALID_FILTER', message: '资料库已变化，请刷新结果后重新选择' };
       const ids = req.target ? new Set(target(req.target)) : null;
       const list = filterAssets(req.filter, req.sort).filter((a) => !ids || ids.has(a.id)),
         id = crypto.randomUUID();
@@ -725,7 +728,7 @@ export async function demoCall(name: keyof Commands, request: unknown): Promise<
             a.assetId.localeCompare(b.assetId),
         )
         .map(({ capture: _capture, ...item }) => item);
-      const epoch = storyEpoch;
+      const epoch = catalogEpoch;
       if (req.epoch !== null && req.epoch !== epoch)
         throw { code: 'DB_CONFLICT', message: '旅行内容已变化，请刷新故事' };
       const end = req.offset + req.pageSize;

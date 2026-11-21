@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import golden from '../../tests/fixtures/contracts.json';
-import type { AppError, AssetDetail, AssetSummary, Commands, Page } from '../services/contracts';
+import type { AppError, AssetDetail, AssetSummary, Commands } from '../services/contracts';
 function enumValue<T extends string>(value: string, allowed: readonly T[]): T {
   if (!allowed.includes(value as T)) throw new Error(`Invalid contract enum: ${value}`);
   return value as T;
@@ -20,7 +20,7 @@ function summary(raw: typeof golden.assetSummary): AssetSummary {
 it('accepts the Rust golden DTOs through the public TypeScript contracts', () => {
   const asset = summary(golden.assetSummary);
   const detail: AssetDetail = { ...golden.assetDetail, ...summary(golden.assetDetail) };
-  const page: Page<AssetSummary> = { ...golden.page, items: golden.page.items.map(summary) };
+  const page: Commands['query_assets']['result'] = { ...golden.page, items: golden.page.items.map(summary) };
   const neighbors: Commands['get_asset_neighbors']['result'] = {
     ...golden.neighbors,
     items: golden.neighbors.items.map(summary),
