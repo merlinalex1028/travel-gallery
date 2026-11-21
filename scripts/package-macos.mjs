@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertFormalMacBundle } from './formal-macos-bundle.mjs';
+import { assertFormalMacBundle, assertMacNativeTargets, macNativePrograms } from './formal-macos-bundle.mjs';
 
 if (process.platform !== 'darwin') throw new Error('This packaging command requires macOS.');
 if (process.env.APPLE_SIGNING_IDENTITY && process.env.APPLE_SIGNING_IDENTITY !== '-')
@@ -25,13 +25,14 @@ if (!isAbsolute(bundle) || basename(bundle) !== 'Travel Gallery.app')
   throw new Error('The review bundle must be an absolute path named Travel Gallery.app.');
 if (!existsSync(bundle)) throw new Error('Build the release .app first with pnpm desktop:build.');
 assertFormalMacBundle(bundle);
-const workers = ['travel-gallery-ai', 'travel-gallery-quality', 'ffmpeg', 'ffprobe'].map((name) =>
-  join('Contents', 'MacOS', name),
-);
+const [executable, ...workers] = macNativePrograms.map((name) => join('Contents', 'MacOS', name));
 for (const worker of workers) {
   if (!existsSync(join(bundle, worker)))
     throw new Error('A bundled native helper is missing. Rebuild the complete application.');
 }
+const tauriConfig = JSON.parse(readFileSync(join(root, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+const { minimumSystemVersion } = tauriConfig.bundle.macOS;
+const nativeMinimumSystemVersions = assertMacNativeTargets(bundle, process.arch, minimumSystemVersion);
 const mediaResources = join(bundle, 'Contents/Resources/media-tools');
 const mediaBuild = JSON.parse(readFileSync(join(mediaResources, 'build-info.json'), 'utf8'));
 const mediaProfile = JSON.parse(readFileSync(join(root, 'third-party/media-tools/profile.json'), 'utf8'));
@@ -64,7 +65,6 @@ try {
   const extractedBundle = join(extracted, 'Travel Gallery.app');
   assertFormalMacBundle(extractedBundle);
   execFileSync('codesign', ['--verify', '--deep', '--strict', extractedBundle], { stdio: 'pipe' });
-  const executable = join('Contents', 'MacOS', 'travel-gallery');
   const executableHash = createHash('sha256')
     .update(readFileSync(join(bundle, executable)))
     .digest('hex');
@@ -99,6 +99,8 @@ try {
         version: '0.1.0',
         platform: 'macOS',
         architecture: process.arch,
+        minimumSystemVersion,
+        nativeMinimumSystemVersions,
         file: filename,
         bytes: statSync(join(output, filename)).size,
         sha256: hash,
