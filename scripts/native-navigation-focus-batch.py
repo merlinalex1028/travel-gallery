@@ -29,6 +29,8 @@ reuse.PLANNED_BYTES = 512 * 1024**2
 reuse.PLANNED_FILES = 750
 reuse.SOURCE_FILES = 100
 STEPS = ('empty', 'imported', *(f'viewed-{count:03}' for count in range(10, 101, 10)))
+FOCUS_START = 'imported'
+REQUIRED_RETURNS = 20
 WIDTH, HEIGHT = 1600, 1000
 SCREEN_WIDTH, SCREEN_HEIGHT = 2560, 1600
 DIGITS = (
@@ -176,20 +178,25 @@ def snapshot(label):
         else:
             assert pid == b.STATE['verifiedPid']
             assert len(roots) == 1 and roots[0][1:] == (str((b.WORK / 'fixture/source').resolve()), 1)
-            assert len(assets) == len(reviews) == 100
+            assert len(assets) == len(reviews) == reuse.SOURCE_FILES
             assert [row[1:] for row in assets] == [
-                (f'frame-{index:03}.png', WIDTH, HEIGHT, 'available') for index in range(1, 101)]
+                (f'frame-{index:03}.png', WIDTH, HEIGHT, 'available')
+                for index in range(1, reuse.SOURCE_FILES + 1)]
             if label == 'imported':
                 assert db.execute("""SELECT 1 FROM jobs WHERE type='SCAN' AND status='completed'
-                    AND progress_done=100 AND progress_total=100 AND failure_count=0""").fetchone()
+                    AND progress_done=? AND progress_total=? AND failure_count=0""",
+                    (reuse.SOURCE_FILES, reuse.SOURCE_FILES)).fetchone()
                 baseline = (roots, assets, reviews)
-                b.STATE['navigationStartedMonotonic'] = time.monotonic()
             else:
                 assert (roots, assets, reviews) == baseline
                 count = int(label.split('-')[1])
                 assert {name for name, _ in screen} >= {f'frame-{i:03}.png' for i in range(1, count + 1)}
         assert reuse.source_state() == b.STATE['sourceBefore']
         assert reuse.normal_state() == b.STATE['normalBefore']
+    if label == FOCUS_START:
+        b.STATE['navigationStartedMonotonic'] = time.monotonic()
+    if label == STEPS[-1]:
+        b.STATE['navigationFinishedMonotonic'] = time.monotonic()
     completed.append(label)
     b.event('nativeNavigationCheckpoint', label=label, assets=len(assets),
             screenCaches=len(screen), sourceAndFormalUnchanged=True)
@@ -229,7 +236,8 @@ def decode_screen_caches():
         rows = db.execute("""SELECT a.filename,t.cache_rel_path,t.source_byte_size,a.byte_size,
             t.source_mtime_ms,a.mtime_ms FROM thumbnail_cache t JOIN media_assets a ON a.id=t.asset_id
             WHERE t.variant='screen' ORDER BY a.filename""").fetchall()
-    assert len(rows) == 100, f'Expected 100 screen cache references after exit, found {len(rows)}'
+    assert len(rows) == reuse.SOURCE_FILES, (
+        f'Expected {reuse.SOURCE_FILES} screen cache references after exit, found {len(rows)}')
     decoded = b.STATE['independentScreenDecode'] = dict(count=0, dimensions={},
         decoder='macOS sips BMP', indexedVersionsMatched=False, colourTolerance=6,
         scope='Cache contents and per-image digit and colour identity; not proof of displayed DOM variant or physical frames')
@@ -268,12 +276,12 @@ def main():
             focus_thread.join(timeout=4)
     focus = b.STATE['osFocusObservation']
     roles = [item['role'] for item in focus['transitions']
-             if item['atMonotonic'] >= b.STATE['navigationStartedMonotonic']]
+             if b.STATE['navigationStartedMonotonic'] <= item['atMonotonic'] <= b.STATE['navigationFinishedMonotonic']]
     returns = sum(a == 'other' and c == 'qa' for a, c in zip(roles, roles[1:]))
     focus['returnsDuringNavigation'] = returns
     decode_screen_caches()
     assert not focus['errors'] and focus['samples'] > 0, 'OS focus sampler did not complete'
-    assert returns >= 20, f'Insufficient observed OS focus returns: {returns}'
+    assert returns >= REQUIRED_RETURNS, f'Observed {returns} OS focus returns; expected at least {REQUIRED_RETURNS}'
 
 
 def save():
@@ -289,7 +297,9 @@ reuse.write_sources, reuse.snapshot, reuse.main, b.save = write_sources, snapsho
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--focus-preflight', action='store_true', help='Verify OS focus in an empty isolated catalog')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--focus-preflight', action='store_true', help='Verify OS focus in an empty isolated catalog')
+    mode.add_argument('--screen-smoke', action='store_true', help='Verify three actual screen caches and one focus return')
     args = parser.parse_args()
     if args.focus_preflight:
         b.APPROVAL = reuse.ROOT / 'docs/native-navigation-focus-preflight-budget.json'
@@ -298,7 +308,17 @@ if __name__ == '__main__':
         reuse.RUN_PREFIX = 'travel-gallery-native-navigation-focus-preflight-'
         reuse.SOURCE_FILES = 1
         reuse.main = lambda: base_main(on_ready=focus_preflight)
-    timer = threading.Timer(50 if args.focus_preflight else 1200, lambda: os.kill(os.getpid(), signal.SIGTERM))
+    elif args.screen_smoke:
+        b.APPROVAL = reuse.ROOT / 'docs/native-navigation-screen-smoke-budget.json'
+        b.RECEIPT = reuse.ROOT / 'docs/native-navigation-screen-smoke.json'
+        reuse.SCOPE = 'Three owned PNGs; decode actual screen caches and verify one OS focus return during viewing'
+        reuse.RUN_PREFIX = 'travel-gallery-native-navigation-screen-smoke-'
+        reuse.SOURCE_FILES = 3
+        STEPS = ('empty', 'imported', 'viewed-001', 'viewed-003')
+        FOCUS_START = 'viewed-001'
+        REQUIRED_RETURNS = 1
+    timer = threading.Timer(50 if args.focus_preflight else 600 if args.screen_smoke else 1200,
+                            lambda: os.kill(os.getpid(), signal.SIGTERM))
     timer.daemon = True
     timer.start()
     try:
