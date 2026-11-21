@@ -172,6 +172,35 @@ class LibraryQueryEvidence(unittest.TestCase):
                 self.db.execute('ROLLBACK TO altered')
                 self.db.execute('RELEASE altered')
 
+    def test_restore_accounts_only_for_the_exact_source_offline_transition(self):
+        backup, changed = self.restore_states()
+        availability = dict(roots=[('source', 0)],
+                            assets=[(aid, 'offline') for aid, _ in backup['availability']['assets']])
+        observed = dict(filename=batch.EXCLUDED, rating=0, restored=True)
+        restored = dict(backup, epoch=133, availability=availability)
+        batch.verify_restore('backup-restored', restored, observed, backup, backup, changed, changed)
+        with self.assertRaises(AssertionError):
+            # The old restore epoch plus a status bump must not conceal epoch reuse.
+            batch.verify_restore('backup-restored', dict(restored, epoch=132), observed,
+                                 backup, backup, changed, changed)
+        invalid = dict(availability, assets=[(aid, 'missing') for aid, _ in availability['assets']])
+        with self.assertRaises(AssertionError):
+            batch.verify_restore('backup-restored', dict(restored, availability=invalid), observed,
+                                 backup, backup, changed, changed)
+
+    def test_map_requires_all_three_exact_gps_records_and_visible_cell_counts(self):
+        for name, lat, lon in batch.MAP_GPS:
+            self.db.execute('UPDATE media_assets SET gps_lat=?,gps_lon=? WHERE filename=?', (lat, lon, name))
+        rows = batch.read_map_locations(self.db)
+        observed = dict(mapRendered=True, mapErrorVisible=False, cells=[
+            dict(lat=43.47, lon=11.88, count=2), dict(lat=43.5, lon=11.92, count=1)])
+        batch.verify_map(rows, observed)
+        for locations, ui in [(rows[:-1], observed),
+                              (rows, dict(observed, cells=[dict(lat=43.47, lon=11.88, count=3)])),
+                              (rows, dict(observed, mapErrorVisible=True))]:
+            with self.assertRaises(AssertionError):
+                batch.verify_map(locations, ui)
+
 
 if __name__ == '__main__':
     unittest.main()

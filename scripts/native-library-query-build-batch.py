@@ -30,12 +30,14 @@ KNOWN_ZONE_SAMPLE = OUTSIDE[1]
 KNOWN_ZONE_DATE = '2024-04-11'
 STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
 RESTORE_STEPS = ('backed-up', 'rating-changed', 'backup-restored')
-RESTORE_STABLE_KEYS = ('roots', 'times', 'corrections', 'snapshots', 'members', 'organization')
+MAP_STEP = 'map-rendered'
+MAP_GPS = ((OUTSIDE[2], 43.47, 11.88), (OUTSIDE[3], 43.47, 11.88), (OUTSIDE[4], 43.5, 11.92))
+RESTORE_STABLE_KEYS = ('roots', 'times', 'locations', 'corrections', 'snapshots', 'members', 'organization')
 RESTORE_ORGANIZATION_TABLES = ('tags', 'asset_tags', 'linked_media', 'collections',
                               'collection_assets', 'saved_filters', 'source_options', 'app_settings')
 
 
-def write_sources(source):
+def write_sources(source, *, include_gps=False):
     for index, name in enumerate(MATCH + OUTSIDE):
         capture = ORIGINAL_LOCAL.replace('-', ':') if name == TIME_SAMPLE else None
         offset = None
@@ -43,6 +45,15 @@ def write_sources(source):
             capture = f"{KNOWN_ZONE_DATE.replace('-', ':')} 08:00:00"
             offset = '+05:45'
         (source / name).write_bytes(tiny_tiff(index, capture, offset))
+    if include_gps:
+        add_gps = build.load('native-map-trip-batch').add_gps
+        for name, lat, lon in [
+            (OUTSIDE[2], (43, 28, 12), (11, 52, 48)),
+            (OUTSIDE[3], (43, 28, 12), (11, 52, 48)),
+            (OUTSIDE[4], (43, 30, 0), (11, 55, 12)),
+        ]:
+            path = source / name
+            path.write_bytes(add_gps(path.read_bytes(), lat, lon))
 
 
 def read_catalog(db):
@@ -82,6 +93,9 @@ def read_restore_state(db):
             ORDER BY a.filename COLLATE NOCASE,a.id''').fetchall(),
         times=db.execute('''SELECT id,capture_local,capture_utc_ms,capture_tz_min,capture_time_source
             FROM media_assets ORDER BY id''').fetchall(),
+        locations=db.execute('SELECT id,gps_lat,gps_lon FROM media_assets ORDER BY id').fetchall(),
+        availability=dict(roots=db.execute('SELECT id,is_online FROM source_roots ORDER BY id').fetchall(),
+                          assets=db.execute('SELECT id,file_state FROM media_assets ORDER BY id').fetchall()),
         corrections=db.execute('SELECT * FROM capture_time_corrections ORDER BY asset_id').fetchall(),
         snapshots=db.execute('SELECT * FROM selection_snapshots ORDER BY id').fetchall(),
         members=db.execute('SELECT * FROM selection_snapshot_items ORDER BY 1,2').fetchall(),
@@ -101,6 +115,22 @@ def read_backup(path):
         return read_restore_state(db)
 
 
+def verify_restored_state(current, backup, changed, rollback):
+    assert rollback == changed
+    # Status polling may mark the source offline after restore revokes app grants.
+    status_transition = 0
+    if current['availability'] != backup['availability']:
+        [(source_id, online)] = backup['availability']['roots']
+        assert online == 1
+        expected = dict(roots=[(source_id, 0)], assets=[
+            (aid, 'offline' if state == 'available' else state)
+            for aid, state in backup['availability']['assets']])
+        assert current['availability'] == expected
+        status_transition = 1
+    assert current['epoch'] == max(changed['epoch'], backup['epoch']) + 1 + status_transition
+    assert all(current[key] == backup[key] for key in ('assets', 'history', *RESTORE_STABLE_KEYS))
+
+
 def verify_restore(step, current, observations, backup, baseline, changed=None, rollback=None):
     if step == 'backed-up':
         assert current == backup == baseline
@@ -115,6 +145,7 @@ def verify_restore(step, current, observations, backup, baseline, changed=None, 
         expected[index] = (*old[:5], 5, *old[6:8], old[8] + 1)
         assert current['assets'] == expected
         assert all(current[key] == backup[key] for key in RESTORE_STABLE_KEYS)
+        assert current['availability'] == backup['availability']
         added = {}
         for table, rows in backup['history'].items():
             actual = current['history'][table]
@@ -139,9 +170,18 @@ def verify_restore(step, current, observations, backup, baseline, changed=None, 
     else:
         assert step == 'backup-restored'
         assert observations == dict(filename=EXCLUDED, rating=0, restored=True)
-        assert rollback == changed
-        assert current['epoch'] == max(changed['epoch'], backup['epoch']) + 1
-        assert all(current[key] == backup[key] for key in ('assets', 'history', *RESTORE_STABLE_KEYS))
+        verify_restored_state(current, backup, changed, rollback)
+
+
+def read_map_locations(db):
+    return db.execute('''SELECT filename,round(gps_lat,2),round(gps_lon,2) FROM media_assets
+        WHERE gps_lat IS NOT NULL OR gps_lon IS NOT NULL ORDER BY filename''').fetchall()
+
+
+def verify_map(locations, observed):
+    assert tuple(locations) == MAP_GPS
+    assert observed == dict(mapRendered=True, mapErrorVisible=False, cells=[
+        dict(lat=43.47, lon=11.88, count=2), dict(lat=43.5, lon=11.92, count=1)])
 
 
 def verify(step, state, source, observed, previous):
@@ -225,7 +265,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
     pid, previous = None, None
     baseline, backup, changed = None, None, None
     regular_steps = STEPS[:-1]
-    for step in (*regular_steps, *(RESTORE_STEPS if check_restore else ()), 'finish'):
+    for step in (*regular_steps, *((*RESTORE_STEPS, MAP_STEP) if check_restore else ()), 'finish'):
         request = control / 'step.json'
         deadline = time.monotonic() + 600
         while not request.is_file():
@@ -251,23 +291,29 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
         with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
             db.execute('BEGIN')
             state = read_catalog(db)
-            if check_restore and step in ('time-restored', *RESTORE_STEPS):
+            if check_restore and step in ('time-restored', *RESTORE_STEPS, MAP_STEP):
                 restore_state = read_restore_state(db)
+            if step == MAP_STEP:
+                locations = read_map_locations(db)
             if step == 'backed-up':
                 completed_backups = db.execute("""SELECT status,progress_done,progress_total,failure_count
                     FROM jobs WHERE type='BACKUP'""").fetchall()
-        if step in RESTORE_STEPS:
+        if step in (*RESTORE_STEPS, MAP_STEP):
             [selected] = list(backup_dir.glob('travel-gallery-*.sqlite'))
             if step == 'backed-up':
                 backup = read_backup(selected)
                 assert completed_backups == [('completed', 1, 1, 0)]
             assert read_backup(selected) == backup
             rollback = None
-            if step == 'backup-restored':
+            if step in ('backup-restored', MAP_STEP):
                 [auto_backup] = list(b.DATA.glob('before-restore-*.sqlite'))
                 rollback = read_backup(auto_backup)
                 assert not list(b.DATA.glob('restore-staging-*'))
-            verify_restore(step, restore_state, observed, backup, baseline, changed, rollback)
+            if step == MAP_STEP:
+                verify_restored_state(restore_state, backup, changed, rollback)
+                verify_map(locations, observed)
+            else:
+                verify_restore(step, restore_state, observed, backup, baseline, changed, rollback)
             if step == 'rating-changed':
                 changed = restore_state
             b.event('nativeCatalogEpochCheckpoint', step=step, catalogEpoch=restore_state['epoch'],
@@ -304,8 +350,13 @@ def run(approval):
     check_restore = approval['batch'] == EPOCH_BATCH
     candidate, fixture, release, env = build.build_candidate(
         approval, approval['batch'], 'CatalogEpoch' if check_restore else 'LibraryQuery',
-        write_sources, picker_only=True,
+        lambda source: write_sources(source, include_gps=check_restore), picker_only=True,
         after_regressions=measure_query_latency if check_restore else None)
+    if check_restore:
+        metadata = json.loads((batch.ROOT / 'src/assets/map/metadata.json').read_text())
+        [font] = list((b.WORK / 'frontend-production/assets').glob('NotoSans-*.ttf'))
+        assert exact.sha(font) == metadata['font']['files']['NotoSans.ttf']['sha256']
+        b.event('candidateMapFontVerified', bytes=font.stat().st_size, sha256=exact.sha(font))
     preparation = json.loads((b.APP_PATH.parent / 'preparation.json').read_text())
     assert preparation['pickerOnly']
     assert not any('absolute-path' in name for name in preparation['parentEntitlements'])
