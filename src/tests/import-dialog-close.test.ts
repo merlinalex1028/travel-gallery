@@ -58,6 +58,10 @@ it.each(['取消', 'Escape', '标题栏关闭', '开始索引'])(
       app.importOpen = true;
       await nextTick();
       expect(hasActiveModal()).toBe(true);
+      if (action === '开始索引') {
+        expect(wrapper.get('.folder-picker').text()).toContain('选择本地文件夹');
+        expect(wrapper.get('button.primary').attributes()).toHaveProperty('disabled');
+      }
     } finally {
       wrapper.unmount();
       frames.mockRestore();

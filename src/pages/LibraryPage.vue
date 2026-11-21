@@ -30,6 +30,19 @@ watch(
   },
 );
 const trip = computed(() => app.trips.find((t) => t.id === route.params.id));
+const emptySource = computed(() => {
+  const { sourceIds } = lib.filter;
+  if (route.path !== '/library' || sourceIds?.length !== 1 || Object.keys(lib.filter).length !== 1)
+    return undefined;
+  return app.sources.find(
+    (source) =>
+      source.id === sourceIds[0] &&
+      source.isEnabled &&
+      source.isOnline &&
+      source.lastScanAt != null &&
+      source.totalAssets === 0,
+  );
+});
 const title = computed(
   () =>
     trip.value?.name ??
@@ -288,6 +301,14 @@ useMediaKeyboard((key, event) => {
       <div v-else-if="lib.loading && !lib.items.length" class="gallery-skeleton">
         <div v-for="i in 9" :key="i" class="skeleton" />
       </div>
+      <EmptyState
+        v-else-if="!lib.items.length && emptySource"
+        icon="folder"
+        title="此目录没有可索引的媒体"
+        description="可选择另一个照片目录。这个来源仍可在来源管理中重新扫描。"
+        action="换目录"
+        @action="app.importOpen = true"
+      />
       <EmptyState
         v-else-if="!lib.items.length"
         :title="

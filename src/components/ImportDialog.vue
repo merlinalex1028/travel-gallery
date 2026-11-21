@@ -47,6 +47,7 @@ async function start(overlapConfirmation?: string) {
         maxDepth: depth.value,
       },
     });
+    path.value = '';
     app.importOpen = false;
     lib.setFilter({ sourceIds: [r.sourceId] });
     await app.refresh();

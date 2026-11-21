@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import LibraryPage from '../pages/LibraryPage.vue';
 import { useLibrary } from '../stores/library';
 import { useApp } from '../stores/app';
@@ -159,4 +160,43 @@ describe('library keyboard scope', () => {
     expect(document.querySelector('[role="menu"]')).toBeNull();
     expect(selectAll().defaultPrevented).toBe(true);
   });
+});
+
+it('offers a replacement directory only for an online, scanned empty source', async () => {
+  invoke.mockResolvedValue({ items: [], total: 0, nextCursor: null, queryFingerprint: 'empty' });
+  const app = useApp();
+  const source = {
+    id: 'empty',
+    displayName: '空来源',
+    absolutePath: '/owned/empty',
+    volumeId: null,
+    isEnabled: true,
+    isOnline: true,
+    totalAssets: 0,
+    offlineAssets: 0,
+  };
+  app.sources = [
+    { ...source, lastScanAt: null },
+    { ...source, id: 'populated', totalAssets: 5, lastScanAt: 1 },
+  ];
+  const lib = useLibrary();
+  lib.setFilter({ sourceIds: ['empty'] });
+  await openLibrary();
+  const chooseAnother = () => wrapper!.findAll('button').find((button) => button.text() === '换目录');
+  expect(chooseAnother()).toBeUndefined();
+  app.sources = [{ ...source, lastScanAt: 0 }, app.sources[1]!];
+  await nextTick();
+  expect(wrapper!.text()).toContain('此目录没有可索引的媒体');
+  await chooseAnother()!.trigger('click');
+  expect(app.importOpen).toBe(true);
+  expect(lib.filter.sourceIds).toEqual(['empty']);
+
+  lib.setFilter({ sourceIds: ['empty'], keyword: 'not-found' });
+  await nextTick();
+  expect(chooseAnother()).toBeUndefined();
+  expect(wrapper!.text()).toContain('这里还没有匹配的照片');
+  lib.setFilter({ sourceIds: ['empty'] });
+  app.sources = [{ ...source, isOnline: false, lastScanAt: 1 }, app.sources[1]!];
+  await nextTick();
+  expect(chooseAnother()).toBeUndefined();
 });
