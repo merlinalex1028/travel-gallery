@@ -30,6 +30,9 @@ KNOWN_ZONE_SAMPLE = OUTSIDE[1]
 KNOWN_ZONE_DATE = '2024-04-11'
 STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
 RESTORE_STEPS = ('backed-up', 'rating-changed', 'backup-restored')
+RESTORE_STABLE_KEYS = ('roots', 'times', 'corrections', 'snapshots', 'members', 'organization')
+RESTORE_ORGANIZATION_TABLES = ('tags', 'asset_tags', 'linked_media', 'collections',
+                              'collection_assets', 'saved_filters', 'source_options', 'app_settings')
 
 
 def write_sources(source):
@@ -73,12 +76,19 @@ def read_catalog(db):
 def read_restore_state(db):
     return dict(
         epoch=db.execute("SELECT value FROM app_meta WHERE key='epoch'").fetchone()[0],
+        roots=db.execute('SELECT id,absolute_path,volume_id,is_enabled FROM source_roots ORDER BY id').fetchall(),
         assets=db.execute('''SELECT a.id,a.filename,a.source_id,a.relative_path,r.pick_state,r.rating,
             r.is_favorite,r.note,r.revision FROM media_assets a JOIN asset_reviews r ON r.asset_id=a.id
             ORDER BY a.filename COLLATE NOCASE,a.id''').fetchall(),
+        times=db.execute('''SELECT id,capture_local,capture_utc_ms,capture_tz_min,capture_time_source
+            FROM media_assets ORDER BY id''').fetchall(),
         corrections=db.execute('SELECT * FROM capture_time_corrections ORDER BY asset_id').fetchall(),
         snapshots=db.execute('SELECT * FROM selection_snapshots ORDER BY id').fetchall(),
         members=db.execute('SELECT * FROM selection_snapshot_items ORDER BY 1,2').fetchall(),
+        organization={table: db.execute(f'SELECT * FROM {table} ORDER BY 1,2').fetchall()
+                      for table in RESTORE_ORGANIZATION_TABLES},
+        history={table: db.execute(f'SELECT * FROM {table} ORDER BY 1,2').fetchall()
+                 for table in ('change_batches', 'change_batch_items', 'mutation_receipts')},
     )
 
 
@@ -92,7 +102,6 @@ def read_backup(path):
 
 
 def verify_restore(step, current, observations, backup, baseline, changed=None, rollback=None):
-    state_keys = ('assets', 'corrections', 'snapshots', 'members')
     if step == 'backed-up':
         assert current == backup == baseline
         assert observations == {'backupCompleted': True}
@@ -105,13 +114,34 @@ def verify_restore(step, current, observations, backup, baseline, changed=None, 
         assert old[5] == 0
         expected[index] = (*old[:5], 5, *old[6:8], old[8] + 1)
         assert current['assets'] == expected
-        assert all(current[key] == backup[key] for key in state_keys[1:])
+        assert all(current[key] == backup[key] for key in RESTORE_STABLE_KEYS)
+        added = {}
+        for table, rows in backup['history'].items():
+            actual = current['history'][table]
+            assert set(rows) <= set(actual) and len(actual) == len(rows) + 1
+            [added[table]] = set(actual) - set(rows)
+        change_id, action, raw, _, undone = added['change_batches']
+        request = json.loads(raw)
+        assert action == 'review' and undone is None
+        assert request['target'] == dict(kind='explicit', assetIds=[old[0]])
+        assert request['patch'] == {'rating': 5}
+        batch_id, asset_id, before, after = added['change_batch_items']
+        assert (batch_id, asset_id) == (change_id, old[0])
+        before, after = json.loads(before), json.loads(after)
+        tags = [tag for aid, tag in backup['organization']['asset_tags'] if aid == old[0]]
+        assert before['tagIds'] == after['tagIds'] == sorted(tags)
+        previous = dict(pickState=old[4], rating=old[5], isFavorite=bool(old[6]), note=old[7], revision=old[8])
+        assert {k: v for k, v in before['review'].items() if k != 'updatedAt'} == previous
+        assert {k: v for k, v in after['review'].items() if k != 'updatedAt'} == dict(previous, rating=5, revision=old[8] + 1)
+        mutation, _, receipt, _ = added['mutation_receipts']
+        assert mutation == request['clientMutationId']
+        assert json.loads(receipt) == dict(changeBatchId=change_id, affectedCount=1, unchangedCount=0, conflicts=[])
     else:
         assert step == 'backup-restored'
         assert observations == dict(filename=EXCLUDED, rating=0, restored=True)
         assert rollback == changed
         assert current['epoch'] == max(changed['epoch'], backup['epoch']) + 1
-        assert all(current[key] == backup[key] for key in state_keys)
+        assert all(current[key] == backup[key] for key in ('assets', 'history', *RESTORE_STABLE_KEYS))
 
 
 def verify(step, state, source, observed, previous):

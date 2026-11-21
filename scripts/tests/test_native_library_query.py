@@ -19,6 +19,7 @@ class LibraryQueryEvidence(unittest.TestCase):
             self.db.executescript((ROOT / 'src-tauri/migrations' / name).read_text())
         # The migration to v3 is inline in db::initialize.
         self.db.execute('CREATE TABLE query_contexts(fingerprint TEXT PRIMARY KEY, request_json TEXT NOT NULL, expires_at INTEGER NOT NULL)')
+        self.db.execute('CREATE TABLE source_options(source_id TEXT PRIMARY KEY REFERENCES source_roots(id), options_json TEXT NOT NULL)')
         self.source = Path('/owned/library-query-fixture')
         self.names = batch.MATCH + batch.OUTSIDE
         self.db.execute("INSERT INTO source_roots(id,display_name,absolute_path,created_at,updated_at) VALUES('source','Owned',?,1,1)", (str(self.source),))
@@ -98,15 +99,29 @@ class LibraryQueryEvidence(unittest.TestCase):
         with self.assertRaises(AssertionError):
             batch.verify('applied', batch.read_catalog(self.db), self.source, {}, baseline)
 
-    def test_restore_requires_a_new_epoch_and_an_exact_automatic_backup(self):
+    def restore_states(self):
         self.db.execute('CREATE TABLE app_meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL)')
         self.db.execute("INSERT INTO app_meta VALUES('epoch', 130)")
         backup = batch.read_restore_state(self.db)
         batch.verify_restore('backed-up', backup, {'backupCompleted': True}, backup, backup)
         self.db.execute("UPDATE app_meta SET value=131 WHERE key='epoch'")
         self.db.execute('UPDATE asset_reviews SET rating=5,revision=1 WHERE asset_id=?', (batch.EXCLUDED,))
+        before = dict(review=dict(pickState='unreviewed', rating=0, isFavorite=False, note='', revision=0, updatedAt=1),
+                      tagIds=[])
+        after = dict(review=dict(before['review'], rating=5, revision=1, updatedAt=2), tagIds=[])
+        request = dict(target=dict(kind='explicit', assetIds=[batch.EXCLUDED]), patch={'rating': 5},
+                       clientMutationId='rating-once')
+        self.db.execute("INSERT INTO change_batches VALUES('rating','review',?,2,NULL)", (json.dumps(request),))
+        self.db.execute("INSERT INTO change_batch_items VALUES('rating',?,?,?)",
+                        (batch.EXCLUDED, json.dumps(before), json.dumps(after)))
+        receipt = dict(changeBatchId='rating', affectedCount=1, unchangedCount=0, conflicts=[])
+        self.db.execute("INSERT INTO mutation_receipts VALUES('rating-once','hash',?,2)", (json.dumps(receipt),))
         changed = batch.read_restore_state(self.db)
         batch.verify_restore('rating-changed', changed, dict(filename=batch.EXCLUDED, rating=5), backup, backup)
+        return backup, changed
+
+    def test_restore_requires_a_new_epoch_and_an_exact_automatic_backup(self):
+        backup, changed = self.restore_states()
         observed = dict(filename=batch.EXCLUDED, rating=0, restored=True)
         restored = dict(backup, epoch=132)
         batch.verify_restore('backup-restored', restored, observed, backup, backup, changed, changed)
@@ -114,6 +129,48 @@ class LibraryQueryEvidence(unittest.TestCase):
                                 (dict(restored, assets=changed['assets']), changed)]:
             with self.assertRaises(AssertionError):
                 batch.verify_restore('backup-restored', state, observed, backup, backup, changed, rollback)
+
+    def test_restore_rejects_changed_effective_dates_roots_organization_and_history(self):
+        backup, changed = self.restore_states()
+        self.db.execute('UPDATE asset_reviews SET rating=0,revision=0 WHERE asset_id=?', (batch.EXCLUDED,))
+        self.db.execute("UPDATE app_meta SET value=132 WHERE key='epoch'")
+        self.db.execute("DELETE FROM change_batch_items WHERE batch_id='rating'")
+        self.db.execute("DELETE FROM change_batches WHERE id='rating'")
+        self.db.execute("DELETE FROM mutation_receipts WHERE client_mutation_id='rating-once'")
+        observed = dict(filename=batch.EXCLUDED, rating=0, restored=True)
+        restored = batch.read_restore_state(self.db)
+        batch.verify_restore('backup-restored', restored, observed, backup, backup, changed, changed)
+        for statement in [
+            "UPDATE media_assets SET capture_local='2030-01-01 00:00:00' WHERE filename='outside-000.tiff'",
+            "UPDATE source_roots SET absolute_path='/wrong-source'",
+            "INSERT INTO tags VALUES('unexpected','unexpected',NULL,1)",
+            "INSERT INTO source_options VALUES('source','{\"recursive\":false}')",
+            "INSERT INTO change_batches VALUES('unexpected','review','{}',3,NULL)",
+        ]:
+            with self.subTest(statement=statement):
+                self.db.execute('SAVEPOINT altered')
+                self.db.execute(statement)
+                with self.assertRaises(AssertionError):
+                    batch.verify_restore('backup-restored', batch.read_restore_state(self.db), observed,
+                                         backup, backup, changed, changed)
+                self.db.execute('ROLLBACK TO altered')
+                self.db.execute('RELEASE altered')
+
+    def test_rating_requires_one_exact_history_item_and_receipt(self):
+        backup, changed = self.restore_states()
+        for statement in [
+            "DELETE FROM mutation_receipts",
+            "UPDATE change_batch_items SET asset_id='outside-000.tiff'",
+            "UPDATE change_batches SET payload_json='{\"target\":{\"kind\":\"explicit\",\"assetIds\":[\"outside-000.tiff\"]},\"patch\":{\"rating\":5}}'",
+        ]:
+            with self.subTest(statement=statement):
+                self.db.execute('SAVEPOINT altered')
+                self.db.execute(statement)
+                with self.assertRaises(AssertionError):
+                    batch.verify_restore('rating-changed', batch.read_restore_state(self.db),
+                                         dict(filename=batch.EXCLUDED, rating=5), backup, backup)
+                self.db.execute('ROLLBACK TO altered')
+                self.db.execute('RELEASE altered')
 
 
 if __name__ == '__main__':
