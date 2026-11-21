@@ -12,10 +12,11 @@ import sys
 import uuid
 
 
-def nettop_rows(pids):
+def nettop_rows(pids, summary=False):
     targets = [part for pid in pids for part in ('-p', str(pid))]
     result = subprocess.run(
-        ['/usr/bin/nettop', '-n', '-L', '1', '-J', 'interface,state,bytes_in,bytes_out', *targets],
+        ['/usr/bin/nettop', '-n', '-L', '1', '-J', 'interface,state,bytes_in,bytes_out',
+         *(['-P'] if summary else []), *targets],
         capture_output=True, text=True, check=True, timeout=8,
     )
     if result.stderr.strip():
@@ -35,7 +36,9 @@ with socket.create_connection(('127.0.0.1', int(sys.argv[1])), timeout=3) as cli
     with client.makefile('rb') as stream:
         assert stream.read(len(sys.argv[2])) == sys.argv[2].encode()
     print('echo-ok', flush=True)
-    sys.stdin.readline()
+    assert sys.stdin.readline().strip() == 'close'
+print('closed', flush=True)
+sys.stdin.readline()
 """
     negative = """
 import errno, json, socket, sys
@@ -77,6 +80,13 @@ raise SystemExit(1)
                     assert json.loads(denied.stdout) == errno.EPERM
                     assert not select.select([listener], [], [], .2)[0]
                     assert client.poll() is None
+                    client.stdin.write('close\n')
+                    client.stdin.flush()
+                    assert select.select([client.stdout], [], [], 4)[0]
+                    assert client.stdout.readline().strip() == 'closed' and client.poll() is None
+                closed_detail = nettop_rows([client.pid])
+                closed_summary = nettop_rows([client.pid], summary=True)
+                assert client.poll() is None
             finally:
                 client.stdin.close()
                 try:
@@ -88,7 +98,10 @@ raise SystemExit(1)
     return dict(positive=dict(loopbackEcho=True, exactProcessAndEndpointsMatched=True,
                               interface='lo0', state='Established',
                               bytesIn=int(flow['bytes_in']), bytesOut=int(flow['bytes_out'])),
-                negative=dict(errno=errno.EPERM, listenerAccepted=False), ownedProcessesExited=True)
+                negative=dict(errno=errno.EPERM, listenerAccepted=False),
+                afterClose=dict(processStillAlive=True, detailRows=len(closed_detail), summaryRows=len(closed_summary),
+                                scope='One completed exchange; a later snapshot cannot prove zero requests'),
+                ownedProcessesExited=True)
 
 
 def process_snapshot():
