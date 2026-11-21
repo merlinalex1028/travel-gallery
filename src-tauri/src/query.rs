@@ -449,6 +449,148 @@ fn query_page(c: &Connection, q: &Query, fp: &str) -> Result<Value> {
 mod query_transaction_tests {
     use super::*;
 
+    fn ordering_fixture() -> (tempfile::TempDir, Connection) {
+        let temp = tempfile::tempdir().unwrap();
+        let database = temp.path().join("catalog.sqlite");
+        db::initialize(&database).unwrap();
+        let c = db::connect(&database).unwrap();
+        c.execute("INSERT INTO source_roots(id,display_name,absolute_path,created_at,updated_at)
+            VALUES('source','Synthetic ordering fixture','/synthetic-only',0,0)", []).unwrap();
+        for (aid, name, local, mtime, indexed, size, rating) in [
+            ("a", "IMG.jpg", None, None, 10, 10, 0),
+            ("b", "img.JPG", None, Some(0), 10, 10, 5),
+            ("c", "IMG.JPG", Some("2024-01-01 00:00:00"), Some(0), 5, 30, 5),
+            ("d", "alpha.jpg", None, Some(0), 0, 0, 2),
+            ("e", "Zulu.jpg", Some("2024-01-01 00:00:00"), None, 5, 30, 0),
+            ("f", "zulu.JPG", None, None, 5, 20, 2),
+            ("g", "Beta.jpg", Some("2023-01-01 00:00:00"), None, 10, 20, 4),
+            ("h", "beta.JPG", None, Some(-1000), 0, 10, 4),
+        ] {
+            c.execute("INSERT INTO media_assets(id,source_id,relative_path,filename,extension,media_kind,
+                byte_size,mtime_ms,capture_local,capture_time_source,indexed_at,updated_at)
+                VALUES(?,'source',?,?,'jpg','image',?,?,?,?,?,0)",
+                params![aid,format!("{aid}/{name}"),name,size,mtime,local,local.map(|_| "exif"),indexed]).unwrap();
+            c.execute("UPDATE asset_reviews SET rating=? WHERE asset_id=?", params![rating,aid]).unwrap();
+        }
+        (temp, c)
+    }
+
+    #[test]
+    fn every_sort_pages_null_dates_and_equal_keys_in_both_directions() {
+        let (_temp, c) = ordering_fixture();
+        let epoch = db::epoch(&c).unwrap();
+        for known in [None, Some(true), Some(false)] {
+            for (field, ascending) in [
+                ("captureUtcMs", "afhbdgce"),
+                ("indexedAt", "dhcefabg"),
+                ("filename", "dghabcef"),
+                ("byteSize", "dabhfgce"),
+                ("rating", "aedfghbc"),
+            ] {
+                for direction in ["asc", "desc"] {
+                    // Explicit expected orders are independent of the SQL keyset comparison.
+                    let mut expected: Vec<String> = ascending.chars()
+                        .filter(|aid| known.is_none_or(|known| "ceg".contains(*aid) == known))
+                        .map(|aid| aid.to_string()).collect();
+                    if direction == "desc" {
+                        expected.reverse();
+                    }
+                    let mut seen = Vec::new();
+                    let mut cursor = None;
+                    let mut pages = 0;
+                    loop {
+                        let result = query(&c, Query {
+                            filter: Filter { capture_date_known: known, ..Filter::default() },
+                            sort: Sort { field: field.into(), direction: direction.into() },
+                            cursor,
+                            page_size: 3,
+                            selection_snapshot_id: None,
+                        }).unwrap();
+                        assert_eq!(result["catalogEpoch"], epoch);
+                        assert_eq!(result["total"], expected.len());
+                        seen.extend(result["items"].as_array().unwrap().iter()
+                            .map(|asset| asset["id"].as_str().unwrap().to_owned()));
+                        pages += 1;
+                        cursor = result["nextCursor"].as_str().map(str::to_owned);
+                        if cursor.is_none() {
+                            break;
+                        }
+                        assert!(pages < 3, "Cursor did not terminate: {known:?} {field} {direction}");
+                    }
+                    assert_eq!(seen, expected, "{known:?} {field} {direction}");
+                    assert_eq!(pages, expected.len().div_ceil(3));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn changed_query_and_epoch_reject_old_cursors_without_replacing_the_context() {
+        let (_temp, c) = ordering_fixture();
+        let request = |filter, direction: &str, cursor| Query {
+            filter,
+            sort: Sort { field: "filename".into(), direction: direction.into() },
+            cursor,
+            page_size: 3,
+            selection_snapshot_id: None,
+        };
+        let first = query(&c, request(Filter::default(), "asc", None)).unwrap();
+        let cursor = first["nextCursor"].as_str().unwrap().to_owned();
+        let context = || c.query_row("SELECT fingerprint,request_json,expires_at FROM query_contexts",
+            [], |row| Ok((row.get::<_, String>(0)?,row.get::<_, String>(1)?,row.get::<_, i64>(2)?))).unwrap();
+        let saved = context();
+        for (filter, direction) in [
+            (Filter { keyword: Some("IMG".into()), ..Filter::default() }, "asc"),
+            (Filter::default(), "desc"),
+        ] {
+            assert_eq!(query(&c, request(filter, direction, Some(cursor.clone()))).unwrap_err().code, "INVALID_FILTER");
+            assert_eq!(context(), saved);
+        }
+        db::bump(&c).unwrap();
+        assert_eq!(query(&c, request(Filter::default(), "asc", Some(cursor))).unwrap_err().code, "INVALID_FILTER");
+        assert_eq!(context(), saved);
+        let refreshed = query(&c, request(Filter::default(), "asc", None)).unwrap();
+        assert_eq!(refreshed["catalogEpoch"], first["catalogEpoch"].as_i64().unwrap() + 1);
+        assert_eq!(refreshed["items"], first["items"]);
+        assert!(query(&c, request(Filter::default(), "asc", refreshed["nextCursor"].as_str().map(str::to_owned))).is_ok());
+    }
+
+    #[test]
+    fn snapshot_epoch_rejection_keeps_old_members_and_accepts_a_refreshed_query() {
+        let (_temp, mut c) = ordering_fixture();
+        c.execute("UPDATE asset_reviews SET is_favorite=1 WHERE asset_id='b'", []).unwrap();
+        let read = |c: &Connection| query(c, Query {
+            filter: Filter { favorite: Some(true), ..Filter::default() },
+            sort: Sort::default(),
+            cursor: None,
+            page_size: 3,
+            selection_snapshot_id: None,
+        }).unwrap();
+        let freeze = |c: &mut Connection, epoch: Value| snapshot(c, &json!({
+            "filter":{"favorite":true},"sort":Sort::default(),"expectedCatalogEpoch":epoch
+        }));
+        let displayed = read(&c);
+        let original = freeze(&mut c, displayed["catalogEpoch"].clone()).unwrap();
+        let tx = c.transaction().unwrap();
+        tx.execute("UPDATE asset_reviews SET is_favorite=(asset_id='h') WHERE asset_id IN ('b','h')", []).unwrap();
+        db::bump(&tx).unwrap();
+        tx.commit().unwrap();
+        for stale in [displayed["catalogEpoch"].clone(), Value::Null, json!(-1)] {
+            assert_eq!(freeze(&mut c, stale).unwrap_err().code, "INVALID_FILTER");
+        }
+        assert_eq!(c.query_row("SELECT count(*) FROM selection_snapshots", [], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        let refreshed = read(&c);
+        assert_eq!(refreshed["total"], displayed["total"]);
+        assert_eq!(refreshed["queryFingerprint"], displayed["queryFingerprint"]);
+        let updated = freeze(&mut c, refreshed["catalogEpoch"].clone()).unwrap();
+        for (frozen, member) in [(original, "b"), (updated, "h")] {
+            assert_eq!(frozen["count"], 1);
+            let actual: String = c.query_row("SELECT asset_id FROM selection_snapshot_items WHERE snapshot_id=?",
+                [frozen["id"].as_str().unwrap()], |row| row.get(0)).unwrap();
+            assert_eq!(actual, member);
+        }
+    }
+
     #[test]
     fn page_keeps_its_epoch_and_rows_while_a_catalog_update_commits() {
         let temp = tempfile::tempdir().unwrap();
