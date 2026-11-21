@@ -7,7 +7,29 @@ import math
 from pathlib import Path
 
 
-def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id=1000000):
+def decoded_pair(frames, matches):
+    return next(((a, b) for a, b in zip(frames, frames[1:])
+                 if b['at'] - a['at'] <= 100 and matches(a) and matches(b)), None)
+
+
+def foreground_coverage(start, end, frames, round_trips):
+    """Exclude only observed blur-to-focus intervals, not arbitrary frame gaps."""
+    segments = list(zip([start, *(trip['focusAt'] for trip in round_trips)],
+                        [*(trip['blurAt'] for trip in round_trips), end]))
+    times = [f['at'] for f in frames if f['visibility'] == 'visible' and f['focused']]
+    for left, right in segments:
+        samples = [t for t in times if left <= t <= right]
+        points = [left, *samples, right]
+        if not samples or any(b - a > 100 for a, b in zip(points, points[1:])):
+            return False
+    return all((f['visibility'] == 'visible' and f['focused']) or
+               any(trip['blurAt'] <= f['at'] < trip['focusAt'] for trip in round_trips)
+               for f in frames)
+
+
+def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id=1000000, *,
+                   required_focus_returns=20, expected_focus_photos=100):
+    assert 2 <= required_focus_returns <= expected_focus_photos
     names = {item['id']: Path(item['relativePath']).name for item in manifest}
     assert len(set(names.values())) == len(names)
     assert set(order) == set(names.values()) and len(order) == len(names)
@@ -44,6 +66,9 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
     frames = [e for e in events if e['type'] == 'viewerFrame' and e['at'] < next_delivery]
     frame_times = [f['at'] for f in frames]
     assert all(a <= b for a, b in zip(frame_times, frame_times[1:])), 'Frame times must be ordered.'
+    focus_events = [e for e in events if e['type'] in ('blur', 'focus')]
+    focus_times = [e['at'] for e in focus_events]
+    assert all(a <= b for a, b in zip(focus_times, focus_times[1:])), 'Focus times must be ordered.'
 
     def image_state(frame):
         image = frame['image']
@@ -59,7 +84,8 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
     def image_variant(frame):
         return variants.get(frame['image']['src'].replace('http://media.localhost/', 'media://localhost/'))
 
-    completed, missing, screen_targets = [], [], []
+    completed, missing, screen_targets, screen_times, round_trips = [], [], [], [], []
+    stale_return_frames = []
     for (event, name), stop in zip(targets, (*deliveries[1:], next_delivery)):
         window = frames[bisect_left(frame_times, event['deliveredAt']):bisect_left(frame_times, stop)]
 
@@ -67,16 +93,36 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
             return (frame.get('navigationId', event['id']) == event['id'] and frame['filename'] == name
                     and frame['visibility'] == 'visible' and frame['focused'] and image_state(frame) == 'decoded')
 
-        pair = next(((a, b) for a, b in zip(window, window[1:])
-                     if b['at'] - a['at'] <= 100 and matches(a) and matches(b)), None)
+        pair = decoded_pair(window, matches)
         if pair:
             completed.append(dict(id=event['id'], filename=name,
                                   elapsedToSecondRafMs=pair[1]['at'] - event['deliveredAt'],
                                   secondRafAt=pair[1]['at'], previewVariantAtSecondRaf=image_variant(pair[1])))
         else:
             missing.append(dict(id=event['id'], filename=name))
-        if any(matches(f) and image_variant(f) == 'screen' for f in window):
+        screen = next((f for f in window if matches(f) and image_variant(f) == 'screen'), None)
+        if screen:
             screen_targets.append(event['id'])
+            screen_times.append(screen['at'])
+
+        transitions = focus_events[bisect_left(focus_times, event['deliveredAt']):bisect_left(focus_times, stop)]
+        for index, (blur, focus) in enumerate(zip(transitions, transitions[1:])):
+            if not (blur['type'] == 'blur' and blur['focused'] is False and
+                    focus['type'] == 'focus' and focus['focused'] is True and
+                    blur['at'] < focus['at']):
+                continue
+            focus_end = transitions[index + 2]['at'] if index + 2 < len(transitions) else stop
+            returned = [f for f in window if focus['at'] <= f['at'] < focus_end]
+            stale = next((f for f in returned if f['visibility'] == 'visible' and f['focused'] and
+                          (f['filename'] != name or f.get('navigationId') != event['id'])), None)
+            if stale:
+                stale_return_frames.append(dict(id=event['id'], expected=name, at=stale['at'],
+                                                filename=stale['filename']))
+                continue
+            recovery = decoded_pair(returned, matches)
+            if recovery:
+                round_trips.append(dict(id=event['id'], filename=name, blurAt=blur['at'], focusAt=focus['at'],
+                                        secondRafAt=recovery[1]['at']))
     end = frames[-1]['at'] if missing and frames else max((e['secondRafAt'] for e in completed), default=0)
     start = inputs[0]['deliveredAt'] if inputs else 0
     observed = [f for f in frames if start <= f['at'] <= end]
@@ -95,6 +141,15 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
     complete_inputs = bool(inputs) and len(accepted) == len(inputs) and all(
         accepted.get(e['id']) and e['visibility'] == 'visible' and e['focused'] and not e['repeat'] for e in inputs)
     failed = any(e.get('observerFailed') for e in events if e['type'] == 'domSample')
+    focus_end = max([end, *screen_times, *(trip['secondRafAt'] for trip in round_trips)])
+    focus_frames = [f for f in frames if start <= f['at'] <= focus_end]
+    focus_coverage = bool(round_trips and foreground_coverage(start, focus_end, focus_frames, round_trips))
+    focus_photos = len({trip['filename'] for trip in round_trips})
+    focus_complete = bool(complete_inputs and installed[0]['previewHandleMarksSupported'] and not failed
+                          and len(targets) == len({name for _, name in targets}) == expected_focus_photos
+                          and focus_photos >= required_focus_returns and focus_coverage
+                          and not missing and not stale_return_frames and len(screen_targets) == len(targets)
+                          and all(image_state(f) not in ('unknown', 'mismatch') for f in focus_frames))
     return dict(inputCount=len(inputs), inputIdRange=[start_id, end_id], firstPosition=first_position,
                 acceptedInputs=sum(accepted.values()),
                 inputDeliverySpanMs=inputs[-1]['deliveredAt'] - start if inputs else None,
@@ -117,9 +172,14 @@ def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id
                 allTargetsObservedScreenDecoded=bool(targets) and len(screen_targets) == len(targets),
                 completeNativeDomObservation=bool(complete_inputs and installed[0]['previewHandleMarksSupported']
                     and foreground and coverage and not missing and not unknown and not mismatches and not failed),
+                focusVariant=dict(expectedDistinctPhotos=expected_focus_photos, requiredReturns=required_focus_returns,
+                                  distinctPhotosWithObservedReturn=focus_photos, roundTrips=round_trips,
+                                  staleReturnFrames=stale_return_frames, foregroundCoverageComplete=focus_coverage,
+                                  completeDomObservation=focus_complete),
                 limits=['Every sampled image source is correlated with its actual preview response, variant and owned catalog ID.',
                         'A decoded small preview is not a full screen-resolution preview; quality coverage is reported separately.',
                         'Each target can only use frames before the next navigation input, even when the same photo is revisited.',
+                        'The focus variant uses WebView blur/focus and requires matching decoded frames after each counted return; OS foreground must be independently verified.',
                         'RAF/source/decode observations do not prove physical pixel presentation or exclude flashes between callbacks.',
                         'Decoded timing starts at DOM key delivery; queued navigation and preview loading are included.',
                         '100ms frame-gap criterion qualifies observation coverage; it is not a product latency threshold.'])

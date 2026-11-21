@@ -108,5 +108,74 @@ class NavigationEvidence(unittest.TestCase):
         self.assertFalse(result['completeNativeDomObservation'])
 
 
+class FocusVariantEvidence(unittest.TestCase):
+    def setUp(self):
+        self.names = ['a.jpg', 'b.jpg', 'c.jpg']
+        self.manifest = [dict(id=name, relativePath=name) for name in self.names]
+        self.events = [dict(type='navigationProbeInstalled', previewHandleMarksSupported=True)]
+        for ident, start, name in [(1, 0, 'b.jpg'), (2, 450, 'c.jpg')]:
+            self.events.extend([
+                dict(type='previewResolved', variant='screen', assetId=name, ready=True,
+                     resourceUrl=f'media://localhost/{name}'),
+                dict(type='navigationDelivered', id=ident, key='arrowright', deliveredAt=start,
+                     repeat=False, visibility='visible', focused=True),
+                dict(type='navigationHandled', id=ident, accepted=True),
+                dict(type='blur', at=start + 35, focused=False),
+                dict(type='focus', at=start + 360, focused=True),
+                *(dict(type='viewerFrame', navigationId=ident, at=start + at,
+                       filename=name, focused=at != 120, visibility='hidden' if at == 120 else 'visible',
+                       image=dict(src=f'media://localhost/{name}', alt=name, complete=True, width=100, height=100))
+                  for at in (10, 27, 120, 376, 392, 440)),
+            ])
+
+    def result(self):
+        return analysis.analyze_events(self.events, self.manifest, self.names,
+                                       required_focus_returns=2, expected_focus_photos=2)
+
+    def test_observed_returns_allow_only_the_bracketed_background_gaps(self):
+        result = self.result()
+        focus = result['focusVariant']
+        self.assertFalse(result['completeNativeDomObservation'])
+        self.assertTrue(focus['completeDomObservation'])
+        self.assertEqual([trip['secondRafAt'] for trip in focus['roundTrips']], [392, 842])
+        self.events = [e for e in self.events if e['type'] != 'blur' or e['at'] != 485]
+        self.assertFalse(self.result()['focusVariant']['completeDomObservation'])
+
+    def test_unobserved_foreground_gap_invalidates_the_focus_variant(self):
+        for event in self.events[8:]:
+            if event.get('at', 0) >= 450:
+                event['at'] += 150
+            if event.get('deliveredAt', 0) >= 450:
+                event['deliveredAt'] += 150
+        focus = self.result()['focusVariant']
+        self.assertEqual(focus['distinctPhotosWithObservedReturn'], 2)
+        self.assertFalse(focus['foregroundCoverageComplete'])
+        self.assertFalse(focus['completeDomObservation'])
+
+    def test_previous_photo_on_return_is_not_a_valid_recovery(self):
+        frame = next(e for e in self.events if e['type'] == 'viewerFrame' and e['at'] == 826)
+        frame.update(filename='b.jpg')
+        frame['image'].update(src='media://localhost/b.jpg', alt='b.jpg')
+        self.assertFalse(self.result()['focusVariant']['completeDomObservation'])
+
+    def test_extra_stale_return_invalidates_an_otherwise_complete_run(self):
+        stale = copy.deepcopy(self.events[-1])
+        stale.update(at=935, filename='b.jpg')
+        stale['image'].update(src='media://localhost/b.jpg', alt='b.jpg')
+        self.events.extend([dict(type='blur', at=900, focused=False),
+                            dict(type='focus', at=930, focused=True), stale])
+        focus = self.result()['focusVariant']
+        self.assertEqual(focus['distinctPhotosWithObservedReturn'], 2)
+        self.assertEqual(focus['staleReturnFrames'], [dict(id=2, expected='c.jpg', at=935, filename='b.jpg')])
+        self.assertFalse(focus['completeDomObservation'])
+
+    def test_small_only_target_or_short_run_cannot_qualify(self):
+        self.assertFalse(analysis.analyze_events(self.events, self.manifest, self.names)
+                         ['focusVariant']['completeDomObservation'])
+        preview = next(e for e in self.events if e.get('assetId') == 'c.jpg')
+        preview['variant'] = 'small'
+        self.assertFalse(self.result()['focusVariant']['completeDomObservation'])
+
+
 if __name__ == '__main__':
     unittest.main()
