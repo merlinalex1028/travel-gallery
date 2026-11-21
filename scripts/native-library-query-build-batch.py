@@ -25,13 +25,19 @@ EXCLUDED = MATCH[0]
 TIME_SAMPLE = OUTSIDE[0]
 ORIGINAL_LOCAL = '2024-04-10 08:00:00'
 CORRECTED_LOCAL = '2025-05-11 09:30:00'
+KNOWN_ZONE_SAMPLE = OUTSIDE[1]
+KNOWN_ZONE_DATE = '2024-04-11'
 STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
 
 
 def write_sources(source):
     for index, name in enumerate(MATCH + OUTSIDE):
         capture = ORIGINAL_LOCAL.replace('-', ':') if name == TIME_SAMPLE else None
-        (source / name).write_bytes(tiny_tiff(index, capture))
+        offset = None
+        if name == KNOWN_ZONE_SAMPLE:
+            capture = f"{KNOWN_ZONE_DATE.replace('-', ':')} 08:00:00"
+            offset = '+05:45'
+        (source / name).write_bytes(tiny_tiff(index, capture, offset))
 
 
 def read_catalog(db):
@@ -89,7 +95,12 @@ def verify(step, state, source, observed, previous):
         assert previous and state['changes'] == previous['changes'] and state['changed_ids'] == previous['changed_ids']
         saved = step == 'time-saved'
         expected = (CORRECTED_LOCAL, None, None, 'manual') if saved else (ORIGINAL_LOCAL, None, None, 'exif')
-        assert observed == dict(filename=TIME_SAMPLE, displayedLocal=expected[0])
+        expected_observation = dict(filename=TIME_SAMPLE, displayedLocal=expected[0])
+        if saved:
+            expected_observation.update(knownZoneDate=KNOWN_ZONE_DATE, knownZoneLabel='时区已知')
+            known = next(row[1:] for row in state['times'] if row[0] == KNOWN_ZONE_SAMPLE)
+            assert known[0] == f'{KNOWN_ZONE_DATE} 08:00:00' and known[1] is not None and known[2:] == (345, 'exif')
+        assert observed == expected_observation
         assert state['corrections'] == [(ids[TIME_SAMPLE], ORIGINAL_LOCAL, None, None, 'exif',
                                         CORRECTED_LOCAL if saved else None, None, None, int(saved), 1 if saved else 2)]
         assert state['times'] == [(name, *(expected if name == TIME_SAMPLE else fields))

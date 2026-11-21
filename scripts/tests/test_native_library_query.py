@@ -26,6 +26,9 @@ class LibraryQueryEvidence(unittest.TestCase):
             VALUES(?,'source',?,?,'tiff','image',137,1,1)''', [(name, name, name) for name in self.names])
         self.db.execute("UPDATE media_assets SET capture_local=?,capture_time_source='exif' WHERE id=?",
                         (batch.ORIGINAL_LOCAL, batch.TIME_SAMPLE))
+        self.db.execute('''UPDATE media_assets SET capture_local=?,capture_utc_ms=1712801700000,
+            capture_tz_min=345,capture_time_source='exif' WHERE id=?''',
+                        (f'{batch.KNOWN_ZONE_DATE} 08:00:00', batch.KNOWN_ZONE_SAMPLE))
         self.db.execute("INSERT INTO jobs(id,type,status,progress_done,progress_total,created_at,updated_at) VALUES('scan','SCAN','completed',130,130,1,1)")
         filter_json, sort_json = '{"keyword":"match-"}', '{"field":"filename","direction":"asc"}'
         self.db.execute("INSERT INTO selection_snapshots VALUES('frozen',?,?,'narrow',125,1,1000)", (filter_json, sort_json))
@@ -60,9 +63,12 @@ class LibraryQueryEvidence(unittest.TestCase):
                         (batch.TIME_SAMPLE, batch.ORIGINAL_LOCAL, batch.CORRECTED_LOCAL))
         self.db.execute("UPDATE media_assets SET capture_local=?,capture_time_source='manual' WHERE id=?",
                         (batch.CORRECTED_LOCAL, batch.TIME_SAMPLE))
-        observed = dict(filename=batch.TIME_SAMPLE, displayedLocal=batch.CORRECTED_LOCAL)
+        observed = dict(filename=batch.TIME_SAMPLE, displayedLocal=batch.CORRECTED_LOCAL,
+                        knownZoneDate=batch.KNOWN_ZONE_DATE, knownZoneLabel='时区已知')
         saved = batch.read_catalog(self.db)
         batch.verify('time-saved', saved, self.source, observed, undone)
+        with self.assertRaises(AssertionError):
+            batch.verify('time-saved', saved, self.source, dict(observed, knownZoneLabel='媒体原始时间'), undone)
         self.db.execute("UPDATE media_assets SET capture_utc_ms=1 WHERE id=?", (batch.TIME_SAMPLE,))
         with self.assertRaises(AssertionError):
             batch.verify('time-saved', batch.read_catalog(self.db), self.source, observed, undone)
@@ -70,8 +76,8 @@ class LibraryQueryEvidence(unittest.TestCase):
         self.db.execute('UPDATE capture_time_corrections SET corrected_local=NULL,is_corrected=0,revision=2')
         self.db.execute("UPDATE media_assets SET capture_local=?,capture_utc_ms=NULL,capture_time_source='exif' WHERE id=?",
                         (batch.ORIGINAL_LOCAL, batch.TIME_SAMPLE))
-        observed['displayedLocal'] = batch.ORIGINAL_LOCAL
-        batch.verify('time-restored', batch.read_catalog(self.db), self.source, observed, saved)
+        restored = dict(filename=batch.TIME_SAMPLE, displayedLocal=batch.ORIGINAL_LOCAL)
+        batch.verify('time-restored', batch.read_catalog(self.db), self.source, restored, saved)
 
     def test_duplicated_tail_does_not_pass_even_with_the_right_count(self):
         wrong = dict(self.wide, order=self.wide['order'][:-1] + [self.wide['order'][-2]])
