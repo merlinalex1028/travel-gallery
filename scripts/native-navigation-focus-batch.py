@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import plistlib
 import signal
 import sqlite3
 import struct
@@ -131,26 +132,65 @@ def focus_preflight():
     b.STATE.update(actualOSFocusRoundTrip=True, qaQuitNormally=True)
 
 
-def observe_focus(asn):
-    result = dict(samples=0, transitions=[], maximumSampleGapMs=0, errors=[])
+def observe_focus(asn, pid, identifier):
+    result = dict(pid=pid, identifier=identifier, samples=0, transitions=[], maximumSampleGapMs=0, errors=[])
     b.STATE['osFocusObservation'] = result
-    previous_role, previous_time = None, None
+    previous_role, previous_time, previous_started = None, None, None
     while not focus_stop.is_set():
         try:
+            started = time.monotonic()
             front = subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', 'front'], text=True, timeout=3).strip()
             assert front.startswith('ASN:') and len(front) < 80
+            wall_ms = time.time_ns() / 1_000_000
             now = time.monotonic()
             role = 'qa' if front == asn else 'other'
+            offset = wall_ms - now * 1000
+            if previous_time is None:
+                result.update(firstSampleStartedMonotonic=started, unixOffsetMs=offset, maximumOffsetDriftMs=0)
+            result['lastSampleFinishedMonotonic'] = now
+            result['maximumOffsetDriftMs'] = max(result['maximumOffsetDriftMs'], abs(offset - result['unixOffsetMs']))
             result['samples'] += 1
             if previous_time is not None:
                 result['maximumSampleGapMs'] = max(result['maximumSampleGapMs'], (now - previous_time) * 1000)
             if role != previous_role:
-                result['transitions'].append(dict(atMonotonic=now, role=role))
-            previous_time, previous_role = now, role
-        except BaseException as error:
+                result['transitions'].append(dict(atMonotonic=now, role=role, earliestMonotonic=previous_started))
+            previous_time, previous_role, previous_started = now, role, started
+        except Exception as error:
             result['errors'].append(str(error)[:200])
             return
         focus_stop.wait(.08)
+
+
+def sample_benchmark(app, seconds):
+    """Watch a live isolated benchmark without launching it or touching its catalog."""
+    identifier = 'com.travelgallery.benchmark'
+    app = app.resolve(strict=True)
+    with (app / 'Contents/Info.plist').open('rb') as info:
+        plist = plistlib.load(info)
+    if (plist.get('CFBundleIdentifier'), plist.get('CFBundleExecutable')) != (identifier, 'travel-gallery'):
+        raise ValueError('Expected the independently identified Travel Gallery benchmark app')
+    b.APP_PATH = app
+    database = Path.home() / 'Library/Application Support' / identifier / 'catalog.sqlite'
+    pid = picker.verified_process(database)
+    asn = subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', 'find', f'pid={pid}'], text=True, timeout=5).strip()
+    if not asn.startswith('ASN:') or len(asn) >= 80:
+        raise RuntimeError('No Launch Services identity for the verified benchmark PID')
+    timer = threading.Timer(seconds, focus_stop.set)
+    timer.start()
+    try:
+        observe_focus(asn, pid, identifier)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        timer.cancel()
+    result = b.STATE['osFocusObservation']
+    try:
+        if picker.verified_process(database) != pid:
+            raise RuntimeError('Benchmark process changed during sampling')
+    except (RuntimeError, subprocess.CalledProcessError) as error:
+        result['errors'].append(str(error))
+    print(json.dumps({'osFocusObservation': result}))
+    return 1 if result['errors'] else 0
 
 
 def snapshot(label):
@@ -173,7 +213,7 @@ def snapshot(label):
             b.STATE['verifiedPid'] = pid
             asn = subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', 'find', f'pid={pid}'], text=True).strip()
             assert asn.startswith('ASN:') and len(asn) < 80
-            focus_thread = threading.Thread(target=observe_focus, args=(asn,), daemon=True)
+            focus_thread = threading.Thread(target=observe_focus, args=(asn, pid, b.IDENTIFIER), daemon=True)
             focus_thread.start()
         else:
             assert pid == b.STATE['verifiedPid']
@@ -300,7 +340,16 @@ if __name__ == '__main__':
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--focus-preflight', action='store_true', help='Verify OS focus in an empty isolated catalog')
     mode.add_argument('--screen-smoke', action='store_true', help='Verify three actual screen caches and one focus return')
+    mode.add_argument('--sample-benchmark', type=Path, metavar='APP', help='Sample the current isolated benchmark process')
+    parser.add_argument('--seconds', type=int, default=60, help='Maximum duration for --sample-benchmark (1 to 600)')
     args = parser.parse_args()
+    if args.sample_benchmark:
+        if not 1 <= args.seconds <= 600:
+            parser.error('--seconds must be between 1 and 600')
+        try:
+            raise SystemExit(sample_benchmark(args.sample_benchmark, args.seconds))
+        except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+            parser.error(str(error))
     if args.focus_preflight:
         b.APPROVAL = reuse.ROOT / 'docs/native-navigation-focus-preflight-budget.json'
         b.RECEIPT = reuse.ROOT / 'docs/native-navigation-focus-preflight.json'

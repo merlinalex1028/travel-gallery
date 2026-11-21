@@ -1,6 +1,7 @@
 """Correlate native viewer RAF samples with actual preview responses and owned IDs."""
 import argparse
 from bisect import bisect_left
+from datetime import datetime
 import hashlib
 import json
 import math
@@ -27,9 +28,65 @@ def foreground_coverage(start, end, frames, round_trips):
                for f in frames)
 
 
+def corroborate_os_focus(dom, observation, native_start, events):
+    """Pair ordered DOM round trips with distinct transitions in the same OS process."""
+    def incomplete(reason, matches=()):
+        return dict(complete=False, reason=reason, matches=list(matches))
+
+    process = (native_start['pid'], native_start['identifier'])
+    if process != (observation.get('pid'), observation.get('identifier')):
+        return incomplete('OS observation belongs to a different process')
+    installed = [event for event in events if event['type'] == 'probeInstalled']
+    if len(installed) != 1 or 'timeOrigin' not in installed[0]:
+        return incomplete('The WebView clock origin is missing or ambiguous')
+    if (observation.get('errors') or observation.get('samples', 0) < 2
+            or observation.get('maximumOffsetDriftMs', math.inf) > 50
+            or observation.get('maximumSampleGapMs', math.inf) > 350):
+        return incomplete('OS focus sampling or clock coverage is incomplete')
+    origin = installed[0]['timeOrigin']
+    offset = observation['unixOffsetMs']
+    start = observation['firstSampleStartedMonotonic'] * 1000 + offset
+    end = observation['lastSampleFinishedMonotonic'] * 1000 + offset
+    native_epoch = datetime.fromisoformat(native_start['atUtc']).timestamp() * 1000
+    native_origin = native_epoch - native_start['nativeElapsedMs']
+    clock_samples = [event for event in events if event['type'] == 'clock' and event['runId'] == native_start['runId']
+                     and 0 <= event['received'] - event['sent'] <= 200]
+
+    def clock_agrees(event):
+        at = native_origin + event['nativeReceivedMs']
+        return origin + event['sent'] - 100 <= at <= origin + event['received'] + 100
+
+    if (not clock_samples or not all(map(clock_agrees, clock_samples))
+            or start < native_epoch - 100 or start >= end):
+        return incomplete('OS and WebView observations do not share a valid clock window')
+
+    transitions = observation['transitions']
+    pairs = [(away, back) for before, away, back in zip(transitions, transitions[1:], transitions[2:])
+             if (before['role'], away['role'], back['role']) == ('qa', 'other', 'qa')]
+
+    def compatible(dom_time, transition):
+        earliest = transition['earliestMonotonic'] * 1000 + offset
+        latest = transition['atMonotonic'] * 1000 + offset
+        return start <= earliest <= latest <= end and latest - earliest <= 350 and (
+            earliest - 100 <= dom_time <= latest + 100)
+
+    matches, next_pair = [], 0
+    for trip in dom['roundTrips']:
+        blur, focus = origin + trip['blurAt'], origin + trip['focusAt']
+        matching = [i for i, (away, back) in enumerate(pairs) if i >= next_pair
+                    and start <= blur < focus <= end and compatible(blur, away) and compatible(focus, back)]
+        if len(matching) != 1:
+            return incomplete(f'No unique OS focus return for navigation {trip["id"]}', matches)
+        next_pair = matching[0] + 1
+        matches.append(dict(id=trip['id'], filename=trip['filename']))
+    if not matches or not dom['completeDomObservation']:
+        return incomplete('WebView focus and decoded frame evidence is incomplete', matches)
+    return dict(complete=True, reason=None, matches=matches)
+
+
 def analyze_events(events, manifest, order, first_position=1, start_id=1, end_id=1000000, *,
                    required_focus_returns=20, expected_focus_photos=100):
-    assert 2 <= required_focus_returns <= expected_focus_photos
+    assert 1 <= required_focus_returns <= expected_focus_photos
     names = {item['id']: Path(item['relativePath']).name for item in manifest}
     assert len(set(names.values())) == len(names)
     assert set(order) == set(names.values()) and len(order) == len(names)
@@ -194,6 +251,9 @@ if __name__ == '__main__':
     parser.add_argument('--first-position', type=int, default=1)
     parser.add_argument('--start-id', type=int, default=1)
     parser.add_argument('--end-id', type=int, default=1000000)
+    parser.add_argument('--required-focus-returns', type=int, default=20)
+    parser.add_argument('--expected-focus-photos', type=int, default=100)
+    parser.add_argument('--os-focus-receipt', type=Path, help='Corroborate WebView focus with the same process OS trace')
     args = parser.parse_args()
     raw = args.log.read_bytes()
     rows = [json.loads(line) for line in raw.splitlines()]
@@ -202,7 +262,13 @@ if __name__ == '__main__':
     events = [r['event'] for r in rows if r['type'] == 'frontendBatchEvent']
     result = analyze_events(events, json.loads(args.manifest.read_text()),
                             [e['filename'] for e in json.loads(args.order.read_text())],
-                            args.first_position, args.start_id, args.end_id)
+                            args.first_position, args.start_id, args.end_id,
+                            required_focus_returns=args.required_focus_returns, expected_focus_photos=args.expected_focus_photos)
+    if args.os_focus_receipt:
+        os_raw = args.os_focus_receipt.read_bytes()
+        result['focusVariant']['osCorroboration'] = corroborate_os_focus(
+            result['focusVariant'], json.loads(os_raw)['osFocusObservation'], starts[0], events)
+        result['focusVariant']['osReceiptSha256'] = hashlib.sha256(os_raw).hexdigest()
     result.update(rawFile=str(args.log.resolve()), rawSha256=hashlib.sha256(raw).hexdigest(), run=starts[0])
     args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps({k: v for k, v in result.items() if k not in ['targets', 'mismatchedImageFrames', 'limits']}, ensure_ascii=False))

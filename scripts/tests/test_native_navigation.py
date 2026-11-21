@@ -177,5 +177,58 @@ class FocusVariantEvidence(unittest.TestCase):
         self.assertFalse(self.result()['focusVariant']['completeDomObservation'])
 
 
+class OSFocusEvidence(unittest.TestCase):
+    def setUp(self):
+        self.native = dict(pid=4321, identifier='com.travelgallery.benchmark', runId='owned-test',
+                           atUtc='2023-11-14T22:13:20+00:00', nativeElapsedMs=50)
+        epoch = 1_700_000_000_000
+        self.events = [dict(type='probeInstalled', timeOrigin=epoch + 25),
+                       dict(type='clock', runId='owned-test', sent=50, received=90, nativeReceivedMs=140)]
+        self.dom = dict(completeDomObservation=True, roundTrips=[
+            dict(id=1, filename='a.jpg', blurAt=100, focusAt=500),
+            dict(id=2, filename='b.jpg', blurAt=800, focusAt=1200),
+        ])
+        self.os = dict(pid=4321, identifier='com.travelgallery.benchmark', samples=20, errors=[],
+                       unixOffsetMs=epoch - 10000, firstSampleStartedMonotonic=10,
+                       lastSampleFinishedMonotonic=11.7, maximumOffsetDriftMs=1, maximumSampleGapMs=100,
+                       transitions=[dict(role='qa', atMonotonic=10.05),
+                                    *[dict(role=role, earliestMonotonic=at - .08, atMonotonic=at)
+                                      for role, at in [('other', 10.16), ('qa', 10.56),
+                                                       ('other', 10.86), ('qa', 11.26)]]])
+
+    def result(self):
+        return analysis.corroborate_os_focus(self.dom, self.os, self.native, self.events)
+
+    def test_matches_same_process_clock_and_each_ordered_return(self):
+        self.assertEqual(self.result(), dict(complete=True, reason=None, matches=[
+            dict(id=1, filename='a.jpg'), dict(id=2, filename='b.jpg')]))
+
+    def test_same_count_outside_the_dom_intervals_does_not_count(self):
+        for item in self.os['transitions'][1:]:
+            item['atMonotonic'] += 4
+            item['earliestMonotonic'] += 4
+        self.os['lastSampleFinishedMonotonic'] += 4
+        self.assertFalse(self.result()['complete'])
+
+    def test_a_native_return_cannot_cover_two_photos(self):
+        self.dom['roundTrips'][1].update(blurAt=105, focusAt=505)
+        result = self.result()
+        self.assertFalse(result['complete'])
+        self.assertEqual(result['matches'], [dict(id=1, filename='a.jpg')])
+
+    def test_rejects_foreign_pid_clock_drift_and_sampling_gap(self):
+        for override in [dict(pid=1234), dict(maximumOffsetDriftMs=51), dict(maximumSampleGapMs=351)]:
+            with self.subTest(override=override):
+                self.assertFalse(analysis.corroborate_os_focus(
+                    self.dom, dict(self.os, **override), self.native, self.events)['complete'])
+
+    def test_rejects_an_uncorroborated_webview_clock_or_frame_trace(self):
+        self.events[1]['nativeReceivedMs'] += 1000
+        self.assertFalse(self.result()['complete'])
+        self.events[1]['nativeReceivedMs'] -= 1000
+        self.dom['completeDomObservation'] = False
+        self.assertFalse(self.result()['complete'])
+
+
 if __name__ == '__main__':
     unittest.main()
