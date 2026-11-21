@@ -22,12 +22,16 @@ b.RECEIPT = batch.ROOT / 'docs/native-library-query-latest.json'
 MATCH = tuple(f'match-{i:03}.tiff' for i in range(125))
 OUTSIDE = tuple(f'outside-{i:03}.tiff' for i in range(5))
 EXCLUDED = MATCH[0]
-STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'finish')
+TIME_SAMPLE = OUTSIDE[0]
+ORIGINAL_LOCAL = '2024-04-10 08:00:00'
+CORRECTED_LOCAL = '2025-05-11 09:30:00'
+STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
 
 
 def write_sources(source):
     for index, name in enumerate(MATCH + OUTSIDE):
-        (source / name).write_bytes(tiny_tiff(index))
+        capture = ORIGINAL_LOCAL.replace('-', ':') if name == TIME_SAMPLE else None
+        (source / name).write_bytes(tiny_tiff(index, capture))
 
 
 def read_catalog(db):
@@ -50,13 +54,18 @@ def read_catalog(db):
             FROM query_contexts""").fetchall(),
         changes=db.execute('SELECT id,action,payload_json,undone_at FROM change_batches').fetchall(),
         changed_ids=db.execute('SELECT batch_id,asset_id FROM change_batch_items ORDER BY 1,2').fetchall(),
+        times=db.execute('''SELECT filename,capture_local,capture_utc_ms,capture_tz_min,capture_time_source
+            FROM media_assets ORDER BY filename COLLATE NOCASE,id''').fetchall(),
+        corrections=db.execute('''SELECT asset_id,original_local,original_utc_ms,original_tz_min,original_source,
+            corrected_local,corrected_utc_ms,corrected_tz_min,is_corrected,revision
+            FROM capture_time_corrections''').fetchall(),
     )
 
 
 def verify(step, state, source, observed, previous):
     if step == 'empty':
         assert observed == {} and all(not state[key] for key in
-            ('roots', 'assets', 'scans', 'snapshots', 'members', 'changes', 'changed_ids'))
+            ('roots', 'assets', 'scans', 'snapshots', 'members', 'changes', 'changed_ids', 'times', 'corrections'))
         return
 
     [(source_id, root, online, enabled)] = state['roots']
@@ -66,14 +75,28 @@ def verify(step, state, source, observed, previous):
     ids = {row[0]: row[1] for row in assets}
     assert all((sid, path, availability) == (source_id, name, 'available')
                for name, _, sid, path, availability, *_ in assets)
-    assert state['scans'] == [('completed', len(assets), len(assets), 0)]
+    assert state['scans'] and set(state['scans']) == {('completed', len(assets), len(assets), 0)}
     [(snapshot_id, keyword, field, direction, count)] = state['snapshots']
     assert (keyword, field, direction, count) == ('match-', 'filename', 'asc', len(MATCH))
     assert set(state['members']) == {(snapshot_id, ids[name]) for name in MATCH}
     if previous:
-        for key in ('roots', 'scans', 'snapshots', 'members'):
+        for key in ('roots', 'snapshots', 'members'):
             assert state[key] == previous[key], key
         assert [row[:5] for row in assets] == [row[:5] for row in previous['assets']]
+
+    time_steps = ('time-saved', 'time-restored')
+    if step in time_steps:
+        assert previous and state['changes'] == previous['changes'] and state['changed_ids'] == previous['changed_ids']
+        saved = step == 'time-saved'
+        expected = (CORRECTED_LOCAL, None, None, 'manual') if saved else (ORIGINAL_LOCAL, None, None, 'exif')
+        assert observed == dict(filename=TIME_SAMPLE, displayedLocal=expected[0])
+        assert state['corrections'] == [(ids[TIME_SAMPLE], ORIGINAL_LOCAL, None, None, 'exif',
+                                        CORRECTED_LOCAL if saved else None, None, None, int(saved), 1 if saved else 2)]
+        assert state['times'] == [(name, *(expected if name == TIME_SAMPLE else fields))
+                                  for name, *fields in previous['times']]
+    else:
+        assert not state['corrections']
+        assert next(row[1:] for row in state['times'] if row[0] == TIME_SAMPLE) == (ORIGINAL_LOCAL, None, None, 'exif')
 
     if step in ('frozen', 'changed'):
         order = [row[0] for row in assets if row[0].startswith('match-')] if step == 'frozen' else [
@@ -83,7 +106,7 @@ def verify(step, state, source, observed, previous):
         condition = ('match-', 'filename', 'asc') if step == 'frozen' else (None, 'filename', 'desc')
         assert condition in state['contexts']
         assert not state['changes'] and not state['changed_ids']
-    else:
+    elif step not in time_steps:
         assert observed == {}
         [(change_id, kind, raw, undone_at)] = state['changes']
         assert kind == 'review' and (undone_at is not None) == (step == 'undone')
@@ -94,7 +117,7 @@ def verify(step, state, source, observed, previous):
         assert set(state['changed_ids']) == {(change_id, ids[name]) for name in MATCH[1:]}
 
     for name, *_, pick, rating, favorite, note, revision in assets:
-        affected = name in MATCH[1:] and step in ('applied', 'undone')
+        affected = name in MATCH[1:] and step in ('applied', 'undone', *time_steps)
         expected_pick = 'keep' if affected and step == 'applied' else 'unreviewed'
         expected_revision = (1 if step == 'applied' else 2) if affected else 0
         assert (pick, rating, favorite, note, revision) == (expected_pick, 0, 0, '', expected_revision), name
