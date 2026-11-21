@@ -175,14 +175,15 @@ impl Catalog {
             "get_app_status" => Ok(
                 json!({"databaseReady":true,"catalogVersion":db::CATALOG_VERSION,"catalogEpoch":db::epoch(&c)?,"offlineMode":true,"databasePath":self.inner.db_path,"cachePath":self.inner.cache,"watcher":self.watch_status(),"power":{"onBattery":self.on_battery()}}),
             ),
-            "list_sources" => self.sources(&c),
+            "list_sources" => self.sources(&mut c),
             "add_source" => self.add_source(&mut c, &r),
             "rescan_source" => {
                 let sid = required(&r, "sourceId")?;
                 self.queue(&c, "SCAN", json!({"sourceId":sid}))
             }
             "set_source_enabled" => {
-                c.execute(
+                let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                tx.execute(
                     "UPDATE source_roots SET is_enabled=?,updated_at=? WHERE id=?",
                     params![
                         r["enabled"].as_bool().unwrap_or(true),
@@ -190,7 +191,8 @@ impl Catalog {
                         required(&r, "sourceId")?
                     ],
                 )?;
-                db::bump(&c)?;
+                db::bump(&tx)?;
+                tx.commit()?;
                 Ok(json!({"updated":true}))
             }
             "remove_source" => self.remove_source(&mut c, &r),
@@ -208,7 +210,7 @@ impl Catalog {
             "apply_tags_batch" => review::apply(&mut c, &r, true),
             "undo_review_batch" => review::undo(&mut c, &r),
             "list_tags" => self.tags(&c),
-            "upsert_tag" => self.upsert_tag(&c, &r),
+            "upsert_tag" => self.upsert_tag(&mut c, &r),
             "merge_tags" => self.merge_tags(&mut c, &r),
             "delete_tag" => self.delete_tag(&mut c, &r),
             "start_duplicate_scan" => {
@@ -381,7 +383,7 @@ impl Catalog {
             }
             "timeline_stats" | "map_assets" => self.aggregates(&c, name, &r),
             "map_trails" => crate::trails::query(&c, &r),
-            "get_media_links" | "link_media" | "unlink_media" => self.links(&c, name, &r),
+            "get_media_links" | "link_media" | "unlink_media" => self.links(&mut c, name, &r),
             _ => Err(AppError::new("INVALID_FILTER", "未知命令")),
         }
     }
@@ -401,7 +403,7 @@ impl Catalog {
         }
         Ok(())
     }
-    fn sources(&self, c: &Connection) -> Result<Value> {
+    fn sources(&self, c: &mut Connection) -> Result<Value> {
         let mut st=c.prepare("SELECT id,display_name,absolute_path,volume_id,is_enabled,is_online,last_scan_at,(SELECT count(*) FROM media_assets a WHERE a.source_id=s.id),(SELECT count(*) FROM media_assets a WHERE a.source_id=s.id AND a.file_state IN ('offline','missing')) FROM source_roots s ORDER BY created_at")?;
         let rows = st.query_map([], |r| {
             let path: String = r.get(2)?;
@@ -416,26 +418,35 @@ impl Catalog {
             }), r.get::<_, bool>(5)?))
         })?;
         let mut items = rows.collect::<std::result::Result<Vec<_>, _>>()?;
-        let mut changed = 0;
+        drop(st);
         for (s, was_online) in &mut items {
-            if s["isOnline"].as_bool() != Some(*was_online) {
-                changed += c.execute(
+            let offline = s["isOnline"] == false;
+            let available: bool = offline && c.query_row(
+                "SELECT EXISTS(SELECT 1 FROM media_assets WHERE source_id=? AND file_state='available')",
+                [s["id"].as_str()], |r| r.get(0),
+            )?;
+            if s["isOnline"].as_bool() == Some(*was_online) && !available {
+                continue;
+            }
+            // Unchanged polling stays read-only; a transition and its epoch commit together.
+            let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut changed = tx.execute(
                 "UPDATE source_roots SET is_online=? WHERE id=? AND is_online<>?",
                 params![
                     s["isOnline"].as_bool(),
                     s["id"].as_str(),
                     s["isOnline"].as_bool()
                 ],
-                )?;
-            }
-            if s["isOnline"] == false && c.query_row("SELECT EXISTS(SELECT 1 FROM media_assets WHERE source_id=? AND file_state='available')",[s["id"].as_str()],|r|r.get::<_,bool>(0))? {
-                let marked = c.execute("UPDATE media_assets SET file_state='offline' WHERE source_id=? AND file_state='available'",[s["id"].as_str()])?;
+            )?;
+            if offline {
+                let marked = tx.execute("UPDATE media_assets SET file_state='offline' WHERE source_id=? AND file_state='available'",[s["id"].as_str()])?;
                 s["offlineAssets"] = json!(s["offlineAssets"].as_i64().unwrap_or(0) + marked as i64);
                 changed += marked;
             }
-        }
-        if changed > 0 {
-            db::bump(c)?;
+            if changed > 0 {
+                db::bump(&tx)?;
+            }
+            tx.commit()?;
         }
         Ok(json!(items.into_iter().map(|(source,_)|source).collect::<Vec<_>>()))
     }
@@ -541,13 +552,14 @@ impl Catalog {
         let rows=s.query_map([],|r|Ok(json!({"id":r.get::<_,String>(0)?,"name":r.get::<_,String>(1)?,"color":r.get::<_,Option<String>>(2)?,"count":r.get::<_,i64>(3)?})))?;
         Ok(json!(rows.collect::<std::result::Result<Vec<_>, _>>()?))
     }
-    fn upsert_tag(&self, c: &Connection, r: &Value) -> Result<Value> {
+    fn upsert_tag(&self, c: &mut Connection, r: &Value) -> Result<Value> {
         let name = required(r, "name")?.trim();
         if name.is_empty() || name.len() > 200 {
             return Err(AppError::new("INVALID_FILTER", "标签名须为 1–200 个字节"));
         }
         let tid = r["id"].as_str().map(String::from).unwrap_or_else(id);
-        let exists: Option<String> = c
+        let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let exists: Option<String> = tx
             .query_row(
                 "SELECT id FROM tags WHERE name=? COLLATE NOCASE",
                 [name],
@@ -557,8 +569,9 @@ impl Catalog {
         if exists.is_some_and(|i| i != tid) {
             return Err(AppError::new("DB_CONFLICT", "已存在同名标签"));
         }
-        c.execute("INSERT INTO tags VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color",params![tid,name,r["color"].as_str(),now()])?;
-        db::bump(c)?;
+        tx.execute("INSERT INTO tags VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,color=excluded.color",params![tid,name,r["color"].as_str(),now()])?;
+        db::bump(&tx)?;
+        tx.commit()?;
         Ok(json!({"tagId":tid}))
     }
     fn merge_tags(&self, c: &mut Connection, r: &Value) -> Result<Value> {
@@ -604,10 +617,13 @@ impl Catalog {
                 return Ok(json!({"tripId":tid}));
             }
             "delete_trip" => {
-                c.execute(
+                let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                tx.execute(
                     "DELETE FROM collections WHERE id=?",
                     [required(r, "tripId")?],
                 )?;
+                db::bump(&tx)?;
+                tx.commit()?;
             }
             "set_trip_cover" => {
                 let tid = required(r, "tripId")?;
@@ -684,15 +700,16 @@ impl Catalog {
             Ok(json!(rows.collect::<std::result::Result<Vec<_>, _>>()?))
         }
     }
-    fn links(&self, c: &Connection, name: &str, r: &Value) -> Result<Value> {
+    fn links(&self, c: &mut Connection, name: &str, r: &Value) -> Result<Value> {
         let aid = required(r, "assetId")?;
         if name == "get_media_links" {
             let mut st=c.prepare("SELECT id,primary_asset_id,secondary_asset_id,link_type,match_method,confidence,confirmed FROM linked_media WHERE (primary_asset_id=? OR secondary_asset_id=?) AND match_method<>'manual_exclusion'")?;
             let rows=st.query_map(params![aid,aid],|r|Ok(json!({"id":r.get::<_,String>(0)?,"primaryAssetId":r.get::<_,String>(1)?,"secondaryAssetId":r.get::<_,String>(2)?,"linkType":r.get::<_,String>(3)?,"matchMethod":r.get::<_,String>(4)?,"confidence":r.get::<_,Option<f64>>(5)?,"confirmed":r.get::<_,bool>(6)?})))?;
             return Ok(json!(rows.collect::<std::result::Result<Vec<_>, _>>()?));
         }
+        let tx = c.transaction_with_behavior(TransactionBehavior::Immediate)?;
         if name == "unlink_media" {
-            c.execute(
+            tx.execute(
                 "UPDATE linked_media SET confirmed=0,confidence=NULL,match_method='manual_exclusion' WHERE id=?",
                 [required(r, "linkId")?],
             )?;
@@ -702,8 +719,8 @@ impl Catalog {
             if !["live_photo", "raw_jpeg"].contains(&kind) {
                 return Err(AppError::new("INVALID_SELECTION", "配对类型无效"));
             }
-            let primary = query::asset(c, aid)?;
-            let secondary = query::asset(c, second)?;
+            let primary = query::asset(&tx, aid)?;
+            let secondary = query::asset(&tx, second)?;
             let valid = aid != second
                 && match kind {
                     "live_photo" => {
@@ -725,9 +742,10 @@ impl Catalog {
                     "配套素材的格式或主次顺序无效",
                 ));
             }
-            c.execute("INSERT INTO linked_media VALUES(?,?,?,?,?,1,1) ON CONFLICT(primary_asset_id,secondary_asset_id,link_type) DO UPDATE SET confirmed=1,match_method='manual'",params![id(),aid,second,kind,"manual"])?;
+            tx.execute("INSERT INTO linked_media VALUES(?,?,?,?,?,1,1) ON CONFLICT(primary_asset_id,secondary_asset_id,link_type) DO UPDATE SET confirmed=1,match_method='manual'",params![id(),aid,second,kind,"manual"])?;
         }
-        db::bump(c)?;
+        db::bump(&tx)?;
+        tx.commit()?;
         Ok(json!({"updated":true}))
     }
 }

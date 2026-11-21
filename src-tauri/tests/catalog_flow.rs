@@ -932,6 +932,210 @@ fn select_all_rejects_a_membership_change_even_when_the_result_count_is_unchange
 }
 
 #[test]
+fn catalog_mutations_roll_back_when_their_epoch_cannot_be_committed() {
+    let f = Fixture::new();
+    f.picture("first.jpg", 1);
+    f.picture("second.jpg", 2);
+    let source = f.add();
+    let assets = f.assets();
+    let first = assets[0]["id"].as_str().unwrap();
+    let second = assets[1]["id"].as_str().unwrap();
+    let c = f.cat.connection().unwrap();
+    // Exercise link validation without requiring a RAW decoder.
+    c.execute("UPDATE media_assets SET extension='dng' WHERE id=?", [first]).unwrap();
+    let tag = f.cat.call("upsert_tag", json!({"name":"original"})).unwrap()["tagId"].clone();
+    let trip = f.cat.call("save_trip", json!({"name":"trip"})).unwrap()["tripId"].clone();
+    f.cat.call("add_to_trip", json!({"tripId":trip,"target":{"kind":"explicit","assetIds":[first]}})).unwrap();
+    let epoch = db::epoch(&c).unwrap();
+    c.execute_batch("CREATE TRIGGER reject_epoch BEFORE UPDATE OF value ON app_meta
+        WHEN OLD.key='epoch' BEGIN SELECT RAISE(ABORT,'epoch fault'); END;").unwrap();
+    for (command, request) in [
+        ("set_source_enabled", json!({"sourceId":source,"enabled":false})),
+        ("upsert_tag", json!({"id":tag,"name":"renamed"})),
+        ("delete_trip", json!({"tripId":trip})),
+        ("link_media", json!({"assetId":first,"secondaryAssetId":second,"linkType":"raw_jpeg"})),
+    ] {
+        let error = f.cat.call(command, request).unwrap_err();
+        assert!(error.details["reason"].as_str().unwrap().contains("epoch fault"), "{command}: {error:?}");
+        assert_eq!(db::epoch(&c).unwrap(), epoch);
+    }
+    assert!(c.query_row("SELECT is_enabled FROM source_roots WHERE id=?", [&source], |r| r.get::<_, bool>(0)).unwrap());
+    assert_eq!(c.query_row("SELECT name FROM tags WHERE id=?", [tag.as_str().unwrap()], |r| r.get::<_, String>(0)).unwrap(), "original");
+    assert_eq!(c.query_row("SELECT count(*) FROM collection_assets WHERE collection_id=?", [trip.as_str().unwrap()], |r| r.get::<_, i64>(0)).unwrap(), 1);
+    assert_eq!(c.query_row("SELECT count(*) FROM linked_media", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    c.execute_batch("DROP TRIGGER reject_epoch").unwrap();
+    f.cat.call("link_media", json!({"assetId":first,"secondaryAssetId":second,"linkType":"raw_jpeg"})).unwrap();
+    let links = f.cat.call("get_media_links", json!({"assetId":first})).unwrap();
+    let epoch = db::epoch(&c).unwrap();
+    c.execute_batch("CREATE TRIGGER reject_epoch BEFORE UPDATE OF value ON app_meta
+        WHEN OLD.key='epoch' BEGIN SELECT RAISE(ABORT,'epoch fault'); END;").unwrap();
+    assert!(f.cat.call("unlink_media", json!({"assetId":first,"linkId":links[0]["id"]})).unwrap_err().details["reason"].as_str().unwrap().contains("epoch fault"));
+    assert_eq!(f.cat.call("get_media_links", json!({"assetId":first})).unwrap(), links);
+    assert_eq!(db::epoch(&c).unwrap(), epoch);
+    c.execute_batch("DROP TRIGGER reject_epoch").unwrap();
+    let displayed = f.cat.call("query_assets", json!({"filter":{"collectionId":trip},
+        "sort":{"field":"filename","direction":"asc"},"pageSize":120})).unwrap();
+    f.cat.call("delete_trip", json!({"tripId":trip})).unwrap();
+    assert_eq!(f.cat.call("create_selection_snapshot", json!({"filter":{"collectionId":trip},
+        "sort":{"field":"filename","direction":"asc"},"expectedCatalogEpoch":displayed["catalogEpoch"]})).unwrap_err().code, "INVALID_FILTER");
+}
+
+#[test]
+fn source_polling_rolls_back_both_availability_and_epoch_on_failure() {
+    let f = Fixture::new();
+    f.picture("first.jpg", 1);
+    let source = f.add();
+    let c = f.cat.connection().unwrap();
+    let epoch = db::epoch(&c).unwrap();
+    fs::rename(&f.source, f._temp.path().join("away")).unwrap();
+    c.execute_batch("CREATE TRIGGER reject_epoch BEFORE UPDATE OF value ON app_meta
+        WHEN OLD.key='epoch' BEGIN SELECT RAISE(ABORT,'epoch fault'); END;").unwrap();
+    assert!(f.cat.call("list_sources", json!({})).unwrap_err().details["reason"].as_str().unwrap().contains("epoch fault"));
+    assert!(c.query_row("SELECT is_online FROM source_roots WHERE id=?", [&source], |r| r.get::<_, bool>(0)).unwrap());
+    assert_eq!(f.assets()[0]["fileState"], "available");
+    assert_eq!(db::epoch(&c).unwrap(), epoch);
+    c.execute_batch("DROP TRIGGER reject_epoch").unwrap();
+    assert_eq!(f.cat.call("list_sources", json!({})).unwrap()[0]["isOnline"], false);
+    assert_eq!(f.assets()[0]["fileState"], "offline");
+    assert_eq!(db::epoch(&c).unwrap(), epoch + 1);
+}
+
+#[test]
+fn incremental_scan_rolls_back_rename_and_recovery_if_epoch_write_fails() {
+    for rename in [true, false] {
+        let f = Fixture::new();
+        f.picture("first.jpg", 1);
+        let source = f.add();
+        let asset = f.assets()[0].clone();
+        let c = f.cat.connection().unwrap();
+        if rename {
+            let hash = files::sha256(&f.source.join("first.jpg"), None).unwrap();
+            c.execute("UPDATE media_assets SET sha256=?,sha256_file_version=file_version WHERE id=?",
+                rusqlite::params![hash,asset["id"].as_str().unwrap()]).unwrap();
+            fs::rename(f.source.join("first.jpg"), f.source.join("renamed.jpg")).unwrap();
+        } else {
+            c.execute("UPDATE media_assets SET file_state='offline'", []).unwrap();
+        }
+        let epoch = db::epoch(&c).unwrap();
+        let condition = if rename { "filename='renamed.jpg'" } else { "file_state='available'" };
+        c.execute_batch(&format!("CREATE TRIGGER reject_epoch BEFORE UPDATE OF value ON app_meta
+            WHEN OLD.key='epoch' AND EXISTS(SELECT 1 FROM media_assets WHERE {condition})
+            BEGIN SELECT RAISE(ABORT,'epoch fault'); END;")).unwrap();
+        let job = scan(&f.cat, &source);
+        assert_eq!(job["status"], "failed", "{job}");
+        assert_eq!(job["errorSummary"], "资料库操作失败");
+        let after = f.assets();
+        assert_eq!(after[0]["id"], asset["id"]);
+        assert_eq!(after[0]["filename"], "first.jpg");
+        assert_eq!(after[0]["fileState"], if rename { "available" } else { "offline" });
+        assert_eq!(db::epoch(&c).unwrap(), epoch);
+        c.execute_batch("DROP TRIGGER reject_epoch").unwrap();
+        assert_eq!(scan(&f.cat, &source)["status"], "completed");
+        let recovered = f.assets();
+        assert_eq!(recovered[0]["id"], asset["id"]);
+        assert_eq!(recovered[0]["filename"], if rename { "renamed.jpg" } else { "first.jpg" });
+        assert_eq!(recovered[0]["fileState"], "available");
+        assert!(db::epoch(&c).unwrap() > epoch);
+    }
+}
+
+#[test]
+fn preview_dimension_backfill_invalidates_queries_and_rolls_back_on_epoch_failure() {
+    let f = Fixture::new();
+    f.picture("first.jpg", 1);
+    f.add();
+    let asset = f.assets()[0].clone();
+    let aid = asset["id"].as_str().unwrap();
+    let mut c = f.cat.connection().unwrap();
+    // Synthetic metadata enters the HEIF backfill branch while the source stays a decodable JPEG.
+    c.execute("UPDATE media_assets SET extension='heic',width=NULL,height=NULL WHERE id=?", [aid]).unwrap();
+    c.execute("DELETE FROM thumbnail_cache WHERE asset_id=?", [aid]).unwrap();
+    let epoch = db::epoch(&c).unwrap();
+    c.execute_batch("CREATE TRIGGER reject_epoch BEFORE UPDATE OF value ON app_meta
+        WHEN OLD.key='epoch' BEGIN SELECT RAISE(ABORT,'epoch fault'); END;").unwrap();
+    assert!(media::thumbnail(&f.cat, &mut c, aid, "small").unwrap_err().details["reason"].as_str().unwrap().contains("epoch fault"));
+    assert!(f.assets()[0]["width"].is_null());
+    assert_eq!(db::epoch(&c).unwrap(), epoch);
+    c.execute_batch("DROP TRIGGER reject_epoch").unwrap();
+    media::thumbnail(&f.cat, &mut c, aid, "small").unwrap();
+    assert_eq!(f.assets()[0]["width"], 96);
+    assert_eq!(f.assets()[0]["height"], 64);
+    assert_eq!(db::epoch(&c).unwrap(), epoch + 1);
+    media::thumbnail(&f.cat, &mut c, aid, "screen").unwrap();
+    assert_eq!(db::epoch(&c).unwrap(), epoch + 1, "A cache-only write must not invalidate queries");
+}
+
+#[test]
+fn restoring_older_or_newer_epochs_invalidates_every_pre_restore_query() {
+    for newer_backup in [false, true] {
+        let f = Fixture::new();
+        f.picture("first.jpg", 1);
+        f.picture("second.jpg", 2);
+        f.add();
+        let assets = f.assets();
+        let aid = assets[0]["id"].as_str().unwrap().to_owned();
+        f.review(std::slice::from_ref(&aid), json!({"rating":5}), &id());
+        let c = f.cat.connection().unwrap();
+        let backup = f.output.join("backup.sqlite");
+        db::backup(&c, &backup).unwrap();
+        f.review(std::slice::from_ref(&aid), json!({"rating":1}), &id());
+        let before = f.cat.call("query_assets", json!({"filter":{},
+            "sort":{"field":"rating","direction":"asc"},"pageSize":1})).unwrap();
+        let previous_epoch = before["catalogEpoch"].as_i64().unwrap();
+        let backup_epoch = if newer_backup { previous_epoch + 500 } else { previous_epoch - 1 };
+        let copied = db::connect(&backup).unwrap();
+        copied.execute("UPDATE app_meta SET value=? WHERE key='epoch'", [backup_epoch]).unwrap();
+        drop(copied);
+        f.cat.authorize(&backup, "restore").unwrap();
+        let prepared = f.cat.call("prepare_restore", json!({"selectedBackupPath":backup})).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match f.cat.call("restore_catalog", json!({"selectedBackupPath":backup,"confirmToken":prepared["confirmToken"]})) {
+                Ok(_) => break,
+                Err(error) if error.code == "DB_CONFLICT" && Instant::now() < deadline => thread::sleep(Duration::from_millis(15)),
+                Err(error) => panic!("restore failed: {error:?}"),
+            }
+        }
+        assert_eq!(db::epoch(&c).unwrap(), previous_epoch.max(backup_epoch) + 1);
+        assert_eq!(f.cat.call("get_asset", json!({"assetId":aid})).unwrap()["review"]["rating"], 5);
+        assert_eq!(f.cat.call("query_assets", json!({"filter":{},
+            "sort":{"field":"rating","direction":"asc"},"pageSize":1,"cursor":before["nextCursor"]})).unwrap_err().code, "INVALID_FILTER");
+        assert_eq!(f.cat.call("create_selection_snapshot", json!({"filter":{},
+            "sort":{"field":"rating","direction":"asc"},"expectedCatalogEpoch":previous_epoch})).unwrap_err().code, "INVALID_FILTER");
+        let fresh = f.cat.call("query_assets", json!({"filter":{},
+            "sort":{"field":"rating","direction":"asc"},"pageSize":120})).unwrap();
+        let snapshot = f.cat.call("create_selection_snapshot", json!({"filter":{},
+            "sort":{"field":"rating","direction":"asc"},"expectedCatalogEpoch":fresh["catalogEpoch"]})).unwrap();
+        assert_eq!(snapshot["count"], 2);
+    }
+}
+
+#[test]
+fn overflowing_restore_epoch_is_rejected_before_replacing_the_catalog() {
+    let f = Fixture::new();
+    f.picture("first.jpg", 1);
+    f.add();
+    let before = f.assets();
+    let c = f.cat.connection().unwrap();
+    let epoch = db::epoch(&c).unwrap();
+    let backup = f.output.join("overflow.sqlite");
+    db::backup(&c, &backup).unwrap();
+    let copied = db::connect(&backup).unwrap();
+    copied.execute("UPDATE app_meta SET value=? WHERE key='epoch'", [i64::MAX]).unwrap();
+    drop(copied);
+    f.cat.authorize(&backup, "restore").unwrap();
+    let prepared = f.cat.call("prepare_restore", json!({"selectedBackupPath":backup})).unwrap();
+    let error = f.cat.call("restore_catalog", json!({"selectedBackupPath":backup,
+        "confirmToken":prepared["confirmToken"]})).unwrap_err();
+    assert_eq!(error.code, "DB_CONFLICT");
+    assert!(error.message.contains("版本超出范围"), "{error:?}");
+    assert_eq!(f.assets(), before);
+    assert_eq!(db::epoch(&c).unwrap(), epoch);
+    let data = f._temp.path().join("app");
+    assert!(!fs::read_dir(data).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().starts_with("restore-staging-")));
+}
+
+#[test]
 fn tags_merge_batch_and_unicode_search() {
     let f = Fixture::new();
     f.picture("雪山.jpg", 1);

@@ -106,27 +106,33 @@ impl Catalog {
             let outcome=std::panic::catch_unwind(std::panic::AssertUnwindSafe(||->Result<()>{safe_point(&cat,&jid)?;let c=cat.connection()?;c.execute("UPDATE jobs SET status='running',updated_at=? WHERE id=? AND status='queued'",params![now(),jid])?;
             match kind.as_str(){"SCAN"=>scan(&cat,&jid,&r),"THUMBNAIL"|"METADATA"=>thumbnails(&cat,&jid,&r),"HASH_EXACT"=>exact(&cat,&jid,&r),"HASH_SIMILAR"=>similar(&cat,&jid,&r),"EXPORT" if r["operation"]=="storyExport"=>crate::story::run(&cat,&jid,&r),"EXPORT"=>files::export(&cat,&jid,&r),"BACKUP"=>files::backup(&cat,&jid,&r),"REPAIR" if r["operation"]=="aiImportModel" || r["operation"]=="eyesImportModel"=>crate::ai_models::import(&cat,&jid,&r),"REPAIR" if r["operation"]=="eyesRemoveModel"=>crate::ai_models::remove_for(&cat,&jid,crate::ai_models::ModelKind::Eyes),"REPAIR" if r["operation"]=="qualityAnalyze"=>crate::quality::run(&cat,&jid,&r),"REPAIR" if r["operation"]=="aiRemoveModel"=>crate::ai_models::remove(&cat,&jid),"REPAIR" if r["operation"]=="aiIndex" || r["operation"]=="aiCluster"=>crate::local_ai::run(&cat,&jid,&r),"REPAIR" if r["operation"]=="renamePreview"=>crate::rename_preview::run(&cat,&jid,&r),_=>Err(AppError::new("INTERNAL","无法执行此任务"))}
         })).unwrap_or_else(|_|Err(AppError::new("INTERNAL","处理此媒体时发生异常，可重试")));
-            if let Ok(c) = cat.connection() {
-                match outcome {
-                    Ok(()) => {
-                        let _=c.execute("UPDATE jobs SET status=CASE WHEN status='cancelled' THEN 'cancelled' ELSE 'completed' END,updated_at=? WHERE id=?",params![now(),jid]);
-                    }
-                    Err(e) => {
-                        let status = if e.code == "CANCELLED" {
-                            "cancelled"
-                        } else {
-                            "failed"
-                        };
-                        let _ = c.execute(
-                            "UPDATE jobs SET status=?,error_summary=?,updated_at=? WHERE id=?",
-                            params![status, e.message, now(), jid],
-                        );
-                    }
+            if let Ok(mut c) = cat.connection() {
+                let outcome = outcome.and_then(|()| complete_job(&mut c, &jid, r["operation"] == "aiCluster"));
+                if let Err(e) = outcome {
+                    let status = if e.code == "CANCELLED" {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    };
+                    let _ = c.execute(
+                        "UPDATE jobs SET status=?,error_summary=?,updated_at=? WHERE id=?",
+                        params![status, e.message, now(), jid],
+                    );
                 }
                 let _ = cat.trim_cache(&c);
             }
         });
     }
+}
+fn complete_job(c: &mut Connection, jid: &str, publishes_cluster: bool) -> Result<()> {
+    let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    tx.execute("UPDATE jobs SET status=CASE WHEN status='cancelled' THEN 'cancelled' ELSE 'completed' END,updated_at=? WHERE id=?",params![now(),jid])?;
+    if publishes_cluster {
+        // Gallery cluster membership becomes visible only when this status is committed.
+        db::bump(&tx)?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 pub fn safe_point(cat: &Catalog, jid: &str) -> Result<()> {
     loop {
@@ -282,9 +288,11 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
     )?;
     let root = Path::new(&root);
     if let Err(error) = files::check_source_access(root) {
-        if c.execute("UPDATE source_roots SET is_online=0 WHERE id=? AND is_online<>0", [sid])? > 0 {
-            db::bump(&c)?;
+        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        if tx.execute("UPDATE source_roots SET is_online=0 WHERE id=? AND is_online<>0", [sid])? > 0 {
+            db::bump(&tx)?;
         }
+        tx.commit()?;
         return Err(error);
     }
     let opts: String = c
@@ -387,10 +395,13 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
                     if !root.join(previous).exists()
                         && files::sha256_at_version(path, &file_version, Some((cat, jid)))? == hash
                     {
-                        c.execute(
+                        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                        tx.execute(
                             "UPDATE media_assets SET relative_path=?,filename=?,file_version=?,sha256_file_version=? WHERE id=?",
                             params![rel, path.file_name().unwrap().to_string_lossy(), file_version.token, file_version.token, candidate],
                         )?;
+                        db::bump(&tx)?;
+                        tx.commit()?;
                         old = Some((
                             candidate,
                             file_version.size,
@@ -398,7 +409,6 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
                             version,
                             Some(file_version.token.clone()),
                         ));
-                        db::bump(&c)?;
                     }
                 }
             }
@@ -407,12 +417,21 @@ fn scan(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
             if file_version.matches_index(*size, *mtime, token.as_deref())
                 && media::metadata_version_current(&ext, *version)
             {
-                let updated = c.execute(
+                let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+                let was_unavailable = tx.query_row(
+                    "SELECT file_state IN ('missing','offline') FROM media_assets WHERE id=?",
+                    [aid], |row| row.get::<_, bool>(0),
+                ).optional()?.unwrap_or(false);
+                let updated = tx.execute(
                     "UPDATE media_assets SET last_seen_scan_generation=?,
                      file_state=CASE WHEN file_state IN ('missing','offline') THEN 'available' ELSE file_state END,
                      file_identity=?,file_version=? WHERE id=? AND (file_version IS ? OR file_version=?)",
                     params![generation,file_version.identity,file_version.token,aid,token,file_version.token],
                 )?;
+                if updated > 0 && was_unavailable {
+                    db::bump(&tx)?;
+                }
+                tx.commit()?;
                 if updated == 0 {
                     complete = false;
                     failures += 1;
@@ -1357,6 +1376,26 @@ pub fn group_members(c: &Connection, r: &Value) -> Result<Value> {
 mod priority_tests {
     use super::*;
     use std::sync::{atomic::Ordering, mpsc};
+    #[test]
+    fn cluster_completion_and_query_invalidation_commit_or_roll_back_together() {
+        let temp = tempfile::tempdir().unwrap();
+        let cat = Catalog::new(&temp.path().join("data"), &temp.path().join("cache")).unwrap();
+        let mut c = cat.connection().unwrap();
+        insert(&c, "cluster", "REPAIR", &json!({"operation":"aiCluster"})).unwrap();
+        let epoch = db::epoch(&c).unwrap();
+        c.execute_batch("CREATE TRIGGER reject_epoch BEFORE UPDATE OF value ON app_meta
+            WHEN OLD.key='epoch' BEGIN SELECT RAISE(ABORT,'epoch fault'); END;").unwrap();
+        assert!(complete_job(&mut c, "cluster", true).unwrap_err().details["reason"].as_str().unwrap().contains("epoch fault"));
+        assert_eq!(job(&c, "cluster").unwrap()["status"], "queued");
+        assert_eq!(db::epoch(&c).unwrap(), epoch);
+        c.execute_batch("DROP TRIGGER reject_epoch").unwrap();
+        complete_job(&mut c, "cluster", true).unwrap();
+        assert_eq!(job(&c, "cluster").unwrap()["status"], "completed");
+        assert_eq!(db::epoch(&c).unwrap(), epoch + 1);
+        insert(&c, "ordinary", "REPAIR", &json!({"operation":"renamePreview"})).unwrap();
+        complete_job(&mut c, "ordinary", false).unwrap();
+        assert_eq!(db::epoch(&c).unwrap(), epoch + 1);
+    }
     #[test]
     fn heavy_hash_yields_to_foreground_but_cancel_is_immediate() {
         let temp = tempfile::tempdir().unwrap();

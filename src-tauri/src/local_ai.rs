@@ -219,6 +219,7 @@ fn index_one(
         return Err(AppError::new("DB_CONFLICT", "素材元数据已变化"));
     }
     tx.execute("INSERT INTO ai_embeddings VALUES(?,?,?,?,?,?,768,?,?) ON CONFLICT(asset_id) DO UPDATE SET model_version=excluded.model_version,source_size=excluded.source_size,source_mtime_ms=excluded.source_mtime_ms,orientation=excluded.orientation,input_key=excluded.input_key,dimensions=excluded.dimensions,vector=excluded.vector,created_at=excluded.created_at",params![aid,version(),before.size,before.mtime,before.orientation,before.key,ai_vectors::pack(&vector)?,now()])?;
+    db::bump(&tx)?;
     tx.commit()?;
     Ok((vector, before.key))
 }
@@ -321,8 +322,6 @@ pub fn run(cat: &Catalog, jid: &str, r: &Value) -> Result<()> {
         tx.execute("UPDATE jobs SET checkpoint_json=json_set(checkpoint_json,'$.summary',json(?)) WHERE id=?",params![summary.to_string(),jid])?;
         db::bump(&tx)?;
         tx.commit()?;
-    } else {
-        db::bump(&c)?;
     }
     tasks::progress(&c, jid, total, Some(total), failures)?;
     Ok(())

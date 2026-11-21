@@ -1182,6 +1182,7 @@ impl Catalog {
         )? {
             return Err(AppError::new("DB_CONFLICT", "请先完成或取消所有任务"));
         }
+        let previous_epoch = db::epoch(&c)?;
         db::backup(
             &c,
             &self
@@ -1195,15 +1196,24 @@ impl Catalog {
             .inner
             .data
             .join(format!("restore-staging-{}.sqlite", id()));
-        db::backup(&source, &staged_path)?;
-        db::initialize(&staged_path)?;
-        self.validate_backup(&staged_path)?;
-        let staged = Connection::open(&staged_path)?;
-        let b = rusqlite::backup::Backup::new(&staged, &mut c)?;
-        b.run_to_completion(100, std::time::Duration::from_millis(10), None)?;
-        drop(b);
-        drop(staged);
+        let restored = (|| -> Result<()> {
+            db::backup(&source, &staged_path)?;
+            db::initialize(&staged_path)?;
+            self.validate_backup(&staged_path)?;
+            let staged = Connection::open(&staged_path)?;
+            // Invalidate every pre-restore query, even if the backup's epoch is older.
+            let next_epoch = db::epoch(&staged)?.max(previous_epoch).checked_add(1)
+                .ok_or_else(|| AppError::new("DB_CONFLICT", "资料库版本超出范围，无法安全恢复"))?;
+            staged.execute(
+                "UPDATE app_meta SET value=? WHERE key='epoch'",
+                [next_epoch],
+            )?;
+            let b = rusqlite::backup::Backup::new(&staged, &mut c)?;
+            b.run_to_completion(100, std::time::Duration::from_millis(10), None)?;
+            Ok(())
+        })();
         let _ = fs::remove_file(&staged_path);
+        restored?;
         drop(c);
         db::initialize(&self.inner.db_path)?;
         self.inner.tokens.lock().unwrap().remove(token);
@@ -1213,7 +1223,6 @@ impl Catalog {
         self.inner.grants.lock().unwrap().clear();
         let mut c = self.connection()?;
         self.clear_cache(&mut c)?;
-        db::bump(&c)?;
         Ok(json!({"restoredVersion":db::CATALOG_VERSION}))
     }
 }

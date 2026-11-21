@@ -1,5 +1,6 @@
 use crate::{
     catalog::Catalog,
+    db,
     error::{required, AppError, Result},
     files, id, now,
 };
@@ -761,14 +762,18 @@ fn thumbnail_with_priority(
             "INSERT OR REPLACE INTO cache_access VALUES(?,?,?)",
             params![aid, variant, now()],
         )?;
+        let mut changed = 0;
         if let Some((width, height)) = dimensions {
-            tx.execute(
-                "UPDATE media_assets SET width=COALESCE(width,?),height=COALESCE(height,?) WHERE id=?",
+            changed += tx.execute(
+                "UPDATE media_assets SET width=COALESCE(width,?),height=COALESCE(height,?) WHERE id=? AND (width IS NULL OR height IS NULL)",
                 params![width, height, aid],
             )?;
         }
         if row.4 == "heic" || row.4 == "heif" || is_raw(&row.4) {
-            tx.execute("UPDATE media_assets SET file_state='available' WHERE id=? AND file_state='unsupported'",[aid])?;
+            changed += tx.execute("UPDATE media_assets SET file_state='available' WHERE id=? AND file_state='unsupported'",[aid])?;
+        }
+        if changed > 0 {
+            db::bump(&tx)?;
         }
         tx.commit()?;
         Ok(())
