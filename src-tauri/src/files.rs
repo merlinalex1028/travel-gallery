@@ -1198,7 +1198,7 @@ impl Catalog {
             .join(format!("restore-staging-{}.sqlite", id()));
         let restored = (|| -> Result<()> {
             db::backup(&source, &staged_path)?;
-            db::initialize(&staged_path)?;
+            db::initialize_restore_staging(&staged_path)?;
             self.validate_backup(&staged_path)?;
             let staged = Connection::open(&staged_path)?;
             // Invalidate every pre-restore query, even if the backup's epoch is older.
@@ -1212,7 +1212,7 @@ impl Catalog {
             b.run_to_completion(100, std::time::Duration::from_millis(10), None)?;
             Ok(())
         })();
-        let _ = fs::remove_file(&staged_path);
+        db::remove_restore_staging(&staged_path);
         restored?;
         drop(c);
         db::initialize(&self.inner.db_path)?;

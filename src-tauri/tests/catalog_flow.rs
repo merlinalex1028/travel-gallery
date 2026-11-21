@@ -1067,7 +1067,7 @@ fn preview_dimension_backfill_invalidates_queries_and_rolls_back_on_epoch_failur
 
 #[test]
 fn restoring_older_or_newer_epochs_invalidates_every_pre_restore_query() {
-    for newer_backup in [false, true] {
+    for (newer_backup, legacy_backup) in [(false, false), (true, false), (false, true), (true, true)] {
         let f = Fixture::new();
         f.picture("first.jpg", 1);
         f.picture("second.jpg", 2);
@@ -1085,7 +1085,15 @@ fn restoring_older_or_newer_epochs_invalidates_every_pre_restore_query() {
         let backup_epoch = if newer_backup { previous_epoch + 500 } else { previous_epoch - 1 };
         let copied = db::connect(&backup).unwrap();
         copied.execute("UPDATE app_meta SET value=? WHERE key='epoch'", [backup_epoch]).unwrap();
+        if legacy_backup {
+            copied.execute_batch(
+                "ALTER TABLE media_assets DROP COLUMN file_version;
+                 ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+                 PRAGMA user_version=9;",
+            ).unwrap();
+        }
         drop(copied);
+        let backup_bytes = fs::read(&backup).unwrap();
         f.cat.authorize(&backup, "restore").unwrap();
         let prepared = f.cat.call("prepare_restore", json!({"selectedBackupPath":backup})).unwrap();
         let deadline = Instant::now() + Duration::from_secs(5);
@@ -1107,6 +1115,15 @@ fn restoring_older_or_newer_epochs_invalidates_every_pre_restore_query() {
         let snapshot = f.cat.call("create_selection_snapshot", json!({"filter":{},
             "sort":{"field":"rating","direction":"asc"},"expectedCatalogEpoch":fresh["catalogEpoch"]})).unwrap();
         assert_eq!(snapshot["count"], 2);
+        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+        let data = f._temp.path().join("app");
+        let files: Vec<_> = fs::read_dir(data).unwrap().map(|e| e.unwrap().path()).collect();
+        assert!(!files.iter().any(|p| p.file_name().unwrap().to_string_lossy().starts_with("restore-staging-")));
+        let safety: Vec<_> = files.iter().filter(|p| p.extension().is_some_and(|ext| ext == "sqlite") && p.file_name().unwrap().to_string_lossy().starts_with("before-restore-")).collect();
+        assert_eq!(safety.len(), 1);
+        let saved = db::connect(safety[0]).unwrap();
+        assert_eq!(saved.query_row("SELECT rating FROM asset_reviews WHERE asset_id=?", [&aid], |r| r.get::<_, i64>(0)).unwrap(), 1);
+        assert_eq!(db::epoch(&saved).unwrap(), previous_epoch);
     }
 }
 
@@ -1122,7 +1139,13 @@ fn overflowing_restore_epoch_is_rejected_before_replacing_the_catalog() {
     db::backup(&c, &backup).unwrap();
     let copied = db::connect(&backup).unwrap();
     copied.execute("UPDATE app_meta SET value=? WHERE key='epoch'", [i64::MAX]).unwrap();
+    copied.execute_batch(
+        "ALTER TABLE media_assets DROP COLUMN file_version;
+         ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+         PRAGMA user_version=9;",
+    ).unwrap();
     drop(copied);
+    let backup_bytes = fs::read(&backup).unwrap();
     f.cat.authorize(&backup, "restore").unwrap();
     let prepared = f.cat.call("prepare_restore", json!({"selectedBackupPath":backup})).unwrap();
     let error = f.cat.call("restore_catalog", json!({"selectedBackupPath":backup,
@@ -1131,6 +1154,7 @@ fn overflowing_restore_epoch_is_rejected_before_replacing_the_catalog() {
     assert!(error.message.contains("版本超出范围"), "{error:?}");
     assert_eq!(f.assets(), before);
     assert_eq!(db::epoch(&c).unwrap(), epoch);
+    assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
     let data = f._temp.path().join("app");
     assert!(!fs::read_dir(data).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().starts_with("restore-staging-")));
 }

@@ -14,10 +14,29 @@ pub fn connect(path: &Path) -> Result<Connection> {
 }
 
 pub fn initialize(path: &Path) -> Result<()> {
+    initialize_inner(path, false)
+}
+
+// The selected backup stays read-only, and restore has already backed up the live catalog.
+pub(crate) fn initialize_restore_staging(path: &Path) -> Result<()> {
+    initialize_inner(path, true)
+}
+
+// Call only after closing all connections to this owned staging database.
+pub(crate) fn remove_restore_staging(path: &Path) {
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let mut owned = path.as_os_str().to_os_string();
+        owned.push(suffix);
+        let _ = std::fs::remove_file(owned);
+    }
+}
+
+fn initialize_inner(path: &Path, restore_staging: bool) -> Result<()> {
     let c = connect(path)?;
     // WAL persists in the database. Re-selecting it on every read connection
     // needlessly competes with background writers during startup and polling.
-    c.pragma_update(None, "journal_mode", "WAL")?;
+    // Staging has no concurrent readers and must not leave WAL/SHM sidecars.
+    c.pragma_update(None, "journal_mode", if restore_staging { "DELETE" } else { "WAL" })?;
     let version: i64 = c.pragma_query_value(None, "user_version", |r| r.get(0))?;
     if version > CATALOG_VERSION {
         return Err(AppError::new(
@@ -25,7 +44,8 @@ pub fn initialize(path: &Path) -> Result<()> {
             "此资料库来自更新版本，请升级旅图",
         ));
     }
-    if version < CATALOG_VERSION
+    if !restore_staging
+        && version < CATALOG_VERSION
         && path.exists()
         && c.query_row(
             "SELECT count(*) FROM sqlite_master WHERE type='table'",
@@ -44,8 +64,13 @@ pub fn initialize(path: &Path) -> Result<()> {
     if version < 2 {
         if let Err(e) = c.execute_batch(include_str!("../migrations/002_interactions.sql")) {
             let _ = c.execute_batch("ROLLBACK");
+            let message = if restore_staging {
+                "备份迁移失败，原备份未修改"
+            } else {
+                "资料库迁移失败，已保留升级前备份"
+            };
             return Err(
-                AppError::new("DB_MIGRATION_FAILED", "资料库迁移失败，已保留升级前备份")
+                AppError::new("DB_MIGRATION_FAILED", message)
                     .details(serde_json::json!({"reason":e.to_string()})),
             );
         }
@@ -168,6 +193,108 @@ pub fn setting(c: &Connection, key: &str) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn v9_catalog(path: &Path) {
+        initialize(path).unwrap();
+        let c = connect(path).unwrap();
+        c.execute("INSERT INTO source_roots(id,display_name,absolute_path,created_at,updated_at) VALUES('s','fixture','/fixture',0,0)", []).unwrap();
+        c.execute("INSERT INTO media_assets(id,source_id,relative_path,filename,extension,media_kind,byte_size,mtime_ms,indexed_at,updated_at) VALUES('a','s','a.jpg','a.jpg','jpg','image',123,0,0,0)", []).unwrap();
+        c.execute("UPDATE asset_reviews SET pick_state='keep',rating=4,note='preserve',revision=7 WHERE asset_id='a'", []).unwrap();
+        c.execute_batch(
+            "ALTER TABLE media_assets DROP COLUMN file_version;
+             ALTER TABLE media_assets DROP COLUMN sha256_file_version;
+             PRAGMA user_version=9;",
+        )
+        .unwrap();
+    }
+
+    fn assert_review(c: &Connection) {
+        let review = c.query_row(
+            "SELECT pick_state,rating,note,revision FROM asset_reviews WHERE asset_id='a'",
+            [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?, row.get::<_, i64>(3)?)),
+        ).unwrap();
+        assert_eq!(review, ("keep".into(), 4, "preserve".into(), 7));
+    }
+
+    #[test]
+    fn normal_v9_migration_retains_a_readable_pre_migration_backup() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("catalog.sqlite");
+        v9_catalog(&path);
+        initialize(&path).unwrap();
+        let backups: Vec<_> = std::fs::read_dir(directory.path()).unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|entry| entry.file_name().unwrap().to_string_lossy().contains("pre-migration"))
+            .collect();
+        assert_eq!(backups.len(), 1);
+        let before = connect(&backups[0]).unwrap();
+        assert_eq!(before.pragma_query_value::<i64, _>(None, "user_version", |r| r.get(0)).unwrap(), 9);
+        assert!(before.prepare("SELECT file_version FROM media_assets").is_err());
+        assert_review(&before);
+        let after = connect(&path).unwrap();
+        assert_eq!(after.pragma_query_value::<i64, _>(None, "user_version", |r| r.get(0)).unwrap(), CATALOG_VERSION);
+        assert_eq!(after.pragma_query_value::<String, _>(None, "journal_mode", |r| r.get(0)).unwrap(), "wal");
+        after.prepare("SELECT file_version,sha256_file_version FROM media_assets").unwrap();
+        assert_review(&after);
+    }
+
+    #[test]
+    fn restore_staging_migrates_without_duplicate_backups_or_source_changes() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("selected.sqlite");
+        let staged = directory.path().join("restore-staging-test.sqlite");
+        v9_catalog(&source);
+        let source_before = std::fs::read(&source).unwrap();
+        {
+            let selected = Connection::open_with_flags(&source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+            backup(&selected, &staged).unwrap();
+        }
+        initialize_restore_staging(&staged).unwrap();
+        {
+            let c = connect(&staged).unwrap();
+            assert_eq!(c.pragma_query_value::<i64, _>(None, "user_version", |r| r.get(0)).unwrap(), CATALOG_VERSION);
+            assert_eq!(c.pragma_query_value::<String, _>(None, "journal_mode", |r| r.get(0)).unwrap(), "delete");
+            c.prepare("SELECT file_version,sha256_file_version FROM media_assets").unwrap();
+            assert_review(&c);
+        }
+        assert_eq!(std::fs::read(&source).unwrap(), source_before);
+        remove_restore_staging(&staged);
+        assert!(!std::fs::read_dir(directory.path()).unwrap().any(|entry| {
+            entry.unwrap().file_name().to_string_lossy().starts_with("restore-staging-")
+        }));
+    }
+
+    #[test]
+    fn failed_staging_migration_keeps_the_source_and_no_duplicate_backup() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("selected.sqlite");
+        let staged = directory.path().join("restore-staging-test.sqlite");
+        v9_catalog(&source);
+        // A readable v9 backup can still contain a conflicting newer column.
+        connect(&source).unwrap().execute_batch(
+            "ALTER TABLE media_assets ADD COLUMN sha256_file_version TEXT;"
+        ).unwrap();
+        let source_before = std::fs::read(&source).unwrap();
+        {
+            let selected = Connection::open_with_flags(&source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+            backup(&selected, &staged).unwrap();
+        }
+        let error = initialize_restore_staging(&staged).unwrap_err();
+        assert!(error.details["reason"].as_str().unwrap().contains("duplicate column"));
+        {
+            let c = connect(&staged).unwrap();
+            assert_eq!(c.pragma_query_value::<i64, _>(None, "user_version", |r| r.get(0)).unwrap(), 9);
+            assert!(c.prepare("SELECT file_version FROM media_assets").is_err());
+            assert_review(&c);
+        }
+        assert_eq!(std::fs::read(&source).unwrap(), source_before);
+        remove_restore_staging(&staged);
+        assert!(!std::fs::read_dir(directory.path()).unwrap().any(|entry| {
+            entry.unwrap().file_name().to_string_lossy().starts_with("restore-staging-")
+        }));
+    }
+
     #[test]
     fn v9_rebuilds_only_heif_derivatives_and_keeps_reviews_and_hint_history() {
         let directory = tempfile::tempdir().unwrap();
