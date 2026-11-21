@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -19,6 +20,7 @@ tiny_tiff = build.load('native-sorting-batch').tiny_tiff
 BATCH = 'library-query'
 b.APPROVAL = batch.ROOT / 'docs/native-library-query-budget.json'
 b.RECEIPT = batch.ROOT / 'docs/native-library-query-latest.json'
+EPOCH_BATCH = 'catalog-epoch'
 MATCH = tuple(f'match-{i:03}.tiff' for i in range(125))
 OUTSIDE = tuple(f'outside-{i:03}.tiff' for i in range(5))
 EXCLUDED = MATCH[0]
@@ -28,6 +30,7 @@ CORRECTED_LOCAL = '2025-05-11 09:30:00'
 KNOWN_ZONE_SAMPLE = OUTSIDE[1]
 KNOWN_ZONE_DATE = '2024-04-11'
 STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
+RESTORE_STEPS = ('backed-up', 'rating-changed', 'backup-restored')
 
 
 def write_sources(source):
@@ -66,6 +69,50 @@ def read_catalog(db):
             corrected_local,corrected_utc_ms,corrected_tz_min,is_corrected,revision
             FROM capture_time_corrections''').fetchall(),
     )
+
+
+def read_restore_state(db):
+    return dict(
+        epoch=db.execute("SELECT value FROM app_meta WHERE key='epoch'").fetchone()[0],
+        assets=db.execute('''SELECT a.id,a.filename,a.source_id,a.relative_path,r.pick_state,r.rating,
+            r.is_favorite,r.note,r.revision FROM media_assets a JOIN asset_reviews r ON r.asset_id=a.id
+            ORDER BY a.filename COLLATE NOCASE,a.id''').fetchall(),
+        corrections=db.execute('SELECT * FROM capture_time_corrections ORDER BY asset_id').fetchall(),
+        snapshots=db.execute('SELECT * FROM selection_snapshots ORDER BY id').fetchall(),
+        members=db.execute('SELECT * FROM selection_snapshot_items ORDER BY 1,2').fetchall(),
+    )
+
+
+def read_backup(path):
+    assert path.is_file() and not path.is_symlink()
+    with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)) as db:
+        db.execute('BEGIN')
+        assert db.execute('PRAGMA quick_check').fetchone() == ('ok',)
+        assert not db.execute('PRAGMA foreign_key_check').fetchone()
+        return read_restore_state(db)
+
+
+def verify_restore(step, current, observations, backup, baseline, changed=None, rollback=None):
+    state_keys = ('assets', 'corrections', 'snapshots', 'members')
+    if step == 'backed-up':
+        assert current == backup == baseline
+        assert observations == {'backupCompleted': True}
+    elif step == 'rating-changed':
+        assert observations == dict(filename=EXCLUDED, rating=5)
+        assert current['epoch'] > backup['epoch']
+        index = next(i for i, row in enumerate(backup['assets']) if row[1] == EXCLUDED)
+        expected = list(backup['assets'])
+        old = expected[index]
+        assert old[5] == 0
+        expected[index] = (*old[:5], 5, *old[6:8], old[8] + 1)
+        assert current['assets'] == expected
+        assert all(current[key] == backup[key] for key in state_keys[1:])
+    else:
+        assert step == 'backup-restored'
+        assert observations == dict(filename=EXCLUDED, rating=0, restored=True)
+        assert rollback == changed
+        assert current['epoch'] == max(changed['epoch'], backup['epoch']) + 1
+        assert all(current[key] == backup[key] for key in state_keys)
 
 
 def verify(step, state, source, observed, previous):
@@ -134,16 +181,22 @@ def verify(step, state, source, observed, previous):
         assert (pick, rating, favorite, note, revision) == (expected_pick, 0, 0, '', expected_revision), name
 
 
-def accept(candidate, fixture, release, env):
+def accept(candidate, fixture, release, env, *, check_restore=False):
     control = b.WORK / 'control'
     control.mkdir()
     source = (fixture / 'source').resolve()
     database = b.DATA / 'catalog.sqlite'
+    backup_dir = b.WORK / 'backup'
+    if check_restore:
+        backup_dir.mkdir()
+        b.STATE['backupDirectory'] = str(backup_dir)
     b.STATE.update(status='ready', application=str(b.APP_PATH), expectedDatabase=str(database),
                    controlDirectory=str(control))
     b.event('readyForNativeGui', source=str(source), **b.check())
     pid, previous = None, None
-    for step in STEPS:
+    baseline, backup, changed = None, None, None
+    regular_steps = STEPS[:-1]
+    for step in (*regular_steps, *(RESTORE_STEPS if check_restore else ()), 'finish'):
         request = control / 'step.json'
         deadline = time.monotonic() + 600
         while not request.is_file():
@@ -169,12 +222,36 @@ def accept(candidate, fixture, release, env):
         with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
             db.execute('BEGIN')
             state = read_catalog(db)
+            if check_restore and step in ('time-restored', *RESTORE_STEPS):
+                restore_state = read_restore_state(db)
+            if step == 'backed-up':
+                completed_backups = db.execute("""SELECT status,progress_done,progress_total,failure_count
+                    FROM jobs WHERE type='BACKUP'""").fetchall()
+        if step in RESTORE_STEPS:
+            [selected] = list(backup_dir.glob('travel-gallery-*.sqlite'))
+            if step == 'backed-up':
+                backup = read_backup(selected)
+                assert completed_backups == [('completed', 1, 1, 0)]
+            assert read_backup(selected) == backup
+            rollback = None
+            if step == 'backup-restored':
+                [auto_backup] = list(b.DATA.glob('before-restore-*.sqlite'))
+                rollback = read_backup(auto_backup)
+                assert not list(b.DATA.glob('restore-staging-*'))
+            verify_restore(step, restore_state, observed, backup, baseline, changed, rollback)
+            if step == 'rating-changed':
+                changed = restore_state
+            b.event('nativeCatalogEpochCheckpoint', step=step, catalogEpoch=restore_state['epoch'],
+                    backupEpoch=backup['epoch'], **observed)
+            continue
         try:
             verify(step, state, source, observed, previous)
         except (AssertionError, ValueError) as error:
             raise RuntimeError(f'Library query checkpoint rejected: {step}: {error or "catalog or GUI mismatch"}') from error
         if step != 'empty':
             previous = state
+        if check_restore and step == 'time-restored':
+            baseline = restore_state
         order = observed.pop('order', [])
         b.event('nativeLibraryQueryCheckpoint', step=step, assets=len(state['assets']),
                 snapshots=len(state['snapshots']), observedNames=len(order),
@@ -182,27 +259,52 @@ def accept(candidate, fixture, release, env):
                 reviewed=len(state['changed_ids']), **observed)
 
 
+def measure_query_latency(env):
+    b.command('catalogQueryLatency', ['node', 'scripts/native.mjs', 'cargo', 'test', '--locked',
+              '--manifest-path', 'src-tauri/Cargo.toml', '--test', 'performance', '--',
+              '--ignored', '--exact', 'fifty_thousand_record_baseline', '--nocapture'],
+              dict(env, TRAVEL_GALLERY_BENCH_COUNT='50000', TRAVEL_GALLERY_PERF_OUTPUT=str(b.WORK / 'query-latency.json')))
+    stats = json.loads((b.WORK / 'query-latency.json').read_text())
+    assert (stats['recordCount'], stats['queryRuns'], stats['firstPageRecords']) == (50_000, 100, 120)
+    b.event('catalogQueryLatencyMeasured', meets300msInTestProfile=stats['queryP95Ms'] <= 300,
+            **{key: stats[key] for key in (
+        'recordCount', 'queryRuns', 'buildProfile', 'queryP50Ms', 'queryP95Ms', 'neighborP95Ms', 'snapshotMs')})
+
+
 def run(approval):
+    check_restore = approval['batch'] == EPOCH_BATCH
     candidate, fixture, release, env = build.build_candidate(
-        approval, BATCH, 'LibraryQuery', write_sources, picker_only=True)
+        approval, approval['batch'], 'CatalogEpoch' if check_restore else 'LibraryQuery',
+        write_sources, picker_only=True,
+        after_regressions=measure_query_latency if check_restore else None)
     preparation = json.loads((b.APP_PATH.parent / 'preparation.json').read_text())
     assert preparation['pickerOnly']
     assert not any('absolute-path' in name for name in preparation['parentEntitlements'])
-    accept(candidate, fixture, release, env)
+    accept(candidate, fixture, release, env, check_restore=check_restore)
 
 
 if __name__ == '__main__':
+    if sys.argv[1:] not in ([], ['--catalog-epoch']):
+        raise SystemExit('Usage: native-library-query-build-batch.py [--catalog-epoch]')
+    batch_name = EPOCH_BATCH if sys.argv[1:] else BATCH
+    if batch_name == EPOCH_BATCH:
+        b.APPROVAL = batch.ROOT / 'docs/native-catalog-epoch-budget.json'
+        b.RECEIPT = batch.ROOT / 'docs/native-catalog-epoch-latest.json'
     if not b.APPROVAL.is_file() or b.APPROVAL.is_symlink():
-        raise SystemExit('Fresh library-query batch approval is required; no temporary files generated')
+        raise SystemExit(f'Fresh {batch_name} batch approval is required; no temporary files generated')
     batch.run = run
     with b.APPROVAL.open('r+') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         approval = json.load(handle)
-        if (approval.get('batch') != BATCH or approval.get('status') != 'active'
+        if (approval.get('batch') != batch_name or approval.get('status') != 'active'
                 or approval.get('userAnswer') != '允许这一轮，结束即清理' or approval.get('claimedAt')
                 or approval.get('limits') != batch.LIMITS
                 or approval.get('requiredFreeBytes') != batch.LIMITS['logicalBytes']):
-            raise SystemExit('This candidate needs fresh, unclaimed library-query approval')
+            raise SystemExit(f'This candidate needs fresh, unclaimed {batch_name} approval')
+        if batch_name == EPOCH_BATCH:
+            console = subprocess.check_output(['ioreg', '-n', 'Root', '-d1'], text=True)
+            if '"IOConsoleLocked" = No' not in console:
+                raise SystemExit('The Mac must be unlocked before claiming the native catalog-epoch batch')
         approval['claimedAt'] = datetime.now(timezone.utc).isoformat()
         handle.seek(0)
         json.dump(approval, handle, ensure_ascii=False, indent=2)

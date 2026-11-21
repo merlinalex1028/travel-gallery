@@ -98,6 +98,23 @@ class LibraryQueryEvidence(unittest.TestCase):
         with self.assertRaises(AssertionError):
             batch.verify('applied', batch.read_catalog(self.db), self.source, {}, baseline)
 
+    def test_restore_requires_a_new_epoch_and_an_exact_automatic_backup(self):
+        self.db.execute('CREATE TABLE app_meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL)')
+        self.db.execute("INSERT INTO app_meta VALUES('epoch', 130)")
+        backup = batch.read_restore_state(self.db)
+        batch.verify_restore('backed-up', backup, {'backupCompleted': True}, backup, backup)
+        self.db.execute("UPDATE app_meta SET value=131 WHERE key='epoch'")
+        self.db.execute('UPDATE asset_reviews SET rating=5,revision=1 WHERE asset_id=?', (batch.EXCLUDED,))
+        changed = batch.read_restore_state(self.db)
+        batch.verify_restore('rating-changed', changed, dict(filename=batch.EXCLUDED, rating=5), backup, backup)
+        observed = dict(filename=batch.EXCLUDED, rating=0, restored=True)
+        restored = dict(backup, epoch=132)
+        batch.verify_restore('backup-restored', restored, observed, backup, backup, changed, changed)
+        for state, rollback in [(dict(backup, epoch=131), changed), (restored, backup),
+                                (dict(restored, assets=changed['assets']), changed)]:
+            with self.assertRaises(AssertionError):
+                batch.verify_restore('backup-restored', state, observed, backup, backup, changed, rollback)
+
 
 if __name__ == '__main__':
     unittest.main()

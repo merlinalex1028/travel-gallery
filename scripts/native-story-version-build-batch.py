@@ -63,7 +63,7 @@ def accept(candidate, fixture, release, env):
         story.restore()
 
 
-def build_candidate(approval, batch_name, label, write_sources, *, picker_only=False):
+def build_candidate(approval, batch_name, label, write_sources, *, picker_only=False, after_regressions=None):
     assert not any(p.exists() or p.is_symlink() for p in [*reuse.OWNED, *b.EXTRA, b.GENERATED])
     assert shutil.disk_usage(ROOT).free >= approval['requiredFreeBytes']
     subprocess.run(BUDGET + ['--approval-file', str(b.APPROVAL), '--planned-files', str(LIMITS['files']),
@@ -84,6 +84,8 @@ def build_candidate(approval, batch_name, label, write_sources, *, picker_only=F
     env.update(TMPDIR=str(cases), CARGO_PROFILE_DEV_DEBUG='0', CARGO_PROFILE_TEST_DEBUG='0')
     b.command('fullRustRegressions', ['node', 'scripts/native.mjs', 'cargo', 'test', '--locked',
               '--manifest-path', 'src-tauri/Cargo.toml', '--', '--test-threads=1'], env)
+    if after_regressions is not None:
+        after_regressions(env)
     assert not any(cases.iterdir())
     shutil.rmtree(b.WORK / 'target')
     candidate = b.build(False, env)
