@@ -358,13 +358,23 @@ fn key_value(v: &Value) -> Result<Sql> {
     }
 }
 pub fn query(c: &Connection, q: Query) -> Result<Value> {
-    // Read the epoch, count and rows together. Query contexts also write, so reserve the writer up front.
-    let tx = rusqlite::Transaction::new_unchecked(c, rusqlite::TransactionBehavior::Immediate)?;
-    let result = query_page(&tx, q)?;
+    let fp = fingerprint(&q.filter, &q.sort)?;
+    let tx = c.unchecked_transaction()?;
+    let result = query_page(&tx, &q, &fp)?;
     tx.commit()?;
+    // Save the query definition after releasing the read snapshot. The fingerprint
+    // identifies the definition independently of the version of the returned rows.
+    c.execute(
+        "INSERT OR REPLACE INTO query_contexts VALUES(?,?,?)",
+        params![
+            fp,
+            json!({"filter":q.filter,"sort":q.sort}).to_string(),
+            now() + 86_400_000
+        ],
+    )?;
     Ok(result)
 }
-fn query_page(c: &Connection, q: Query) -> Result<Value> {
+fn query_page(c: &Connection, q: &Query, fp: &str) -> Result<Value> {
     if let Some(id) = &q.selection_snapshot_id {
         validate_snapshot(c, id)?;
     }
@@ -376,27 +386,31 @@ fn query_page(c: &Connection, q: Query) -> Result<Value> {
     }
     let (w, mut p) = conditions(&q.filter)?;
     let col = sort_column(&q.sort)?;
-    let fp = fingerprint(&q.filter, &q.sort)?;
     let epoch = db::epoch(c)?;
+    // A stale cursor can be rejected without counting the current matches.
+    let cursor = q
+        .cursor
+        .as_deref()
+        .map(serde_json::from_str::<Value>)
+        .transpose()?;
+    if cursor.as_ref().is_some_and(|v| v["fingerprint"] != fp || v["epoch"] != epoch) {
+        return Err(AppError::new(
+            "INVALID_FILTER",
+            "资料库或筛选已变化，请刷新结果",
+        ));
+    }
     let total: i64 = c.query_row(
         &format!("SELECT count(*){FROM}WHERE {w}"),
         params_from_iter(p.iter()),
         |r| r.get(0),
     )?;
     let mut cursor_cond = String::new();
-    if let Some(token) = q.cursor {
-        let v: Value = serde_json::from_str(&token)?;
-        if v["fingerprint"] != fp || v["epoch"] != epoch {
-            return Err(AppError::new(
-                "INVALID_FILTER",
-                "资料库或筛选已变化，请刷新结果",
-            ));
-        }
+    if let Some(v) = &cursor {
         let op = if q.sort.direction == "asc" { ">" } else { "<" };
         cursor_cond = format!(" AND (({col}) {op} ? OR (({col})=? AND a.id {op} ?))");
         p.push(key_value(&v["key"])?);
         p.push(key_value(&v["key"])?);
-        p.push(Sql::Text(required(&v, "id")?.into()));
+        p.push(Sql::Text(required(v, "id")?.into()));
     }
     let sql=format!("SELECT {SELECT},({col}) AS cursor_key{FROM}WHERE {w}{cursor_cond} ORDER BY {col} {},a.id {} LIMIT ?",q.sort.direction,q.sort.direction);
     p.push(Sql::Integer(q.page_size as i64 + 1));
@@ -420,14 +434,6 @@ fn query_page(c: &Connection, q: Query) -> Result<Value> {
     } else {
         None
     };
-    c.execute(
-        "INSERT OR REPLACE INTO query_contexts VALUES(?,?,?)",
-        params![
-            fp,
-            json!({"filter":q.filter,"sort":q.sort}).to_string(),
-            now() + 86_400_000
-        ],
-    )?;
     let mut result = json!({"items":entries.into_iter().map(|(a,_)|a).collect::<Vec<_>>(),"total":total,"nextCursor":next,"queryFingerprint":fp,"catalogEpoch":epoch});
     if let Some(id) = &q.selection_snapshot_id {
         let ids: Vec<&Value> = result["items"].as_array().unwrap().iter().map(|a| &a["id"]).collect();
@@ -438,6 +444,59 @@ fn query_page(c: &Connection, q: Query) -> Result<Value> {
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod query_transaction_tests {
+    use super::*;
+
+    #[test]
+    fn page_keeps_its_epoch_and_rows_while_a_catalog_update_commits() {
+        let temp = tempfile::tempdir().unwrap();
+        let database = temp.path().join("catalog.sqlite");
+        db::initialize(&database).unwrap();
+        let mut writer = db::connect(&database).unwrap();
+        writer.busy_timeout(std::time::Duration::ZERO).unwrap();
+        writer.execute_batch("INSERT INTO source_roots(id,display_name,absolute_path,created_at,updated_at)
+            VALUES('source','Fixture','/fixture',0,0);
+            INSERT INTO media_assets(id,source_id,relative_path,filename,extension,media_kind,byte_size,mtime_ms,indexed_at,updated_at)
+            VALUES('asset','source','before.jpg','before.jpg','jpg','image',1,0,0,0);").unwrap();
+
+        let reader = db::connect(&database).unwrap();
+        let page = || Query {
+            filter: Filter::default(),
+            sort: Sort::default(),
+            cursor: None,
+            page_size: 120,
+            selection_snapshot_id: None,
+        };
+        let request = page();
+        let fp = fingerprint(&request.filter, &request.sort).unwrap();
+        let read = reader.unchecked_transaction().unwrap();
+        let epoch = db::epoch(&read).unwrap();
+
+        let tx = writer.transaction().unwrap();
+        tx.execute("UPDATE media_assets SET filename='after.jpg' WHERE id='asset'", []).unwrap();
+        db::bump(&tx).unwrap();
+        tx.commit().unwrap();
+
+        let before = query_page(&read, &request, &fp).unwrap();
+        assert_eq!(before["catalogEpoch"], epoch);
+        assert_eq!(before["items"][0]["filename"], "before.jpg");
+        assert_eq!(before["total"], 1);
+        read.commit().unwrap();
+        let after = query(&reader, page()).unwrap();
+        assert_eq!(after["catalogEpoch"], epoch + 1);
+        assert_eq!(after["items"][0]["filename"], "after.jpg");
+        let saved: String = reader.query_row(
+            "SELECT request_json FROM query_contexts WHERE fingerprint=?",
+            [&fp],
+            |row| row.get(0),
+        ).unwrap();
+        let saved: Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(saved, json!({"filter":request.filter,"sort":request.sort}));
+    }
+}
+
 pub fn asset(c: &Connection, asset_id: &str) -> Result<Value> {
     c.query_row(
         &format!("SELECT {SELECT}{FROM}WHERE a.id=?"),
