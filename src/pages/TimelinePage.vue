@@ -85,7 +85,7 @@ onUnmounted(() => generation++);
       </div>
     </div>
     <p class="muted small">
-      按媒体原始日期分组；仅有文件修改时间的素材归入未知日期，可在照片详情修正拍摄时间和时区。
+      按照片或视频的当地拍摄日期分组，包含手动修正。仅有文件修改时间的素材归入未知日期，可在照片详情修正拍摄时间和时区。
     </p>
     <div v-if="days.length" class="timeline-list">
       <button v-for="day in days" :key="day.date ?? 'unknown'" class="timeline-day" @click="open(day)">
@@ -94,7 +94,7 @@ onUnmounted(() => generation++);
           <strong>{{ day.date ?? '未知日期' }}</strong
           ><small v-if="day.date === null">缺少可靠拍摄时间</small
           ><small v-else-if="day.unknownTimezone">{{ day.unknownTimezone }} 项时区未知</small
-          ><small v-else>媒体原始时间</small>
+          ><small v-else>时区已知</small>
         </div>
         <div class="timeline-meter">
           <div :style="{ width: `${Math.max(3, (day.count / max) * 100)}%` }" />

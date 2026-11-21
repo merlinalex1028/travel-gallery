@@ -47,10 +47,12 @@ it('excludes unknown dates from shooting-day totals and preserves trip scope whe
   expect(lib.filter).toEqual({ captureDateKnown: false, collectionId: 'trip' });
   expect(router.currentRoute.value.fullPath).toBe('/filter?showResults=1');
 });
-it('opens an original wall date without admitting files dated only by mtime', async () => {
-  invoke.mockResolvedValue(days);
+it('opens a reliable local date without implying that a known time zone comes from EXIF', async () => {
+  invoke.mockResolvedValue([{ ...days[0]!, unknownTimezone: 0 }, days[1]]);
   const { wrapper, lib } = await setup();
-  await wrapper.findAll('.timeline-day')[0]!.trigger('click');
+  const day = wrapper.findAll('.timeline-day')[0]!;
+  expect(day.text()).toContain('时区已知');
+  await day.trigger('click');
   expect(lib.filter).toEqual({
     captureDateKnown: true,
     captureLocalFrom: '2026-06-15',
