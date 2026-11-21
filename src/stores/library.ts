@@ -23,6 +23,7 @@ export const useLibrary = defineStore('library', () => {
     fingerprint = shallowRef(''),
     loading = shallowRef(false),
     loadingMore = shallowRef(false),
+    needsFirstPage = shallowRef(false),
     error = shallowRef('');
   const selected = shallowRef(new Set<string>()),
     snapshot = shallowRef<SelectionSnapshot | null>(null),
@@ -47,10 +48,17 @@ export const useLibrary = defineStore('library', () => {
       ? { kind: 'snapshot', snapshotId: snapshot.value.id, excludeAssetIds: [...excluded.value] }
       : { kind: 'explicit', assetIds: [...selected.value] },
   );
-  const queryUnavailable = computed(() => loading.value || !!error.value);
+  const queryUnavailable = computed(() => needsFirstPage.value || loading.value || !!error.value);
   watch(
     [filter, sort],
     () => {
+      generation++;
+      selectionGeneration++;
+      needsFirstPage.value = true;
+      loading.value = false;
+      loadingMore.value = false;
+      cursor.value = null;
+      error.value = '';
       scrollTop.value = 0;
     },
     // A caller can restore its saved session anchor after changing the query.
@@ -71,7 +79,10 @@ export const useLibrary = defineStore('library', () => {
     const seq = more ? generation : ++generation;
     const selectionSnapshotId = snapshot.value?.id;
     if (more) loadingMore.value = true;
-    else loading.value = true;
+    else {
+      loading.value = true;
+      loadingMore.value = false;
+    }
     try {
       const result = await api('query_assets', {
         filter: JSON.parse(JSON.stringify(filter)) as AssetFilter,
@@ -93,6 +104,7 @@ export const useLibrary = defineStore('library', () => {
       total.value = result.total;
       cursor.value = result.nextCursor;
       fingerprint.value = result.queryFingerprint;
+      needsFirstPage.value = false;
       error.value = '';
     } catch (e) {
       if (seq === generation) error.value = errorMessage(e);
@@ -163,13 +175,17 @@ export const useLibrary = defineStore('library', () => {
   async function selectAllMatching() {
     if (queryUnavailable.value) return;
     const seq = ++selectionGeneration;
-    const result = await api('create_selection_snapshot', { filter: { ...filter }, sort: { ...sort } });
-    if (seq !== selectionGeneration) return;
-    snapshot.value = result;
-    selected.value = new Set();
-    excluded.value = new Set();
-    snapshotMembers.value = new Set();
-    await search();
+    try {
+      const result = await api('create_selection_snapshot', { filter: { ...filter }, sort: { ...sort } });
+      if (seq !== selectionGeneration) return;
+      snapshot.value = result;
+      selected.value = new Set();
+      excluded.value = new Set();
+      snapshotMembers.value = new Set();
+      await search();
+    } catch (e) {
+      if (seq === selectionGeneration) throw e;
+    }
   }
   async function inspect(id: string, options: { background?: boolean } = {}) {
     const seq = ++detailGeneration,
@@ -274,6 +290,7 @@ export const useLibrary = defineStore('library', () => {
     fingerprint,
     loading,
     loadingMore,
+    needsFirstPage,
     error,
     queryUnavailable,
     selected,
