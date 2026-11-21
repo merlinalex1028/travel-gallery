@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "maxZoom": 3,
+  "extent": 4096,
+  "sourceSha256": "db204559dd3a056df7040831b9ec53401ffbdf6233c59435e983f64465b1232b",
+  "font": {
+    "name": "Noto Sans",
+    "license": "OFL-1.1",
+    "upstreamCommit": "2984c575fdce412ee02b2baaba67672b9a9434d8",
+    "files": {
+      "NotoSans.ttf": {
+        "bytes": 2049096,
+        "sha256": "bfb7bb691513f12e734dc346c03a03f784912432d7e3fa8e56efcf906fe86b3d",
+        "sourceUrl": "https://raw.githubusercontent.com/google/fonts/2984c575fdce412ee02b2baaba67672b9a9434d8/ofl/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf"
+      },
+      "OFL.txt": {
+        "bytes": 4395,
+        "sha256": "e2e177a32561584d4fc13aaa3cd8e53758a12910f013fe9ca125419111722029",
+        "sourceUrl": "https://raw.githubusercontent.com/google/fonts/2984c575fdce412ee02b2baaba67672b9a9434d8/ofl/notosans/OFL.txt",
+        "upstreamBytes": 4396,
+        "upstreamSha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a",
+        "normalization": "LF line endings and trailing whitespace only"
+      }
+    }
+  }
+}

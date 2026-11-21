@@ -106,6 +106,9 @@ def main():
             require(path.is_relative_to(license_root), f'Supplemental path escapes license folder: {item["file"]}')
             supplemental_bytes[item['file']] = path.read_bytes()
     summary = verify(inventory, notice, supplements, cargo_versions, npm_versions, supplemental_bytes)
+    map_check = subprocess.run(['node', 'scripts/map-resources.mjs', '--check'], cwd=ROOT,
+                               capture_output=True, text=True, check=True)
+    map_resources = json.loads(map_check.stdout)
     negative = []
     if args.self_test:
         missing = copy.deepcopy(inventory)
@@ -133,6 +136,7 @@ def main():
             else:
                 raise ValueError(f'Negative check accepted invalid materials: {label}')
     report = dict(atUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(), passed=True, **summary,
+                  offlineMapResources=map_resources,
                   cargoVersions=len(cargo_versions), installedNpmVersions=len(npm_versions), negativeChecks=negative,
                   inputSha256={name: digest(data) for name, data in inputs.items()},
                   checkerSourceSha256=digest(Path(__file__).read_bytes()),

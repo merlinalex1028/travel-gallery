@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
+import { mapFontNotice } from './map-resources.mjs';
 const runner = process.env.npm_execpath;
 if (!runner) throw new Error('Run with pnpm notices.');
 function json(command, args) {
@@ -232,6 +233,7 @@ const sources = components
 writeFileSync(
   'public/third-party-notices.txt',
   header +
+    mapFontNotice() +
     table +
     '\n\nSUPPLEMENTAL NOTICE SOURCES\n' +
     provenance +

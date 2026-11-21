@@ -8,7 +8,7 @@ import type { Commands, MapPoint } from '../services/contracts';
 import type { GeoJSONSourceSpecification } from 'maplibre-gl';
 import Icon from '../components/Icon.vue';
 import EmptyState from '../components/EmptyState.vue';
-import worldText from '../assets/world.geojson?raw';
+import { loadOfflineMapTile, offlineMapProtocol, offlineWorldSource } from '../services/offline-map';
 const app = useApp(),
   lib = useLibrary(),
   router = useRouter(),
@@ -115,6 +115,7 @@ onMounted(async () => {
   try {
     const [maplibre] = await Promise.all([import('maplibre-gl'), reload()]);
     if (!element.value || destroyed) return;
+    maplibre.addProtocol(offlineMapProtocol, loadOfflineMapTile);
     map = new maplibre.Map({
       container: element.value,
       attributionControl: false,
@@ -124,7 +125,7 @@ onMounted(async () => {
       style: {
         version: 8,
         sources: {
-          world: { type: 'geojson', data: JSON.parse(worldText) },
+          world: offlineWorldSource,
           trails: { type: 'geojson', data: trails.value },
           photos: {
             type: 'geojson',
@@ -137,8 +138,20 @@ onMounted(async () => {
         },
         layers: [
           { id: 'ocean', type: 'background', paint: { 'background-color': '#dce7e5' } },
-          { id: 'land', type: 'fill', source: 'world', paint: { 'fill-color': '#f1f1e7' } },
-          { id: 'coast', type: 'line', source: 'world', paint: { 'line-color': '#bdcfc7', 'line-width': 1 } },
+          {
+            id: 'land',
+            type: 'fill',
+            source: 'world',
+            'source-layer': 'land',
+            paint: { 'fill-color': '#f1f1e7' },
+          },
+          {
+            id: 'coast',
+            type: 'line',
+            source: 'world',
+            'source-layer': 'land',
+            paint: { 'line-color': '#bdcfc7', 'line-width': 1 },
+          },
           {
             id: 'trails',
             type: 'line',
