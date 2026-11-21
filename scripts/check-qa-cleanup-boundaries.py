@@ -16,13 +16,16 @@ with tempfile.TemporaryDirectory(prefix='travel-gallery-cleanup-check-') as temp
     container = library/'Containers/com.travelgallery.offlineaudit/Data/Library'
     protected = [library/'Application Support/com.travelgallery.desktop/catalog.sqlite',
                  library/'Caches/com.travelgallery.desktop/preview',
-                 library/'Preferences/com.travelgallery.desktop.plist', home/'Photos/original.png']
+                 library/'Preferences/com.travelgallery.desktop.plist',
+                 library/'Containers/com.travelgallery.desktop/Data/Library/WebKit/WebsiteData/cache',
+                 library/'Caches/WebKit/cache', home/'Photos/original.png']
     for path in protected:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b'protected')
     expected = [container/'Application Support/com.travelgallery.desktop',
                 container/'Caches/com.travelgallery.desktop',
-                container/'WebKit/com.travelgallery.desktop',
+                container/'WebKit',
+                container/'Caches/WebKit',
                 container/'HTTPStorages/com.travelgallery.desktop',
                 container/'Application Support/com.travelgallery.offlineaudit',
                 library/'Application Support/com.travelgallery.benchmark',
@@ -31,6 +34,9 @@ with tempfile.TemporaryDirectory(prefix='travel-gallery-cleanup-check-') as temp
     for path in expected:
         path.mkdir(parents=True)
         (path/'owned').write_bytes(b'QA')
+    website_data = container/'WebKit/WebsiteData'
+    website_data.mkdir()
+    (website_data/'IsolatedSites.db').write_bytes(b'QA WebKit state')
     for path in (container/'Preferences/com.travelgallery.desktop.plist',
                  container/'Preferences/com.travelgallery.offlineaudit.plist',
                  library/'Preferences/com.travelgallery.development.plist'):
@@ -42,7 +48,7 @@ with tempfile.TemporaryDirectory(prefix='travel-gallery-cleanup-check-') as temp
     expected.append(link)
     targets = list(cleanup.qa_data_targets(home))
     assert set(targets) == set(expected)
-    assert sum(cleanup.measure(path)['files'] for path in targets) == 12
+    assert sum(cleanup.measure(path)['files'] for path in targets) == 14
     for path in targets:
         cleanup.remove_target(path)
     assert all(path.read_bytes() == b'protected' for path in protected)
@@ -58,6 +64,6 @@ with tempfile.TemporaryDirectory(prefix='travel-gallery-cleanup-check-') as temp
         raise AssertionError('Linked ancestor could expose the normal catalog to cleanup')
     assert all(path.read_bytes() == b'protected' for path in protected)
 
-print(json.dumps(dict(passed=True, discoveredAndRemovedTargets=12, normalCatalogAndCachePreserved=True,
+print(json.dumps(dict(passed=True, discoveredAndRemovedTargets=13, normalCatalogAndCachePreserved=True,
                      originalPhotoPreserved=True, targetSymlinkUnlinkedOnly=True, linkedAncestorRejected=True,
                      temporaryDirectoryRemoved=not Path(temporary).exists())))

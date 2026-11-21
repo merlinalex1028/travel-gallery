@@ -71,21 +71,28 @@ def qa_namespace_paths(home, identifier):
         raise ValueError('Expected an isolated application identifier')
     library = home / 'Library'
     container = library / 'Containers' / identifier / 'Data/Library'
+    # WebKit uses unqualified directory names inside the dedicated GUI QA containers.
+    gui_qa = identifier in ('com.travelgallery.offlineaudit', 'com.travelgallery.benchmark')
+    paths = [container / 'Caches/WebKit'] if gui_qa else []
     for folder, suffix in (('Application Support', ''), ('Caches', ''), ('WebKit', ''),
                            ('HTTPStorages', ''), ('HTTPStorages', '.binarycookies'),
                            ('Preferences', '.plist'), ('Saved Application State', '.savedState'),
                            ('Logs', '')):
-        for path in (library / folder / (identifier + suffix),
-                     container / folder / (identifier + suffix),
-                     # A production identifier is disposable only inside a QA container.
-                     container / folder / ('com.travelgallery.desktop' + suffix)):
-            # Refuse linked ancestors even before a new profile exists.
-            for parent in path.parents:
-                if parent == home:
-                    break
-                if parent.is_symlink():
-                    raise RuntimeError(f'Refusing linked QA ancestor: {parent}')
-            yield path
+        paths.append(library / folder / (identifier + suffix))
+        if folder == 'WebKit' and gui_qa:
+            paths.append(container / folder)
+        else:
+            paths.append(container / folder / (identifier + suffix))
+            # A production identifier is disposable only inside an isolated container.
+            paths.append(container / folder / ('com.travelgallery.desktop' + suffix))
+    for path in paths:
+        # Refuse linked ancestors even before a new profile exists.
+        for parent in path.parents:
+            if parent == home:
+                break
+            if parent.is_symlink():
+                raise RuntimeError(f'Refusing linked QA ancestor: {parent}')
+        yield path
 
 
 def qa_data_targets(home=None):
