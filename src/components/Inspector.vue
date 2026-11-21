@@ -90,8 +90,10 @@ async function saveTime(restore = false) {
           expectedRevision: restore ? (a.captureTimeCorrection?.revision ?? 0) : timeRevision.value,
           clientMutationId: crypto.randomUUID(),
         });
-        editingTime.value = false;
-        await lib.inspect(a.id);
+        if (lib.focusId === a.id && asset.value?.id === a.id) {
+          editingTime.value = false;
+          await lib.inspect(a.id);
+        }
         await lib.search();
       },
       restore ? '已恢复来源拍摄时间' : '拍摄时间已修正，仅保存在资料库',
