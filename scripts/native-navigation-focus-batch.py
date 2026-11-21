@@ -1,4 +1,5 @@
 """Observe native navigation/focus and independently decode all screen caches."""
+import argparse
 from contextlib import closing
 import importlib.util
 import json
@@ -50,7 +51,7 @@ def chunk(kind, data):
 
 
 def write_sources(source):
-    for index in range(1, 101):
+    for index in range(1, reuse.SOURCE_FILES + 1):
         pixels = bytearray(bytes(colour(index)) * (WIDTH * HEIGHT))
         for digit, character in enumerate(f'{index:03}'):
             for cell, filled in enumerate(DIGITS[int(character)]):
@@ -64,6 +65,67 @@ def write_sources(source):
         png = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', WIDTH, HEIGHT, 8, 2, 0, 0, 0))
         png += chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b'')
         (source / f'frame-{index:03}.png').write_bytes(png)
+
+
+def appkit(expression):
+    return subprocess.check_output(['/usr/bin/osascript', '-l', 'JavaScript', '-e',
+        'ObjC.import("AppKit"); ' + expression], text=True, timeout=5).strip()
+
+
+def await_value(probe, description):
+    until = time.monotonic() + 8
+    while time.monotonic() < until:
+        if value := probe():
+            return value
+        time.sleep(.15)
+    raise RuntimeError(description)
+
+
+def focus_preflight():
+    registry = subprocess.check_output(['/usr/sbin/ioreg', '-l', '-n', 'Root', '-d', '1'], text=True)
+    assert '"IOConsoleLocked" = No' in registry, 'The console must be unlocked for focus observation'
+    front = lambda: int(appkit('$.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;'))
+    other_pid = front()
+    assert other_pid > 1
+    launch = ['/usr/bin/open', '-a', str(b.APP_PATH)]
+    subprocess.run(launch, check=True, timeout=5)
+    database = b.DATA / 'catalog.sqlite'
+
+    def live_qa():
+        try:
+            return picker.verified_process(database)
+        except (RuntimeError, subprocess.CalledProcessError):
+            return None
+
+    pid = await_value(live_qa, 'Isolated QA and its catalog did not start')
+    assert pid != other_pid
+    with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
+        assert db.execute('PRAGMA quick_check').fetchone() == ('ok',)
+        assert db.execute('SELECT count(*) FROM media_assets').fetchone() == (0,)
+    b.STATE['isolatedEmptyCatalogVerified'] = True
+    ns_app = '$.NSRunningApplication.runningApplicationWithProcessIdentifier'
+    qa_asn = subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', 'find', f'pid={pid}'],
+                                     text=True, timeout=5).strip()
+    assert qa_asn.startswith('ASN:')
+    roles = b.STATE.setdefault('observedRoles', [])
+
+    def confirm(expected_pid, role):
+        await_value(lambda: front() == expected_pid, f'AppKit did not observe {role} frontmost')
+        asn = subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', 'front'], text=True, timeout=5).strip()
+        assert asn.startswith('ASN:') and (asn == qa_asn) == (role == 'qa')
+        roles.append(role)
+        b.event('focusPreflight', role=role, appKitAndLaunchServicesAgree=True, **b.check())
+
+    confirm(pid, 'qa')
+    appkit(f'{ns_app}({other_pid}).activateWithOptions(2);')
+    confirm(other_pid, 'other')
+    subprocess.run(launch, check=True, timeout=5)
+    confirm(pid, 'qa')
+    assert live_qa() == pid
+    assert appkit(f'{ns_app}({pid}).terminate;') == 'true', 'The QA declined to quit normally'
+    await_value(lambda: subprocess.run(['/bin/ps', '-p', str(pid)], stdout=subprocess.DEVNULL).returncode != 0,
+                'The QA did not quit normally')
+    b.STATE.update(actualOSFocusRoundTrip=True, qaQuitNormally=True)
 
 
 def observe_focus(asn):
@@ -200,7 +262,17 @@ def save():
 reuse.write_sources, reuse.snapshot, reuse.main, b.save = write_sources, snapshot, main, save
 
 if __name__ == '__main__':
-    timer = threading.Timer(1200, lambda: os.kill(os.getpid(), signal.SIGTERM))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--focus-preflight', action='store_true', help='Verify OS focus in an empty isolated catalog')
+    args = parser.parse_args()
+    if args.focus_preflight:
+        b.APPROVAL = reuse.ROOT / 'docs/native-navigation-focus-preflight-budget.json'
+        b.RECEIPT = reuse.ROOT / 'docs/native-navigation-focus-preflight.json'
+        reuse.SCOPE = 'One owned but unimported PNG; verify actual macOS focus round trip with an empty isolated catalog'
+        reuse.RUN_PREFIX = 'travel-gallery-native-navigation-focus-preflight-'
+        reuse.SOURCE_FILES = 1
+        reuse.main = lambda: base_main(on_ready=focus_preflight)
+    timer = threading.Timer(50 if args.focus_preflight else 1200, lambda: os.kill(os.getpid(), signal.SIGTERM))
     timer.daemon = True
     timer.start()
     try:

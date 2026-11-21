@@ -178,7 +178,7 @@ def snapshot(label):
             sourceUnchanged=source_state() == b.STATE['sourceBefore'], normalPreserved=normal_state() == b.STATE['normalBefore'], **b.check())
 
 
-def main():
+def main(on_ready=None):
     assert not any(p.exists() or p.is_symlink() for p in [*OWNED, *b.EXTRA]), 'QA namespace is not empty'
     subprocess.run([sys.executable, str(ROOT/'scripts/check-test-artifact-budget.py'),
         '--planned-source-files', str(SOURCE_FILES), '--planned-files', str(PLANNED_FILES), '--planned-bytes', str(PLANNED_BYTES)], check=True)
@@ -215,6 +215,10 @@ def main():
     control = b.WORK/'control'
     control.mkdir()
     b.event('readyForNativeGui', application=str(b.APP_PATH), source=str(source), controlDirectory=str(control), **b.check())
+    if on_ready is not None:
+        on_ready()
+        b.STATE['status'] = 'finished'
+        return
     while True:
         b.check()
         for path in sorted(control.glob('*.json')):
