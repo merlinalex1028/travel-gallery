@@ -54,6 +54,7 @@ base64 = "0.22"
 fs2 = "0.4"
 cap-std = "3"
 notify = "8.2.0"
+tempfile = "3"
 
 candle-core = { version = "=0.11.0", default-features = false, optional = true }
 candle-nn = { version = "=0.11.0", default-features = false, optional = true }
@@ -74,5 +75,4 @@ rustix = { version = "1", features = ["fs"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Power"] }
 
 [dev-dependencies]
-tempfile = "3"
 quick-xml = "0.42"

@@ -1173,6 +1173,54 @@ fn restore_requires_reconfirmation_after_same_stamp_or_wal_changes() {
     }
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn restore_reads_static_legacy_wal_backup_without_directory_write_access() {
+    const TEST_FOLDER: &str = "TRAVEL_GALLERY_OWNED_STATIC_WAL_TEST_FOLDER";
+    if let Some(folder) = std::env::var_os(TEST_FOLDER) {
+        let folder = PathBuf::from(folder);
+        let selected = folder.join("readonly/selected.sqlite");
+        let before = fs::read(&selected).unwrap();
+        let readonly = rusqlite::Connection::open_with_flags(
+            &selected,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        ).unwrap();
+        assert!(readonly.query_row("PRAGMA schema_version", [], |row| row.get::<_, i64>(0)).is_err());
+        drop(readonly);
+        let catalog = Catalog::new(&folder.join("app"), &folder.join("cache")).unwrap();
+        catalog.authorize(&selected, "restore").unwrap();
+        let prepared = catalog.call("prepare_restore", json!({"selectedBackupPath":selected})).unwrap();
+        catalog.call("restore_catalog", json!({"selectedBackupPath":selected,
+            "confirmToken":prepared["confirmToken"]})).unwrap();
+        assert_eq!(db::setting(&catalog.connection().unwrap(), "test-portable").unwrap().as_deref(), Some("true"));
+        assert_eq!(fs::read(&selected).unwrap(), before);
+        assert_eq!(fs::read_dir(selected.parent().unwrap()).unwrap().count(), 1);
+        assert!(!fs::read_dir(folder.join("app")).unwrap().any(|entry| {
+            entry.unwrap().file_name().to_string_lossy().starts_with("restore-input-")
+        }));
+        return;
+    }
+    let owned = tempfile::tempdir().unwrap();
+    let root = owned.path().canonicalize().unwrap();
+    let restricted = root.join("readonly");
+    fs::create_dir(&restricted).unwrap();
+    let selected = restricted.join("selected.sqlite");
+    db::initialize(&selected).unwrap();
+    let backup = db::connect(&selected).unwrap();
+    backup.execute("INSERT INTO app_settings(key,value_json) VALUES('test-portable','true')", []).unwrap();
+    drop(backup);
+    assert_eq!(&fs::read(&selected).unwrap()[18..20], &[2, 2]);
+    assert_eq!(fs::read_dir(&restricted).unwrap().count(), 1);
+    let profile = format!("(version 1) (allow default) (deny file-write* (subpath {}))", json!(restricted));
+    let output = std::process::Command::new("/usr/bin/sandbox-exec")
+        .args(["-p", &profile])
+        .arg(std::env::current_exe().unwrap())
+        .args(["--exact", "restore_reads_static_legacy_wal_backup_without_directory_write_access", "--nocapture"])
+        .env(TEST_FOLDER, &root)
+        .output().unwrap();
+    assert!(output.status.success(), "{}\n{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+}
+
 #[test]
 fn overflowing_restore_epoch_is_rejected_before_replacing_the_catalog() {
     let f = Fixture::new();

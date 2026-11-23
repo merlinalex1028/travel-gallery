@@ -1079,11 +1079,55 @@ fn confirm_backup_version(path: &Path, expected: &Value) -> Result<()> {
     Ok(())
 }
 
+fn copy_static_wal_backup(
+    path: &Path,
+    version: &Value,
+    private_data: &Path,
+) -> Result<Option<tempfile::TempDir>> {
+    // A backup with a live journal needs every committed frame. Only the
+    // single-file format previously emitted by our backup job qualifies here.
+    if !version[1].is_null() || !version[2].is_null() {
+        return Ok(None);
+    }
+    let mut input = File::open(path)?;
+    let opened = FileVersion::from_file(&input)?;
+    if version[0] != json!([opened.size, opened.token]) {
+        return Err(AppError::new(
+            "DB_CONFLICT",
+            "备份文件在确认前已变化，请重新选择",
+        ));
+    }
+    let mut header = [0_u8; 20];
+    if opened.size < header.len() as u64 {
+        return Ok(None);
+    }
+    input.read_exact(&mut header)?;
+    if &header[..16] != b"SQLite format 3\0" || header[18..] != [2, 2] {
+        return Ok(None);
+    }
+    let folder = tempfile::Builder::new()
+        .prefix("restore-input-")
+        .tempdir_in(private_data)?;
+    {
+        let mut output = File::create(folder.path().join("selected.sqlite"))?;
+        output.write_all(&header)?;
+        let copied = io::copy(&mut input.take(opened.size - header.len() as u64 + 1), &mut output)?;
+        if copied + header.len() as u64 != opened.size {
+            return Err(AppError::new(
+                "DB_CONFLICT",
+                "备份文件在确认前已变化，请重新选择",
+            ));
+        }
+    }
+    confirm_backup_version(path, version)?;
+    Ok(Some(folder))
+}
+
 impl Catalog {
     pub(crate) fn prepare_restore(&self, r: &Value) -> Result<Value> {
         let path = self.authorized(Path::new(required(r, "selectedBackupPath")?), "restore")?;
         let version = backup_version(&path)?;
-        let backup = self.open_backup(&path)?;
+        let (_snapshot, backup) = self.open_selected_backup(&path, &version)?;
         let read = backup.unchecked_transaction()?;
         Self::validate_backup(&read)?;
         confirm_backup_version(&path, &version)?;
@@ -1102,6 +1146,31 @@ impl Catalog {
             ));
         }
         Ok(Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?)
+    }
+    fn open_selected_backup(
+        &self,
+        path: &Path,
+        version: &Value,
+    ) -> Result<(Option<tempfile::TempDir>, Connection)> {
+        let backup = self.open_backup(path)?;
+        let readable = backup.query_row("PRAGMA schema_version", [], |row| row.get::<_, i64>(0));
+        match readable {
+            Ok(_) => Ok((None, backup)),
+            Err(error) => {
+                if !matches!(
+                    error.sqlite_error_code(),
+                    Some(rusqlite::ErrorCode::CannotOpen | rusqlite::ErrorCode::ReadOnly)
+                ) {
+                    return Err(error.into());
+                }
+                drop(backup);
+                let Some(folder) = copy_static_wal_backup(path, version, &self.inner.data)? else {
+                    return Err(error.into());
+                };
+                let copied = self.open_backup(&folder.path().join("selected.sqlite"))?;
+                Ok((Some(folder), copied))
+            }
+        }
     }
     fn validate_backup(c: &Connection) -> Result<i64> {
         let check: String = c.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
@@ -1205,7 +1274,7 @@ impl Catalog {
             return Err(AppError::new("PERMISSION_DENIED", "恢复确认无效"));
         }
         confirm_backup_version(&selected, &v["version"])?;
-        let backup = self.open_backup(&selected)?;
+        let (_snapshot, backup) = self.open_selected_backup(&selected, &v["version"])?;
         let source = backup.unchecked_transaction()?;
         Self::validate_backup(&source)?;
         let mut c = self.connection()?;
