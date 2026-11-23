@@ -592,6 +592,23 @@ mod query_transaction_tests {
     }
 
     #[test]
+    fn snapshot_consumers_share_an_exclusive_expiry_boundary() {
+        let (_temp, mut c) = ordering_fixture();
+        let frozen = snapshot(&mut c, &json!({"filter":{},"sort":Sort::default()})).unwrap();
+        let deadline = frozen["expiresAt"].as_i64().unwrap();
+        assert_eq!(deadline - frozen["createdAt"].as_i64().unwrap(), 86_400_000);
+        let target = json!({"kind":"snapshot","snapshotId":frozen["id"],"excludeAssetIds":["a"]});
+        assert_eq!(target_ids_with_clock(&c, &target, || deadline - 1).unwrap(),
+                   ["b", "c", "d", "e", "f", "g", "h"]);
+        validate_snapshot_with_clock(&c, frozen["id"].as_str().unwrap(), || deadline - 1).unwrap();
+        for at in [deadline, deadline + 1] {
+            assert_eq!(target_ids_with_clock(&c, &target, || at).unwrap_err().code, "SNAPSHOT_EXPIRED");
+            assert_eq!(validate_snapshot_with_clock(&c, frozen["id"].as_str().unwrap(), || at).unwrap_err().code,
+                       "SNAPSHOT_EXPIRED");
+        }
+    }
+
+    #[test]
     fn page_keeps_its_epoch_and_rows_while_a_catalog_update_commits() {
         let temp = tempfile::tempdir().unwrap();
         let database = temp.path().join("catalog.sqlite");
@@ -712,6 +729,9 @@ pub fn snapshot(c: &mut Connection, r: &Value) -> Result<Value> {
     )
 }
 pub fn target_ids(c: &Connection, t: &Value) -> Result<Vec<String>> {
+    target_ids_with_clock(c, t, now)
+}
+fn target_ids_with_clock(c: &Connection, t: &Value, clock: impl FnOnce() -> i64) -> Result<Vec<String>> {
     let ids = match required(t, "kind")? {
         "explicit" => {
             let v = t["assetIds"]
@@ -747,7 +767,7 @@ pub fn target_ids(c: &Connection, t: &Value) -> Result<Vec<String>> {
             let ids = st
                 .query_map([s], |r| r.get::<_, String>(0))?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
-            if ttl < now() || count != ids.len() as i64 {
+            if ttl <= clock() || count != ids.len() as i64 {
                 return Err(AppError::new(
                     "SNAPSHOT_EXPIRED",
                     "选择快照已过期或范围发生变化，请重新确认",
@@ -771,8 +791,11 @@ pub fn target_ids(c: &Connection, t: &Value) -> Result<Vec<String>> {
     Ok(ids)
 }
 pub fn validate_snapshot(c: &Connection, id: &str) -> Result<()> {
+    validate_snapshot_with_clock(c, id, now)
+}
+fn validate_snapshot_with_clock(c: &Connection, id: &str, clock: impl FnOnce() -> i64) -> Result<()> {
     let meta:Option<(i64,i64,i64)>=c.query_row("SELECT initial_count,expires_at,(SELECT count(*) FROM selection_snapshot_items WHERE snapshot_id=ss.id) FROM selection_snapshots ss WHERE id=?",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
-    if !meta.is_some_and(|(initial, ttl, current)| ttl > now() && initial == current) {
+    if !meta.is_some_and(|(initial, ttl, current)| ttl > clock() && initial == current) {
         return Err(AppError::new(
             "SNAPSHOT_EXPIRED",
             "冻结选区已过期或数量变化，请重新确认",
