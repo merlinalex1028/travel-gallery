@@ -75,6 +75,17 @@ export const useLibrary = defineStore('library', () => {
     excluded.value = new Set();
     snapshotMembers.value = new Set();
   }
+  function isSnapshotExpired(error: unknown) {
+    return !!(
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'SNAPSHOT_EXPIRED'
+    );
+  }
+  function clearExpiredSnapshot(snapshotId: string | undefined) {
+    if (snapshotId && snapshot.value?.id === snapshotId) clearSelection();
+  }
   async function search(more = false) {
     if (more && (!cursor.value || loadingMore.value || queryUnavailable.value)) return;
     const seq = more ? generation : ++generation;
@@ -109,7 +120,10 @@ export const useLibrary = defineStore('library', () => {
       needsFirstPage.value = false;
       error.value = '';
     } catch (e) {
-      if (seq === generation) error.value = errorMessage(e);
+      if (seq === generation) {
+        error.value = errorMessage(e);
+        if (isSnapshotExpired(e)) clearExpiredSnapshot(selectionSnapshotId);
+      }
     } finally {
       if (seq === generation) {
         loading.value = false;
@@ -221,25 +235,31 @@ export const useLibrary = defineStore('library', () => {
       clientMutationId: retry?.clientMutationId ?? crypto.randomUUID(),
       ...(retry?.expectedRevisions ? { expectedRevisions: { ...retry.expectedRevisions } } : {}),
     };
+    const snapshotId = selection.kind === 'snapshot' ? selection.snapshotId : undefined;
     pending.value++;
     const task = queue
       .catch(() => {})
       .then(async () => {
-        const result = await api('apply_review_batch', request);
-        if (!history.value.includes(result.changeBatchId)) {
-          history.value = [...history.value.slice(-99), result.changeBatchId];
-          if (selection.kind === 'explicit') {
-            const ids = new Set(selection.assetIds);
-            items.value = items.value.map((i) =>
-              ids.has(i.id)
-                ? { ...i, review: { ...i.review, ...patch, revision: i.review.revision + 1 } }
-                : i,
-            );
+        try {
+          const result = await api('apply_review_batch', request);
+          if (!history.value.includes(result.changeBatchId)) {
+            history.value = [...history.value.slice(-99), result.changeBatchId];
+            if (selection.kind === 'explicit') {
+              const ids = new Set(selection.assetIds);
+              items.value = items.value.map((i) =>
+                ids.has(i.id)
+                  ? { ...i, review: { ...i.review, ...patch, revision: i.review.revision + 1 } }
+                  : i,
+              );
+            }
           }
+          if (detail.value && selection.kind === 'explicit' && selection.assetIds.includes(detail.value.id))
+            await inspect(detail.value.id);
+          return result;
+        } catch (e) {
+          if (isSnapshotExpired(e)) clearExpiredSnapshot(snapshotId);
+          throw e;
         }
-        if (detail.value && selection.kind === 'explicit' && selection.assetIds.includes(detail.value.id))
-          await inspect(detail.value.id);
-        return result;
       });
     queue = task;
     return task.finally(() => {
@@ -253,14 +273,20 @@ export const useLibrary = defineStore('library', () => {
       removeTagIds: [...removeTagIds],
       clientMutationId: crypto.randomUUID(),
     };
+    const snapshotId = selection.kind === 'snapshot' ? selection.snapshotId : undefined;
     pending.value++;
     const task = queue
       .catch(() => {})
       .then(async () => {
-        const result = await api('apply_tags_batch', request);
-        history.value = [...history.value.slice(-99), result.changeBatchId];
-        if (detail.value) await inspect(detail.value.id);
-        return result;
+        try {
+          const result = await api('apply_tags_batch', request);
+          history.value = [...history.value.slice(-99), result.changeBatchId];
+          if (detail.value) await inspect(detail.value.id);
+          return result;
+        } catch (e) {
+          if (isSnapshotExpired(e)) clearExpiredSnapshot(snapshotId);
+          throw e;
+        }
       });
     queue = task;
     return task.finally(() => {

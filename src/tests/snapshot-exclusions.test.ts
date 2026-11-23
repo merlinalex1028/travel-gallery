@@ -165,6 +165,30 @@ it('blocks new selection edits when the page cannot confirm its snapshot members
   expect(lib.target).toEqual({ kind: 'snapshot', snapshotId: 'frozen-five', excludeAssetIds: [] });
 });
 
+it('clears an expired snapshot before allowing a fresh selection', async () => {
+  const lib = await freeze();
+  invoke.mockRejectedValueOnce({ code: 'SNAPSHOT_EXPIRED', message: 'expired' });
+  await lib.search();
+  expect(lib.snapshot).toBeNull();
+  expect(lib.count).toBe(0);
+  expect(lib.selected).toEqual(new Set());
+  expect(lib.error).toBe('failed');
+
+  await lib.search();
+  const lastQuery = invoke.mock.calls.at(-1);
+  expect(lastQuery?.[0]).toBe('query_assets');
+  expect(lastQuery?.[1].selectionSnapshotId).toBeUndefined();
+});
+
+it('clears the current snapshot when a batch mutation reports expiry', async () => {
+  const lib = await freeze();
+  invoke.mockRejectedValueOnce({ code: 'SNAPSHOT_EXPIRED', message: 'expired' });
+  await expect(lib.apply({ pickState: 'keep' })).rejects.toMatchObject({ code: 'SNAPSHOT_EXPIRED' });
+  expect(lib.snapshot).toBeNull();
+  expect(lib.count).toBe(0);
+  expect(lib.pending).toBe(0);
+});
+
 it('does not revive a snapshot after the user cleared the pending selection', async () => {
   const lib = useLibrary();
   let finish!: (value: unknown) => void;
