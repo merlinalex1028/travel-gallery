@@ -21,6 +21,7 @@ BATCH = 'library-query'
 b.APPROVAL = batch.ROOT / 'docs/native-library-query-budget.json'
 b.RECEIPT = batch.ROOT / 'docs/native-library-query-latest.json'
 EPOCH_BATCH = 'catalog-epoch'
+EPOCH_AX_BATCH = 'catalog-epoch-ax'
 MATCH = tuple(f'match-{i:03}.tiff' for i in range(125))
 OUTSIDE = tuple(f'outside-{i:03}.tiff' for i in range(5))
 EXCLUDED = MATCH[0]
@@ -454,7 +455,7 @@ def measure_query_latency(env):
 
 
 def run(approval):
-    check_restore = approval['batch'] == EPOCH_BATCH
+    check_restore = approval['batch'] in (EPOCH_BATCH, EPOCH_AX_BATCH)
     candidate, fixture, release, env = build.build_candidate(
         approval, approval['batch'], 'CatalogEpoch' if check_restore else 'LibraryQuery',
         lambda source: write_sources(source, include_gps=check_restore), picker_only=True,
@@ -471,12 +472,13 @@ def run(approval):
 
 
 if __name__ == '__main__':
-    if sys.argv[1:] not in ([], ['--catalog-epoch']):
-        raise SystemExit('Usage: native-library-query-build-batch.py [--catalog-epoch]')
-    batch_name = EPOCH_BATCH if sys.argv[1:] else BATCH
-    if batch_name == EPOCH_BATCH:
-        b.APPROVAL = batch.ROOT / 'docs/native-catalog-epoch-budget.json'
-        b.RECEIPT = batch.ROOT / 'docs/native-catalog-epoch-latest.json'
+    modes = {(): BATCH, ('--catalog-epoch',): EPOCH_BATCH, ('--catalog-epoch-ax',): EPOCH_AX_BATCH}
+    if tuple(sys.argv[1:]) not in modes:
+        raise SystemExit('Usage: native-library-query-build-batch.py [--catalog-epoch|--catalog-epoch-ax]')
+    batch_name = modes[tuple(sys.argv[1:])]
+    if batch_name in (EPOCH_BATCH, EPOCH_AX_BATCH):
+        b.APPROVAL = batch.ROOT / f'docs/native-{batch_name}-budget.json'
+        b.RECEIPT = batch.ROOT / f'docs/native-{batch_name}-latest.json'
     if not b.APPROVAL.is_file() or b.APPROVAL.is_symlink():
         raise SystemExit(f'Fresh {batch_name} batch approval is required; no temporary files generated')
     batch.run = run
