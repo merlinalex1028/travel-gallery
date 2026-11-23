@@ -328,6 +328,38 @@ class LibraryQueryEvidence(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 batch.verify_restore('backup-restored', state, observed, backup, backup, changed, rollback)
 
+    def test_changed_backup_probe_checks_native_confirmation_and_keeps_original(self):
+        self.db.execute('CREATE TABLE app_meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL)')
+        self.db.execute("INSERT INTO app_meta VALUES('epoch', 130)")
+        self.db.commit()
+        with tempfile.TemporaryDirectory(prefix='travel-gallery-backup-version-probe-') as owned:
+            work = Path(owned).resolve()
+            original, probe = work / 'original.sqlite', work / 'restore-version-probe.sqlite'
+            with closing(sqlite3.connect(original)) as target:
+                self.db.backup(target)
+            before_bytes = original.read_bytes()
+            baseline = batch.read_backup(original)
+            with patch.object(batch.b, 'WORK', work):
+                batch.prepare_backup_version_probe(original, probe)
+                self.assertEqual(batch.read_backup(probe), baseline)
+                batch.rewrite_backup_version_probe(probe)
+            self.assertEqual(original.read_bytes(), before_bytes)
+            result = batch.read_backup(probe)
+            assets = [(*row[:5], 4, *row[6:]) if row[1] == batch.EXCLUDED else row
+                      for row in baseline['assets']]
+            self.assertEqual(result, dict(baseline, assets=assets))
+
+            settings = ('Window: "旅图", App: Travel Gallery Offline Bench.\n'
+                        '  2 HTML content Description: 旅图, URL: tauri://localhost#/settings')
+            reviewing = f'{settings}\n  3 text 恢复“{probe}”中的整理记录？\n  4 button 备份当前库并恢复'
+            rejected = f'{settings}\n  5 alert 备份文件在确认前已变化，请重新选择'
+            batch.verify_backup_version_observation('backup-reviewing', {'axFrame': reviewing}, probe)
+            batch.verify_backup_version_observation('backup-version-rejected', {'axFrame': rejected}, probe)
+            with self.assertRaises(AssertionError):
+                batch.verify_backup_version_observation('backup-reviewing', {'axFrame': reviewing.replace(str(probe), str(original))}, probe)
+            with self.assertRaises(AssertionError):
+                batch.verify_backup_version_observation('backup-version-rejected', {'axFrame': reviewing}, probe)
+
     def test_restore_rejects_changed_effective_dates_roots_organization_and_history(self):
         backup, changed = self.restore_states()
         self.db.execute('UPDATE asset_reviews SET rating=0,revision=0 WHERE asset_id=?', (batch.EXCLUDED,))

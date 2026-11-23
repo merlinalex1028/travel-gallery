@@ -5,8 +5,10 @@ import fcntl
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -36,6 +38,7 @@ KNOWN_ZONE_SAMPLE = OUTSIDE[1]
 KNOWN_ZONE_DATE = '2024-04-11'
 STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
 RESTORE_STEPS = ('backed-up', 'rating-changed', 'backup-restored')
+RESTORE_VERSION_STEPS = ('backup-reviewing', 'backup-version-rejected')
 MAP_STEP = 'map-rendered'
 EXPIRY_STEPS = ('expiry-frozen', 'expiry-rejected', 'expiry-refreshed', 'expiry-reselected')
 SNAPSHOT_TTL_MS = 86_400_000
@@ -121,6 +124,38 @@ def read_backup(path):
         assert db.execute('PRAGMA quick_check').fetchone() == ('ok',)
         assert not db.execute('PRAGMA foreign_key_check').fetchone()
         return read_restore_state(db)
+
+
+def prepare_backup_version_probe(original, probe):
+    assert probe.parent == b.WORK and not original.is_symlink()
+    with original.open('rb') as source, probe.open('xb') as target:
+        shutil.copyfileobj(source, target)
+    with closing(sqlite3.connect(probe.as_uri() + '?mode=rw', uri=True)) as db:
+        assert db.execute('PRAGMA journal_mode=DELETE').fetchone() == ('delete',)
+
+
+def rewrite_backup_version_probe(probe):
+    assert probe.parent == b.WORK and probe.is_file() and probe.resolve() == probe
+    before = probe.stat()
+    with closing(sqlite3.connect(probe.as_uri() + '?mode=rw', uri=True)) as db, db:
+        changed = db.execute('''UPDATE asset_reviews SET rating=4 WHERE rating=0 AND asset_id IN
+            (SELECT id FROM media_assets WHERE filename=?)''', (EXCLUDED,))
+        assert changed.rowcount == 1
+    os.utime(probe, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = probe.stat()
+    assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+
+
+def verify_backup_version_observation(step, evidence, probe):
+    frame = evidence.get('axFrame')
+    assert set(evidence) == {'axFrame'} and isinstance(frame, str)
+    assert frame.startswith('Window: ') and 'App: Travel Gallery Offline Bench.' in frame.split('\n', 1)[0]
+    assert re.search(AX_ROW + r'HTML content .*URL: tauri://localhost#/settings$', frame)
+    if step == 'backup-reviewing':
+        assert str(probe) in frame
+        assert re.search(AX_ROW + r'button 备份当前库并恢复(?:$|\s)', frame)
+    else:
+        assert '备份文件在确认前已变化，请重新选择' in frame
 
 
 def verify_restored_state(current, backup, changed, rollback):
@@ -415,12 +450,13 @@ def verify(step, state, source, observed, previous):
         assert (pick, rating, favorite, note, revision) == (expected_pick, 0, 0, '', expected_revision), name
 
 
-def accept(candidate, fixture, release, env, *, check_restore=False, check_expiry=False):
+def accept(candidate, fixture, release, env, *, check_restore=False, check_rejections=False):
     control = b.WORK / 'control'
     control.mkdir()
     source = (fixture / 'source').resolve()
     database = b.DATA / 'catalog.sqlite'
     backup_dir = b.WORK / 'backup'
+    backup_probe = b.WORK / 'restore-version-probe.sqlite'
     if check_restore:
         backup_dir.mkdir()
         b.STATE['backupDirectory'] = str(backup_dir)
@@ -430,8 +466,11 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_expir
     pid, previous = None, None
     baseline, backup, changed = None, None, None
     expiry_state = None
-    steps = STEPS[:-1] + ((*RESTORE_STEPS, MAP_STEP) if check_restore else ())
-    steps += EXPIRY_STEPS if check_expiry else ()
+    restore_steps = RESTORE_STEPS
+    if check_rejections:
+        restore_steps = (*RESTORE_STEPS[:-1], *RESTORE_VERSION_STEPS, RESTORE_STEPS[-1])
+    steps = STEPS[:-1] + ((*restore_steps, MAP_STEP) if check_restore else ())
+    steps += EXPIRY_STEPS if check_rejections else ()
     for step in (*steps, 'finish'):
         for observed in checkpoint_observations(control, step):
             assert reuse.normal_state() == b.STATE['normalBefore']
@@ -452,7 +491,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_expir
                 reason = frozen_pending_reason(db) if step == 'frozen' else None
                 if reason is None:
                     state = read_catalog(db)
-                    if step in (*RESTORE_STEPS, MAP_STEP, *EXPIRY_STEPS) or (check_restore and step == 'time-restored'):
+                    if step in (*restore_steps, MAP_STEP, *EXPIRY_STEPS) or (check_restore and step == 'time-restored'):
                         restore_state = read_restore_state(db)
                     if step == MAP_STEP:
                         locations = read_map_locations(db)
@@ -474,7 +513,22 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_expir
                 except ValueError as error:
                     b.event('nativeCheckpointNotReady', step=step, reason=str(error))
                     continue
+            if step in RESTORE_VERSION_STEPS:
+                try:
+                    verify_backup_version_observation(step, observed, backup_probe)
+                except AssertionError:
+                    b.event('nativeCheckpointNotReady', step=step, reason='Expected native restore confirmation or version conflict')
+                    continue
             break
+        if step in RESTORE_VERSION_STEPS:
+            assert restore_state == changed
+            assert not list(b.DATA.glob('before-restore-*.sqlite'))
+            assert not list(b.DATA.glob('restore-staging-*'))
+            if step == 'backup-reviewing':
+                assert read_backup(backup_probe) == backup
+                rewrite_backup_version_probe(backup_probe)
+            b.event('nativeBackupVersionCheckpoint', step=step, catalogEpoch=restore_state['epoch'])
+            continue
         if step in EXPIRY_STEPS:
             added = verify_expiry_state(step, restore_state, expiry_state, time.time_ns() // 1_000_000)
             if added:
@@ -505,6 +559,9 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_expir
                 verify_restore(step, restore_state, observed, backup, baseline, changed, rollback)
             if step == 'rating-changed':
                 changed = restore_state
+                if check_rejections:
+                    prepare_backup_version_probe(selected, backup_probe)
+                    b.STATE['restoreVersionProbe'] = str(backup_probe)
             b.event('nativeCatalogEpochCheckpoint', step=step, catalogEpoch=restore_state['epoch'],
                     backupEpoch=backup['epoch'], **observed)
             continue
@@ -550,7 +607,7 @@ def run(approval):
     assert preparation['pickerOnly']
     assert not any('absolute-path' in name for name in preparation['parentEntitlements'])
     accept(candidate, fixture, release, env, check_restore=check_restore,
-           check_expiry=is_deadline_batch(approval['batch']))
+           check_rejections=is_deadline_batch(approval['batch']))
 
 
 def is_deadline_batch(name):
@@ -562,7 +619,7 @@ def register_standing(approval_path, batch_name):
     authority = batch.ROOT / 'AGENTS.md'
     scope = 'Full locked Rust, 50k synthetic query benchmark, one macOS candidate, and 130 owned TIFFs for native pagination, frozen review, capture time, backup/restore and map checks'
     if is_deadline_batch(batch_name):
-        scope += ', plus controlled expiry of one snapshot in the isolated catalog and explicit reselection'
+        scope += ', plus a changed backup copy and controlled expiry of one isolated snapshot with explicit reselection'
     registration = dict(
         batch=batch_name, status='active', limits=batch.LIMITS,
         requiredFreeBytes=batch.LIMITS['logicalBytes'],
