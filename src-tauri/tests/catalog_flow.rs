@@ -1128,6 +1128,52 @@ fn restoring_older_or_newer_epochs_invalidates_every_pre_restore_query() {
 }
 
 #[test]
+fn restore_requires_reconfirmation_after_same_stamp_or_wal_changes() {
+    for use_wal in [false, true] {
+        let f = Fixture::new();
+        f.picture("photo.jpg", 1);
+        f.add();
+        let asset = f.assets()[0]["id"].as_str().unwrap().to_owned();
+        let c = f.cat.connection().unwrap();
+        let backup = f.output.join("selected.sqlite");
+        db::backup(&c, &backup).unwrap();
+        let edited = db::connect(&backup).unwrap();
+        edited.pragma_update(None, "journal_mode", if use_wal { "WAL" } else { "DELETE" }).unwrap();
+        if use_wal {
+            edited.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
+        }
+        let original = fs::metadata(&backup).unwrap();
+        f.cat.authorize(&backup, "restore").unwrap();
+        let prepared = f.cat.call("prepare_restore", json!({"selectedBackupPath":backup})).unwrap();
+        edited.execute("UPDATE asset_reviews SET rating=5 WHERE asset_id=?", [&asset]).unwrap();
+        if !use_wal {
+            fs::File::options().write(true).open(&backup).unwrap()
+                .set_times(fs::FileTimes::new().set_modified(original.modified().unwrap())).unwrap();
+        }
+        let changed = fs::metadata(&backup).unwrap();
+        assert_eq!((changed.len(), changed.modified().unwrap()), (original.len(), original.modified().unwrap()));
+
+        let error = f.cat.call("restore_catalog", json!({
+            "selectedBackupPath":backup,"confirmToken":prepared["confirmToken"]
+        })).unwrap_err();
+        assert_eq!(error.code, "DB_CONFLICT");
+        assert!(error.message.contains("备份文件在确认前已变化"), "{error:?}");
+        assert_eq!(f.cat.call("get_asset", json!({"assetId":asset})).unwrap()["review"]["rating"], 0);
+        let data = f._temp.path().join("app");
+        assert!(!fs::read_dir(data).unwrap().any(|entry| {
+            let name = entry.unwrap().file_name();
+            let name = name.to_string_lossy();
+            name.starts_with("before-restore-") || name.starts_with("restore-staging-")
+        }));
+
+        let prepared = f.cat.call("prepare_restore", json!({"selectedBackupPath":backup})).unwrap();
+        f.cat.call("restore_catalog", json!({"selectedBackupPath":backup,
+            "confirmToken":prepared["confirmToken"]})).unwrap();
+        assert_eq!(f.cat.call("get_asset", json!({"assetId":asset})).unwrap()["review"]["rating"], 5);
+    }
+}
+
+#[test]
 fn overflowing_restore_epoch_is_rejected_before_replacing_the_catalog() {
     let f = Fixture::new();
     f.picture("first.jpg", 1);

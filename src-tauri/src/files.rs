@@ -1047,25 +1047,62 @@ pub fn commit_relink(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Val
     cat.inner.tokens.lock().unwrap().remove(token);
     Ok(json!({"updated":true}))
 }
+fn backup_version(path: &Path) -> Result<Value> {
+    let version = |file: FileVersion| json!([file.size, file.token]);
+    let mut files = vec![version(FileVersion::read(path)?)];
+    // WAL and rollback journals can alter what SQLite reads without changing the main file.
+    for suffix in ["-wal", "-journal"] {
+        let mut name = path.as_os_str().to_owned();
+        name.push(suffix);
+        let sidecar = PathBuf::from(name);
+        files.push(match fs::symlink_metadata(&sidecar) {
+            Ok(_) => {
+                let file = FileVersion::read(&sidecar)?;
+                // SQLite may create a zero-byte WAL while opening a static backup.
+                if file.size == 0 { Value::Null } else { version(file) }
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Value::Null,
+            Err(e) => return Err(e.into()),
+        });
+    }
+    Ok(Value::Array(files))
+}
+
+fn confirm_backup_version(path: &Path, expected: &Value) -> Result<()> {
+    if backup_version(path).as_ref().ok() != Some(expected) {
+        return Err(AppError::new(
+            "DB_CONFLICT",
+            "备份文件在确认前已变化，请重新选择",
+        ));
+    }
+    Ok(())
+}
+
 impl Catalog {
     pub(crate) fn prepare_restore(&self, r: &Value) -> Result<Value> {
         let path = self.authorized(Path::new(required(r, "selectedBackupPath")?), "restore")?;
-        self.validate_backup(&path)?;
+        let version = backup_version(&path)?;
+        let backup = self.open_backup(&path)?;
+        let read = backup.unchecked_transaction()?;
+        Self::validate_backup(&read)?;
+        confirm_backup_version(&path, &version)?;
         let token = id();
         self.inner.tokens.lock().unwrap().insert(
             token.clone(),
-            json!({"purpose":"restore","path":path,"stamp":stamp(&path)?,"expiresAt":now()+300000}),
+            json!({"purpose":"restore","path":path,"version":version,"expiresAt":now()+300000}),
         );
         Ok(json!({"confirmToken":token,"message":"恢复前将自动备份当前资料库，备份不包含源媒体"}))
     }
-    fn validate_backup(&self, path: &Path) -> Result<i64> {
+    fn open_backup(&self, path: &Path) -> Result<Connection> {
         if path == self.inner.db_path {
             return Err(AppError::new(
                 "INVALID_SELECTION",
                 "不能将当前资料库作为恢复文件",
             ));
         }
-        let c = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        Ok(Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?)
+    }
+    fn validate_backup(c: &Connection) -> Result<i64> {
         let check: String = c.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
         let version: i64 = c.pragma_query_value(None, "user_version", |r| r.get(0))?;
         if check != "ok" || !(2..=db::CATALOG_VERSION).contains(&version) {
@@ -1115,7 +1152,7 @@ impl Catalog {
             c.prepare(
                 "SELECT cluster_id,asset_id,input_key,similarity FROM ai_cluster_members LIMIT 0",
             )?;
-            crate::ai_models::settings(&c)?;
+            crate::ai_models::settings(c)?;
             let mut vectors = c.prepare("SELECT vector FROM ai_embeddings")?;
             let mut rows = vectors.query([])?;
             while let Some(row) = rows.next()? {
@@ -1124,14 +1161,14 @@ impl Catalog {
             }
         }
         if version >= 8 {
-            crate::quality::validate_backup(&c).map_err(|_| {
+            crate::quality::validate_backup(c).map_err(|_| {
                 AppError::new("DB_MIGRATION_FAILED", "备份中的照片检查记录格式无效")
             })?;
         }
         if version >= 10 {
             c.prepare("SELECT file_version,sha256_file_version FROM media_assets LIMIT 0")?;
         }
-        crate::export_options::list(&c)?;
+        crate::export_options::list(c)?;
         let violations: i64 =
             c.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |r| {
                 r.get(0)
@@ -1160,20 +1197,16 @@ impl Catalog {
             .cloned()
             .ok_or_else(|| AppError::new("SNAPSHOT_EXPIRED", "请重新选择备份并确认恢复"))?;
         let selected = self.authorized(Path::new(required(r, "selectedBackupPath")?), "restore")?;
-        if serde_json::to_value(stamp(&selected)?)? != v["stamp"] {
-            return Err(AppError::new(
-                "DB_CONFLICT",
-                "备份文件在确认前已变化，请重新选择",
-            ));
-        }
         if v["purpose"] != "restore"
             || v["expiresAt"].as_i64().unwrap_or(0) < now()
             || Path::new(required(&v, "path")?) != selected
         {
             return Err(AppError::new("PERMISSION_DENIED", "恢复确认无效"));
         }
-        let path = self.authorized(Path::new(required(&v, "path")?), "restore")?;
-        self.validate_backup(&path)?;
+        confirm_backup_version(&selected, &v["version"])?;
+        let backup = self.open_backup(&selected)?;
+        let source = backup.unchecked_transaction()?;
+        Self::validate_backup(&source)?;
         let mut c = self.connection()?;
         if c.query_row(
             "SELECT EXISTS(SELECT 1 FROM jobs WHERE status IN ('running','queued','paused'))",
@@ -1183,23 +1216,16 @@ impl Catalog {
             return Err(AppError::new("DB_CONFLICT", "请先完成或取消所有任务"));
         }
         let previous_epoch = db::epoch(&c)?;
-        db::backup(
-            &c,
-            &self
-                .inner
-                .data
-                .join(format!("before-restore-{}.sqlite", now())),
-        )?;
-        let source =
-            Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         let staged_path = self
             .inner
             .data
             .join(format!("restore-staging-{}.sqlite", id()));
         let restored = (|| -> Result<()> {
             db::backup(&source, &staged_path)?;
+            confirm_backup_version(&selected, &v["version"])?;
+            source.commit()?;
             db::initialize_restore_staging(&staged_path)?;
-            self.validate_backup(&staged_path)?;
+            Self::validate_backup(&self.open_backup(&staged_path)?)?;
             let staged = Connection::open(&staged_path)?;
             // Invalidate every pre-restore query, even if the backup's epoch is older.
             let next_epoch = db::epoch(&staged)?.max(previous_epoch).checked_add(1)
@@ -1207,6 +1233,10 @@ impl Catalog {
             staged.execute(
                 "UPDATE app_meta SET value=? WHERE key='epoch'",
                 [next_epoch],
+            )?;
+            db::backup(
+                &c,
+                &self.inner.data.join(format!("before-restore-{}.sqlite", now())),
             )?;
             let b = rusqlite::backup::Backup::new(&staged, &mut c)?;
             b.run_to_completion(100, std::time::Duration::from_millis(10), None)?;
