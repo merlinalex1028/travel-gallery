@@ -244,6 +244,59 @@ class LibraryQueryEvidence(unittest.TestCase):
         with self.assertRaises(AssertionError):
             batch.verify('applied', batch.read_catalog(self.db), self.source, {}, baseline)
 
+    def test_expiry_requires_native_error_and_refresh_without_an_automatic_selection(self):
+        header = '\n'.join(pagination_frames(self.names, '降序')['axFrames'][0].splitlines()[:2])
+        page = header + '\n  59 text · 当前查询 130 张\n  80 container match-000.tiff，未处理，0 星'
+        frozen = page + '\n  60 text 已选 130 张 冻结快照'
+        error = header + '\n  92 text 冻结选区已过期或数量变化，请重新确认'
+        for step, frame in zip(batch.EXPIRY_STEPS, (frozen, error, page, frozen)):
+            batch.expiry_observation(step, {'axFrame': frame})
+        for step, frame in [('expiry-frozen', page), ('expiry-rejected', page),
+                            ('expiry-rejected', error + '\n  60 text 已选 130 张 冻结快照'),
+                            ('expiry-refreshed', frozen), ('expiry-reselected', page),
+                            ('expiry-reselected', frozen.replace('#/library', '#/map'))]:
+            with self.subTest(step=step), self.assertRaises(ValueError):
+                batch.expiry_observation(step, {'axFrame': frame})
+        with self.assertRaises(ValueError):
+            batch.expiry_observation('expiry-rejected', {'expiredNotice': True})
+
+    def test_expiry_reselection_requires_fresh_id_exact_members_and_unchanged_reviews(self):
+        _, before = self.restore_states()
+
+        def freeze(snapshot_id):
+            self.db.execute("INSERT INTO selection_snapshots VALUES(?,'{}','{}','wide',130,10,?)",
+                            (snapshot_id, 10 + batch.SNAPSHOT_TTL_MS))
+            self.db.execute('INSERT INTO selection_snapshot_items SELECT ?,id FROM media_assets', (snapshot_id,))
+            return batch.read_restore_state(self.db)
+
+        first = freeze('expiry-test')
+        snapshot = batch.verify_expiry_state('expiry-frozen', first, before, 10)
+        with tempfile.TemporaryDirectory(prefix='travel-gallery-expiry-gate-') as owned:
+            data = Path(owned).resolve()
+            database = data / 'catalog.sqlite'
+            with closing(sqlite3.connect(database)) as copy:
+                copy.executescript('\n'.join(self.db.iterdump()))
+                with (patch.object(batch.b, 'DATA', data),
+                      patch.object(batch.picker, 'verified_process', return_value=42)):
+                    with self.assertRaises(AssertionError):
+                        batch.set_controlled_expiry(database, 43, snapshot)
+                    batch.set_controlled_expiry(database, 42, snapshot)
+                    expired = batch.read_restore_state(copy)
+                self.assertEqual(expired, dict(first, snapshots=[(*row[:-1], 0) if row == snapshot else row
+                                                                 for row in first['snapshots']]))
+
+        self.db.execute("UPDATE selection_snapshots SET expires_at=0 WHERE id='expiry-test'")
+        for step in ('expiry-rejected', 'expiry-refreshed'):
+            batch.verify_expiry_state(step, expired, expired, 11)
+        with self.assertRaises(AssertionError):
+            batch.verify_expiry_state('expiry-reselected', expired, expired, 11)
+        new = freeze('confirmed')
+        batch.verify_expiry_state('expiry-reselected', new, expired, 11)
+        with self.assertRaises(AssertionError):
+            batch.verify_expiry_state('expiry-reselected', dict(new, members=new['members'][1:]), expired, 11)
+        with self.assertRaises(AssertionError):
+            batch.verify_expiry_state('expiry-reselected', dict(new, assets=[]), expired, 11)
+
     def restore_states(self):
         self.db.execute('CREATE TABLE app_meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL)')
         self.db.execute("INSERT INTO app_meta VALUES('epoch', 130)")

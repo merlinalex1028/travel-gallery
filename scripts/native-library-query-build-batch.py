@@ -25,6 +25,7 @@ b.APPROVAL = batch.ROOT / 'docs/native-library-query-budget.json'
 b.RECEIPT = batch.ROOT / 'docs/native-library-query-latest.json'
 EPOCH_BATCH = 'catalog-epoch'
 EPOCH_AX_BATCH = 'catalog-epoch-ax'
+DEADLINE_BATCH = 'catalog-snapshot-deadline'
 MATCH = tuple(f'match-{i:03}.tiff' for i in range(125))
 OUTSIDE = tuple(f'outside-{i:03}.tiff' for i in range(5))
 EXCLUDED = MATCH[0]
@@ -36,6 +37,8 @@ KNOWN_ZONE_DATE = '2024-04-11'
 STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
 RESTORE_STEPS = ('backed-up', 'rating-changed', 'backup-restored')
 MAP_STEP = 'map-rendered'
+EXPIRY_STEPS = ('expiry-frozen', 'expiry-rejected', 'expiry-refreshed', 'expiry-reselected')
+SNAPSHOT_TTL_MS = 86_400_000
 MAP_GPS = ((OUTSIDE[2], 43.47, 11.88), (OUTSIDE[3], 43.47, 11.88), (OUTSIDE[4], 43.5, 11.92))
 RESTORE_STABLE_KEYS = ('roots', 'times', 'locations', 'corrections', 'snapshots', 'members', 'organization')
 RESTORE_ORGANIZATION_TABLES = ('tags', 'asset_tags', 'linked_media', 'collections',
@@ -228,6 +231,62 @@ AX_FROZEN = re.compile(AX_ROW + r'text 已选 (\d+) 张 冻结快照$')
 AX_EXCLUDED = re.compile(AX_ROW + r'text 已排除 (\d+) 张(?: 冻结于 [^\n]+)?$')
 AX_SCOPE = re.compile(AX_ROW + r'text 筛选已改变；本次 (\d+) 张的冻结选区保持原范围。')
 AX_DIRECTION = re.compile(AX_ROW + r'button 改为(升序|降序)$')
+AX_LIBRARY = re.compile(AX_ROW + r'HTML content .*URL: tauri://localhost#/library$')
+AX_SELECTION = re.compile(AX_ROW + r'text 已选 \d+ 张')
+AX_EXPIRY_ERROR = re.compile(AX_ROW + r'text 冻结选区已过期或数量变化，请重新确认$')
+
+
+def native_library_frame(frame):
+    return (isinstance(frame, str) and frame.startswith('Window: ')
+            and 'App: Travel Gallery Offline Bench.' in frame.split('\n', 1)[0]
+            and AX_LIBRARY.search(frame) is not None)
+
+
+def expiry_observation(step, evidence):
+    frame = evidence.get('axFrame')
+    if set(evidence) != {'axFrame'} or not native_library_frame(frame):
+        raise ValueError('Supply original isolated native library AX rows for this checkpoint')
+    frozen = step in ('expiry-frozen', 'expiry-reselected')
+    rejected = step == 'expiry-rejected'
+    total = str(len(MATCH) + len(OUTSIDE))
+    if rejected:
+        valid = AX_EXPIRY_ERROR.search(frame) and not AX_TOTAL.search(frame) and not AX_CARD.search(frame)
+    else:
+        valid = AX_TOTAL.findall(frame) == [total] and AX_CARD.search(frame) and not AX_EXPIRY_ERROR.search(frame)
+    if not valid or len(AX_SELECTION.findall(frame)) != int(frozen) or AX_EXCLUDED.search(frame):
+        raise ValueError('Native query, expiry notice, or selection does not match this checkpoint')
+    if AX_FROZEN.findall(frame) != ([total] if frozen else []):
+        raise ValueError('Native frozen count does not match this checkpoint')
+    return dict(expiredNotice=rejected, frozenCount=int(total) if frozen else 0)
+
+
+def verify_expiry_state(step, current, previous, at):
+    assert all(current[key] == previous[key] for key in previous if key not in ('snapshots', 'members'))
+    if step in ('expiry-rejected', 'expiry-refreshed'):
+        assert current == previous
+        return None
+    previous_snapshots = set(previous['snapshots'])
+    snapshots = set(current['snapshots'])
+    assert previous_snapshots <= snapshots and len(snapshots) == len(previous_snapshots) + 1
+    [added] = snapshots - previous_snapshots
+    snapshot_id, filters, _, _, count, created, deadline = added
+    asset_ids = {row[0] for row in current['assets']}
+    assert {row[1] for row in current['assets']} == set(MATCH + OUTSIDE)
+    assert count == len(asset_ids) and created <= at < deadline and deadline - created == SNAPSHOT_TTL_MS
+    assert all(value is None for value in json.loads(filters).values())
+    assert set(current['members']) == set(previous['members']) | {(snapshot_id, asset_id) for asset_id in asset_ids}
+    return added
+
+
+def set_controlled_expiry(database, pid, snapshot):
+    # This connection can only open the catalog already locked by the owned QA process.
+    assert database == b.DATA / 'catalog.sqlite' and not database.is_symlink()
+    assert database.resolve(strict=True) == database
+    assert picker.verified_process(database) == pid
+    with closing(sqlite3.connect(database.as_uri() + '?mode=rw', uri=True)) as db, db:
+        changed = db.execute('UPDATE selection_snapshots SET expires_at=0 WHERE id=? AND expires_at=?',
+                             (snapshot[0], snapshot[-1]))
+        assert changed.rowcount == 1
 
 
 def pagination_observation(step, evidence):
@@ -245,8 +304,7 @@ def pagination_observation(step, evidence):
     direction = '降序' if step == 'frozen' else '升序'
 
     def read(frame):
-        if (not frame.startswith('Window: ') or 'App: Travel Gallery Offline Bench.' not in frame.split('\n', 1)[0]
-                or not re.search(AX_ROW + r'HTML content .*URL: tauri://localhost#/library$', frame)):
+        if not native_library_frame(frame):
             raise ValueError('Expected a full isolated native library tree or its original AX rows')
         if one(AX_DIRECTION, frame, 'sort direction') != direction:
             raise ValueError('Native sort direction changed during capture')
@@ -357,7 +415,7 @@ def verify(step, state, source, observed, previous):
         assert (pick, rating, favorite, note, revision) == (expected_pick, 0, 0, '', expected_revision), name
 
 
-def accept(candidate, fixture, release, env, *, check_restore=False):
+def accept(candidate, fixture, release, env, *, check_restore=False, check_expiry=False):
     control = b.WORK / 'control'
     control.mkdir()
     source = (fixture / 'source').resolve()
@@ -371,8 +429,10 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
     b.event('readyForNativeGui', source=str(source), **b.check())
     pid, previous = None, None
     baseline, backup, changed = None, None, None
-    regular_steps = STEPS[:-1]
-    for step in (*regular_steps, *((*RESTORE_STEPS, MAP_STEP) if check_restore else ()), 'finish'):
+    expiry_state = None
+    steps = STEPS[:-1] + ((*RESTORE_STEPS, MAP_STEP) if check_restore else ())
+    steps += EXPIRY_STEPS if check_expiry else ()
+    for step in (*steps, 'finish'):
         for observed in checkpoint_observations(control, step):
             assert reuse.normal_state() == b.STATE['normalBefore']
             assert reuse.source_state() == b.STATE['sourceBefore']
@@ -392,7 +452,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
                 reason = frozen_pending_reason(db) if step == 'frozen' else None
                 if reason is None:
                     state = read_catalog(db)
-                    if check_restore and step in ('time-restored', *RESTORE_STEPS, MAP_STEP):
+                    if step in (*RESTORE_STEPS, MAP_STEP, *EXPIRY_STEPS) or (check_restore and step == 'time-restored'):
                         restore_state = read_restore_state(db)
                     if step == MAP_STEP:
                         locations = read_map_locations(db)
@@ -408,7 +468,24 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
                 except ValueError as error:
                     b.event('nativeCheckpointNotReady', step=step, reason=str(error))
                     continue
+            if step in EXPIRY_STEPS:
+                try:
+                    observed = expiry_observation(step, observed)
+                except ValueError as error:
+                    b.event('nativeCheckpointNotReady', step=step, reason=str(error))
+                    continue
             break
+        if step in EXPIRY_STEPS:
+            added = verify_expiry_state(step, restore_state, expiry_state, time.time_ns() // 1_000_000)
+            if added:
+                observed['snapshotId'] = added[0]
+            if step == 'expiry-frozen':
+                set_controlled_expiry(database, pid, added)
+                restore_state['snapshots'] = [(*row[:-1], 0) if row == added else row
+                                              for row in restore_state['snapshots']]
+            expiry_state = restore_state
+            b.event('nativeSnapshotExpiryCheckpoint', step=step, controlledExpiry=True, **observed)
+            continue
         if step in (*RESTORE_STEPS, MAP_STEP):
             [selected] = list(backup_dir.glob('travel-gallery-*.sqlite'))
             if step == 'backed-up':
@@ -423,6 +500,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
             if step == MAP_STEP:
                 verify_restored_state(restore_state, backup, changed, rollback)
                 verify_map(locations, observed)
+                expiry_state = restore_state
             else:
                 verify_restore(step, restore_state, observed, backup, baseline, changed, rollback)
             if step == 'rating-changed':
@@ -471,19 +549,27 @@ def run(approval):
     preparation = json.loads((b.APP_PATH.parent / 'preparation.json').read_text())
     assert preparation['pickerOnly']
     assert not any('absolute-path' in name for name in preparation['parentEntitlements'])
-    accept(candidate, fixture, release, env, check_restore=check_restore)
+    accept(candidate, fixture, release, env, check_restore=check_restore,
+           check_expiry=is_deadline_batch(approval['batch']))
+
+
+def is_deadline_batch(name):
+    return name == DEADLINE_BATCH or name.startswith(DEADLINE_BATCH + '-')
 
 
 def register_standing(approval_path, batch_name):
     native_gui.require_unlocked_console()
     authority = batch.ROOT / 'AGENTS.md'
+    scope = 'Full locked Rust, 50k synthetic query benchmark, one macOS candidate, and 130 owned TIFFs for native pagination, frozen review, capture time, backup/restore and map checks'
+    if is_deadline_batch(batch_name):
+        scope += ', plus controlled expiry of one snapshot in the isolated catalog and explicit reselection'
     registration = dict(
         batch=batch_name, status='active', limits=batch.LIMITS,
         requiredFreeBytes=batch.LIMITS['logicalBytes'],
         authorizationBasis='AGENTS.md:standing-resource-2026-11-23',
         authorizationFileSha256=hashlib.sha256(authority.read_bytes()).hexdigest(),
         cleanupPolicy='end-of-batch',
-        scope='Full locked Rust, 50k synthetic query benchmark, one macOS candidate, 130 owned TIFFs for native pagination, frozen review, capture time, backup/restore and map checks; publish only after all checkpoints and normal QA exit',
+        scope=scope + '; publish only after all checkpoints and normal QA exit',
         cleanup='Remove owned fixtures, catalogs, caches, builds, candidate and rollback copies on success, failure or interruption',
         recordedAt=datetime.now(timezone.utc).isoformat())
     with approval_path.open('x') as handle:
