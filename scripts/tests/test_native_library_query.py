@@ -28,7 +28,8 @@ def pagination_frames(names, direction, *, scope=False):
                 rows.append('\t\t\t\t74 text 筛选已改变；本次 124 张的冻结选区保持原范围。重新选择全部匹配才会更新范围。')
         for index, name in enumerate(cards):
             i = 81 + 6 * index
-            rows.extend([f'\t\t\t\t{i} container (selected) {name}，未处理，0 星',
+            chosen = selected and name in batch.MATCH and name != batch.EXCLUDED
+            rows.extend([f'\t\t\t\t{i} container {"(selected) " if chosen else ""}{name}，未处理，0 星',
                          f'\t\t\t\t\t{i+1} image {name}', f'\t\t\t\t\t{i+2} text {name}'])
         return '\n'.join(rows)
 
@@ -64,7 +65,8 @@ class LibraryQueryEvidence(unittest.TestCase):
             ('narrow', '{"filter":' + filter_json + ',"sort":' + sort_json + '}'),
             ('wide', '{"filter":{},"sort":{"field":"filename","direction":"desc"}}'),
         ])
-        self.narrow = dict(order=list(batch.MATCH), firstPage=120, frozenCount=124, excludedCount=1, scopeNotice=False)
+        self.narrow = dict(order=list(batch.MATCH), firstPage=120, frozenCount=124, excludedCount=1,
+                           scopeNotice=False, excludedName=batch.EXCLUDED)
         self.wide = dict(self.narrow, order=list(reversed(self.names)), scopeNotice=True)
 
     def apply_keep(self, ids):
@@ -118,6 +120,23 @@ class LibraryQueryEvidence(unittest.TestCase):
         ]:
             with self.subTest(step=step):
                 self.assertEqual(batch.pagination_observation(step, evidence), expected)
+
+    def test_excluded_native_tail_card_controls_exact_batch_membership(self):
+        evidence = pagination_frames(batch.MATCH, '降序')
+        tail = evidence['axFrames'][-1].replace('container match-120', 'container (selected) match-120')
+        for name in batch.MATCH[121:124]:
+            tail = tail.replace(f'container {name}', f'container (selected) {name}')
+        evidence['axSelection'] = tail + '\n61 text 已选 124 张 冻结快照\n72 text 已排除 1 张'
+        observed = batch.pagination_observation('frozen', evidence)
+        self.assertEqual(observed['excludedName'], batch.MATCH[-1])
+        baseline = batch.read_catalog(self.db)
+        batch.verify('frozen', baseline, self.source, observed, None, batch.MATCH[-1])
+        with patch.object(batch, 'EXCLUDED', batch.MATCH[-1]):
+            self.apply_keep(batch.MATCH[:-1])
+        applied = batch.read_catalog(self.db)
+        batch.verify('applied', applied, self.source, {}, baseline, batch.MATCH[-1])
+        with self.assertRaises(AssertionError):
+            batch.verify('applied', applied, self.source, {}, baseline)
 
     def test_ax_rejects_incomplete_and_inconsistent_capture(self):
         evidence = pagination_frames(batch.MATCH, '降序')

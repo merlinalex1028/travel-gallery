@@ -287,7 +287,7 @@ def checkpoint_observations(control, step):
 
 
 AX_ROW = r'(?m)^[\t ]*\d+ '
-AX_CARD = re.compile(AX_ROW + r'container (?:\([^\n)]*\) )?([^\n]+\.tiff)，[^\n，]+，[0-5] 星$')
+AX_CARD_DETAILS = re.compile(AX_ROW + r'container (\([^\n)]*\) )?([^\n]+\.tiff)，[^\n，]+，[0-5] 星$')
 AX_LOADED = re.compile(AX_ROW + r'text (\d+) 张已加载$')
 AX_TOTAL = re.compile(AX_ROW + r'text · 当前查询 (\d+) 张$')
 AX_FROZEN = re.compile(AX_ROW + r'text 已选 (\d+) 张 冻结快照$')
@@ -313,9 +313,9 @@ def expiry_observation(step, evidence):
     rejected = step == 'expiry-rejected'
     total = str(len(MATCH) + len(OUTSIDE))
     if rejected:
-        valid = AX_EXPIRY_ERROR.search(frame) and not AX_TOTAL.search(frame) and not AX_CARD.search(frame)
+        valid = AX_EXPIRY_ERROR.search(frame) and not AX_TOTAL.search(frame) and not AX_CARD_DETAILS.search(frame)
     else:
-        valid = AX_TOTAL.findall(frame) == [total] and AX_CARD.search(frame) and not AX_EXPIRY_ERROR.search(frame)
+        valid = AX_TOTAL.findall(frame) == [total] and AX_CARD_DETAILS.search(frame) and not AX_EXPIRY_ERROR.search(frame)
     if not valid or len(AX_SELECTION.findall(frame)) != int(frozen) or AX_EXCLUDED.search(frame):
         raise ValueError('Native query, expiry notice, or selection does not match this checkpoint')
     if AX_FROZEN.findall(frame) != ([total] if frozen else []):
@@ -365,7 +365,7 @@ def read_pagination_frame(step, frame):
         raise ValueError('Expected a full isolated native library tree or its original AX rows')
     if one_ax_row(AX_DIRECTION, frame, 'sort direction') != direction:
         raise ValueError('Native sort direction changed during capture')
-    cards = AX_CARD.findall(frame)
+    cards = [name for _, name in AX_CARD_DETAILS.findall(frame)]
     if not cards or len(cards) != len(set(cards)):
         raise ValueError('Native frame has missing or duplicate cards')
     return cards, int(one_ax_row(AX_LOADED, frame, 'loaded count')), int(one_ax_row(AX_TOTAL, frame, 'query count'))
@@ -393,7 +393,7 @@ def pagination_order(step, frames):
     return order, first_page, loaded, total
 
 
-def pagination_observation(step, evidence):
+def pagination_observation(step, evidence, excluded_name=EXCLUDED):
     frames = evidence.get('axFrames')
     selection = evidence.get('axSelection')
     if (set(evidence) != {'axFrames', 'axSelection'} or not isinstance(frames, list) or len(frames) < 2
@@ -414,11 +414,19 @@ def pagination_observation(step, evidence):
     scopes = AX_SCOPE.findall(selection)
     if scopes not in ([], [frozen]) or (bool(scopes) != (step == 'changed')):
         raise ValueError('Native frozen scope notice is missing or inconsistent')
+    card_states = {name: 'selected' in flag for flag, name in AX_CARD_DETAILS.findall(selection)}
+    if step == 'frozen':
+        unselected = [name for name, selected in card_states.items() if not selected]
+        if len(unselected) != 1:
+            raise ValueError('Show the one excluded native card together with the frozen selection')
+        excluded_name, = unselected
+    if any(selected != (name in MATCH and name != excluded_name) for name, selected in card_states.items()):
+        raise ValueError('Native cards do not match the original frozen scope and exclusion')
     return dict(order=order, firstPage=first_page, frozenCount=int(frozen), excludedCount=int(excluded),
-                scopeNotice=bool(scopes))
+                scopeNotice=bool(scopes), excludedName=excluded_name)
 
 
-def verify(step, state, source, observed, previous):
+def verify(step, state, source, observed, previous, excluded_name=EXCLUDED):
     if step == 'empty':
         assert observed == {} and all(not state[key] for key in
             ('roots', 'assets', 'scans', 'snapshots', 'members', 'changes', 'changed_ids', 'times', 'corrections'))
@@ -463,7 +471,8 @@ def verify(step, state, source, observed, previous):
         order = [row[0] for row in assets if row[0].startswith('match-')] if step == 'frozen' else [
             row[0] for row in reversed(assets)]
         assert observed == dict(order=order, firstPage=120, frozenCount=len(MATCH) - 1,
-                                excludedCount=1, scopeNotice=step == 'changed')
+                                excludedCount=1, scopeNotice=step == 'changed', excludedName=excluded_name)
+        assert excluded_name in MATCH
         condition = ('match-', 'filename', 'asc') if step == 'frozen' else (None, 'filename', 'desc')
         assert condition in state['contexts']
         assert not state['changes'] and not state['changed_ids']
@@ -473,12 +482,12 @@ def verify(step, state, source, observed, previous):
         assert kind == 'review' and (undone_at is not None) == (step == 'undone')
         request = json.loads(raw)
         assert request['target'] == dict(kind='snapshot', snapshotId=snapshot_id,
-                                         excludeAssetIds=[ids[EXCLUDED]])
+                                         excludeAssetIds=[ids[excluded_name]])
         assert request['patch'] == {'pickState': 'keep'}
-        assert set(state['changed_ids']) == {(change_id, ids[name]) for name in MATCH[1:]}
+        assert set(state['changed_ids']) == {(change_id, ids[name]) for name in MATCH if name != excluded_name}
 
     for name, *_, pick, rating, favorite, note, revision in assets:
-        affected = name in MATCH[1:] and step in ('applied', 'undone', *time_steps)
+        affected = name in MATCH and name != excluded_name and step in ('applied', 'undone', *time_steps)
         expected_pick = 'keep' if affected and step == 'applied' else 'unreviewed'
         expected_revision = (1 if step == 'applied' else 2) if affected else 0
         assert (pick, rating, favorite, note, revision) == (expected_pick, 0, 0, '', expected_revision), name
@@ -497,7 +506,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
     b.STATE.update(status='ready', application=str(b.APP_PATH), expectedDatabase=str(database),
                    controlDirectory=str(control))
     b.event('readyForNativeGui', source=str(source), **b.check())
-    pid, previous = None, None
+    pid, previous, excluded_name = None, None, EXCLUDED
     baseline, backup, changed = None, None, None
     expiry_state = None
     restore_steps = RESTORE_STEPS
@@ -538,10 +547,12 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
                 continue
             if step in ('frozen', 'changed'):
                 try:
-                    observed = pagination_observation(step, observed)
+                    observed = pagination_observation(step, observed, excluded_name)
                 except ValueError as error:
                     b.event('nativeCheckpointNotReady', step=step, reason=str(error))
                     continue
+                if step == 'frozen':
+                    excluded_name = observed['excludedName']
             if step in EXPIRY_STEPS:
                 try:
                     observed = expiry_observation(step, observed)
@@ -601,7 +612,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
                     backupEpoch=backup['epoch'], **observed)
             continue
         try:
-            verify(step, state, source, observed, previous)
+            verify(step, state, source, observed, previous, excluded_name)
         except (AssertionError, ValueError) as error:
             raise RuntimeError(f'Library query checkpoint rejected: {step}: {error or "catalog or GUI mismatch"}') from error
         if step != 'empty':
