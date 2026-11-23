@@ -1,12 +1,14 @@
 """Accept one approved macOS candidate against the native gallery and its isolated catalog."""
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 import fcntl
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import re
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -16,6 +18,7 @@ spec = importlib.util.spec_from_file_location(
 build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
 batch, b, reuse, picker, exact = build.batch, build.b, build.reuse, build.picker, build.exact
+native_gui = build.load('native-gui-preflight')
 tiny_tiff = build.load('native-sorting-batch').tiny_tiff
 BATCH = 'library-query'
 b.APPROVAL = batch.ROOT / 'docs/native-library-query-budget.json'
@@ -455,7 +458,7 @@ def measure_query_latency(env):
 
 
 def run(approval):
-    check_restore = approval['batch'] in (EPOCH_BATCH, EPOCH_AX_BATCH)
+    check_restore = approval['batch'].startswith('catalog-')
     candidate, fixture, release, env = build.build_candidate(
         approval, approval['batch'], 'CatalogEpoch' if check_restore else 'LibraryQuery',
         lambda source: write_sources(source, include_gps=check_restore), picker_only=True,
@@ -471,28 +474,74 @@ def run(approval):
     accept(candidate, fixture, release, env, check_restore=check_restore)
 
 
-if __name__ == '__main__':
-    modes = {(): BATCH, ('--catalog-epoch',): EPOCH_BATCH, ('--catalog-epoch-ax',): EPOCH_AX_BATCH}
-    if tuple(sys.argv[1:]) not in modes:
-        raise SystemExit('Usage: native-library-query-build-batch.py [--catalog-epoch|--catalog-epoch-ax]')
-    batch_name = modes[tuple(sys.argv[1:])]
-    if batch_name in (EPOCH_BATCH, EPOCH_AX_BATCH):
-        b.APPROVAL = batch.ROOT / f'docs/native-{batch_name}-budget.json'
-        b.RECEIPT = batch.ROOT / f'docs/native-{batch_name}-latest.json'
-    if not b.APPROVAL.is_file() or b.APPROVAL.is_symlink():
-        raise SystemExit(f'Fresh {batch_name} batch approval is required; no temporary files generated')
-    batch.run = run
-    with b.APPROVAL.open('r+') as handle:
+def register_standing(approval_path, batch_name):
+    native_gui.require_unlocked_console()
+    authority = batch.ROOT / 'AGENTS.md'
+    registration = dict(
+        batch=batch_name, status='active', limits=batch.LIMITS,
+        requiredFreeBytes=batch.LIMITS['logicalBytes'],
+        authorizationBasis='AGENTS.md:standing-resource-2026-11-23',
+        authorizationFileSha256=hashlib.sha256(authority.read_bytes()).hexdigest(),
+        cleanupPolicy='end-of-batch',
+        scope='Full locked Rust, 50k synthetic query benchmark, one macOS candidate, 130 owned TIFFs for native pagination, frozen review, capture time, backup/restore and map checks; publish only after all checkpoints and normal QA exit',
+        cleanup='Remove owned fixtures, catalogs, caches, builds, candidate and rollback copies on success, failure or interruption',
+        recordedAt=datetime.now(timezone.utc).isoformat())
+    with approval_path.open('x') as handle:
+        json.dump(registration, handle, ensure_ascii=False, indent=2)
+        handle.write('\n')
+
+
+@contextmanager
+def claim_approval(approval_path, batch_name):
+    if approval_path.is_symlink():
+        raise RuntimeError('Batch registration must not be a symbolic link')
+    with approval_path.open('r+') as handle:
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         approval = json.load(handle)
         if (approval.get('batch') != batch_name or approval.get('status') != 'active'
-                or approval.get('userAnswer') != '允许这一轮，结束即清理' or approval.get('claimedAt')
+                or approval.get('claimedAt') or approval.get('closedAt')
                 or approval.get('limits') != batch.LIMITS
                 or approval.get('requiredFreeBytes') != batch.LIMITS['logicalBytes']):
-            raise SystemExit(f'This candidate needs fresh, unclaimed {batch_name} approval')
+            raise RuntimeError(f'This candidate needs a fresh, unclaimed {batch_name} registration')
+        subprocess.run([*batch.BUDGET, '--approval-file', str(approval_path)],
+                       cwd=batch.ROOT, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        native_gui.require_unlocked_console()
         approval['claimedAt'] = datetime.now(timezone.utc).isoformat()
         handle.seek(0)
         json.dump(approval, handle, ensure_ascii=False, indent=2)
         handle.truncate()
         handle.flush()
-        raise SystemExit(batch.main(approval))
+        yield approval
+
+
+def main(arguments):
+    modes = {(): BATCH, ('--catalog-epoch',): EPOCH_BATCH, ('--catalog-epoch-ax',): EPOCH_AX_BATCH}
+    standing = len(arguments) == 2 and arguments[0] == '--catalog-standing'
+    if standing:
+        batch_name = arguments[1]
+        if not re.fullmatch(r'catalog-[a-z0-9][a-z0-9-]{0,47}', batch_name):
+            raise ValueError('Use a fresh catalog- batch name with lowercase letters, digits and hyphens')
+    elif tuple(arguments) in modes:
+        batch_name = modes[tuple(arguments)]
+    else:
+        raise ValueError('Usage: native-library-query-build-batch.py [--catalog-epoch|--catalog-epoch-ax|--catalog-standing catalog-NAME]')
+    if batch_name != BATCH:
+        b.APPROVAL = batch.ROOT / f'docs/native-{batch_name}-budget.json'
+        b.RECEIPT = batch.ROOT / f'docs/native-{batch_name}-latest.json'
+    if standing:
+        if b.RECEIPT.exists() or b.RECEIPT.is_symlink():
+            raise RuntimeError('Choose a fresh catalog- batch name to preserve the previous receipt')
+        if not b.APPROVAL.exists() and not b.APPROVAL.is_symlink():
+            register_standing(b.APPROVAL, batch_name)
+    if not b.APPROVAL.is_file() or b.APPROVAL.is_symlink():
+        raise RuntimeError(f'Fresh {batch_name} registration is required; no temporary files generated')
+    batch.run = run
+    with claim_approval(b.APPROVAL, batch_name) as approval:
+        return batch.main(approval)
+
+
+if __name__ == '__main__':
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except (RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+        raise SystemExit(str(error)) from error
