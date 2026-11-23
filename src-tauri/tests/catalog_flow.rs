@@ -2271,6 +2271,50 @@ fn backup_restore_relink_and_offline_preserve_reviews() {
 }
 
 #[test]
+fn relink_rechecks_same_stamp_candidate_versions_without_cached_hashes() {
+    let f = Fixture::new();
+    f.picture("photo.jpg", 1);
+    let source_id = f.add();
+    let asset_id = f.assets()[0]["id"].as_str().unwrap().to_owned();
+    f.review(std::slice::from_ref(&asset_id), json!({"rating":5}), &id());
+    let c = f.cat.connection().unwrap();
+    assert!(c.query_row("SELECT sha256 FROM media_assets WHERE id=?", [&asset_id], |r| r.get::<_, Option<String>>(0)).unwrap().is_none());
+    let source = f.source.join("photo.jpg");
+    let original = fs::read(&source).unwrap();
+    let metadata = fs::metadata(&source).unwrap();
+    let moved = f.output.join("new-root");
+    fs::create_dir(&moved).unwrap();
+    let target = moved.join("photo.jpg");
+    fs::copy(&source, &target).unwrap();
+    let preserve_time = || fs::File::options().write(true).open(&target).unwrap()
+        .set_times(fs::FileTimes::new().set_modified(metadata.modified().unwrap())).unwrap();
+    preserve_time();
+    f.cat.authorize(&moved, "relink").unwrap();
+    let preview = || f.cat.call("preview_relink_source", json!({"sourceId":source_id,"selectedNewPath":moved})).unwrap();
+    let prepared = preview();
+    assert_eq!(prepared["matched"], 1);
+    let mut replaced = original.clone();
+    *replaced.last_mut().unwrap() ^= 1;
+    fs::write(&target, replaced).unwrap();
+    preserve_time();
+    assert_eq!(files::stamp(&source).unwrap(), files::stamp(&target).unwrap());
+    let error = f.cat.call("commit_relink_source", json!({
+        "sourceId":source_id,"verificationToken":prepared["verificationToken"]
+    })).unwrap_err();
+    assert_eq!(error.code, "DB_CONFLICT");
+    assert!(error.message.contains("新目录在预演后发生变化"), "{error:?}");
+    assert_eq!(c.query_row("SELECT absolute_path FROM source_roots WHERE id=?", [&source_id], |r| r.get::<_, String>(0)).unwrap(), f.source.to_string_lossy());
+    assert_eq!(f.cat.call("get_asset", json!({"assetId":asset_id})).unwrap()["review"]["rating"], 5);
+    assert_eq!(fs::read(&source).unwrap(), original);
+    fs::write(&target, &original).unwrap();
+    preserve_time();
+    let prepared = preview();
+    f.cat.call("commit_relink_source", json!({"sourceId":source_id,
+        "verificationToken":prepared["verificationToken"]})).unwrap();
+    assert_eq!(f.cat.call("get_asset", json!({"assetId":asset_id})).unwrap()["review"]["rating"], 5);
+}
+
+#[test]
 fn schema_upgrade_is_repeatable_and_does_not_erase_marks() {
     let t = tempfile::tempdir().unwrap();
     let path = t.path().join("old.sqlite");

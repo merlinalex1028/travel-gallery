@@ -951,11 +951,12 @@ pub fn preview_relink(cat: &Catalog, c: &Connection, r: &Value) -> Result<Value>
         let mut reason = "文件缺失";
         if let Ok(real) = candidate.canonicalize() {
             if real.starts_with(&path) {
-                if let Ok((s, t)) = stamp(&real) {
-                    ok = s == size && Some(t) == mtime;
+                if let Ok(version) = FileVersion::read(&real) {
+                    signature.update(serde_json::to_vec(&(&real, &version.token))?);
+                    ok = version.size == size && Some(version.mtime_ms) == mtime;
                     if ok {
                         if let Some(hash) = hash {
-                            ok = sha256(&real, None).is_ok_and(|h| h == hash);
+                            ok = sha256_at_version(&real, &version, None).is_ok_and(|h| h == hash);
                         }
                     }
                     if ok {
