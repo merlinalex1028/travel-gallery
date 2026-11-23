@@ -41,6 +41,10 @@ require_unlocked_console = load('native-gui-preflight').require_unlocked_console
 pixels = load('native_navigation_pixels')
 
 
+def front_asn(*args):
+    return subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', *args], text=True, timeout=3).strip()
+
+
 def observe_window_pixels(index):
     try:
         require_unlocked_console()
@@ -51,11 +55,8 @@ def observe_window_pixels(index):
     pid = focus.picker.verified_process(database)
     assert pid == b.STATE['verifiedPid'] and len(b.STATE['manifest']) == 100
 
-    def lsappinfo(*args):
-        return subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', *args], text=True, timeout=3).strip()
-
-    asn = lsappinfo('find', f'pid={pid}')
-    if not asn.startswith('ASN:') or lsappinfo('front') != asn:
+    asn = front_asn('find', f'pid={pid}')
+    if not asn.startswith('ASN:') or front_asn('front') != asn:
         raise ValueError('The isolated viewer must be in front')
     windows = json.loads(focus.appkit(f'''
         ObjC.import('CoreGraphics');
@@ -76,7 +77,7 @@ def observe_window_pixels(index):
         subprocess.run(['/usr/sbin/screencapture', '-x', '-o', '-a', '-l', str(window_id), str(image)],
                        check=True, capture_output=True, timeout=8)
         finished = time.time_ns() / 1_000_000
-        assert lsappinfo('front') == asn and focus.picker.verified_process(database) == pid
+        assert front_asn('front') == asn and focus.picker.verified_process(database) == pid
         b.check()
         subprocess.run(['/usr/bin/sips', '-m', '/System/Library/ColorSync/Profiles/sRGB Profile.icc',
                         '-s', 'format', 'bmp', str(image), '--out', str(bitmap)],
@@ -90,7 +91,7 @@ def observe_window_pixels(index):
                     startedUnixMs=started, finishedUnixMs=finished, imageSha256=digest, **stats)
 
 
-def probe_result(count):
+def read_probe():
     [log] = list((b.DATA / 'performance').glob('*.jsonl'))
     # Ignore a partially appended final line while the live observer is flushing.
     raw = log.read_bytes().rsplit(b'\n', 1)[0] + b'\n'
@@ -98,6 +99,36 @@ def probe_result(count):
     [start] = [row for row in rows if row['type'] == 'nativeStart']
     assert start['pid'] == b.STATE['verifiedPid'] and start['identifier'] == b.IDENTIFIER
     events = [row['event'] for row in rows if row['type'] == 'frontendBatchEvent']
+    return raw, start, events
+
+
+def visible_clock(start, events, now):
+    clock = next((event for event in reversed(events) if event['type'] == 'clock'), None)
+    if clock is None or clock['runId'] != start['runId']:
+        return False
+    started = datetime.fromisoformat(start['atUtc']).timestamp() * 1000 - start['nativeElapsedMs']
+    age = now - (started + clock['nativeRespondedMs'])
+    return 0 <= age <= 5000 and clock['visibility'] == 'visible' and clock['focused'] is True
+
+
+def confirm_foreground():
+    require_unlocked_console()
+    database = b.DATA / 'catalog.sqlite'
+    pid = focus.picker.verified_process(database)
+    assert pid == b.STATE['verifiedPid'], 'The isolated viewer process changed'
+    asn = front_asn('find', f'pid={pid}')
+    if not asn.startswith('ASN:') or front_asn('front') != asn:
+        raise ValueError('The isolated viewer must be in front')
+    _, start, events = read_probe()
+    if not visible_clock(start, events, time.time_ns() / 1_000_000):
+        raise ValueError('The same WebView has no fresh visible and focused clock sample')
+    if front_asn('front') != asn or focus.picker.verified_process(database) != pid:
+        raise ValueError('The isolated viewer lost foreground identity during the check')
+    return pid
+
+
+def probe_result(count):
+    raw, start, events = read_probe()
     result = analysis.analyze_events(events, b.STATE['manifest'],
                                     [row['filename'] for row in b.STATE['order']],
                                     first_position=2, end_id=count,
@@ -123,6 +154,8 @@ def run_gui():
         value = json.loads(request.read_text())
         request.unlink()
         if value['op'] == 'snapshot':
+            if value['label'] == 'imported' and not observe_foreground():
+                continue
             focus.snapshot(value['label'])
             if value['label'] == 'imported':
                 with closing(sqlite3.connect((b.DATA / 'catalog.sqlite').as_uri() + '?mode=ro', uri=True)) as db:
@@ -130,6 +163,8 @@ def run_gui():
                 b.STATE['manifest'] = [dict(id=aid, relativePath=path) for aid, path, _ in rows]
                 b.STATE['order'] = [dict(filename=name) for _, _, name in rows]
                 b.save()
+        elif value['op'] == 'foreground-preflight':
+            observe_foreground()
         elif value['op'] == 'probe':
             assert value['count'] in (3, 100)
             result = probe_result(value['count'])
@@ -147,14 +182,24 @@ def run_gui():
             else:
                 b.event('jointWindowPixelsObserved', **observed)
         elif value['op'] == 'finish':
-            assert tuple(focus.completed) == focus.STEPS
             executable = str((b.APP_PATH / 'Contents/MacOS/travel-gallery').resolve())
             assert executable not in {line.strip() for line in subprocess.check_output(
                 ['ps', '-axww', '-o', 'comm='], text=True).splitlines()}, 'Quit QA normally before finish'
             b.STATE['qaQuitNormally'] = True
+            assert tuple(focus.completed) == focus.STEPS, f'Missing checkpoints: {focus.STEPS[len(focus.completed):]}'
             return
         else:
             raise ValueError('Unknown joint navigation request')
+
+
+def observe_foreground():
+    try:
+        pid = confirm_foreground()
+    except (AssertionError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+        b.event('jointForegroundNotReady', reason=str(error)[:250] or 'Awaiting isolated empty checkpoint and probe')
+        return False
+    b.event('jointForegroundConfirmed', pid=pid)
+    return True
 
 
 def main():

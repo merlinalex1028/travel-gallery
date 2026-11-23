@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import struct
 import unittest
+from unittest.mock import patch
 
 
 def load(name):
@@ -15,6 +16,37 @@ def load(name):
 
 pixels = load('native_navigation_pixels')
 focus = load('native-navigation-focus-batch')
+joint = load('native-navigation-joint-batch')
+
+
+class ForegroundPreflight(unittest.TestCase):
+    def setUp(self):
+        self.start = dict(atUtc='2026-11-23T07:00:00+00:00', nativeElapsedMs=1000, runId='observer')
+        self.clock = dict(type='clock', runId='observer', nativeRespondedMs=3000,
+                          visibility='visible', focused=True)
+        self.now = joint.datetime.fromisoformat(self.start['atUtc']).timestamp() * 1000 + 3000
+
+    def test_only_fresh_visible_clock_of_this_run_passes(self):
+        self.assertTrue(joint.visible_clock(self.start, [self.clock], self.now))
+        self.assertFalse(joint.visible_clock(self.start, [self.clock], self.now + 5000))
+        self.assertFalse(joint.visible_clock(self.start, [self.clock], self.now - 2000))
+        for fields in [dict(runId='another'), dict(visibility='hidden'), dict(focused=False)]:
+            with self.subTest(fields=fields):
+                latest = dict(self.clock, **fields)
+                self.assertFalse(joint.visible_clock(self.start, [self.clock, latest], self.now))
+
+    def test_foreground_must_hold_across_same_pid_webview_check(self):
+        with (patch.object(joint, 'require_unlocked_console'),
+              patch.dict(joint.b.STATE, verifiedPid=123),
+              patch.object(joint.focus.picker, 'verified_process', return_value=123),
+              patch.object(joint, 'read_probe', return_value=(b'', self.start, [self.clock])),
+              patch.object(joint.time, 'time_ns', return_value=int(self.now * 1_000_000))):
+            qa, other = 'ASN:qa', 'ASN:other'
+            with patch.object(joint, 'front_asn', side_effect=[qa, qa, other]):
+                with self.assertRaisesRegex(ValueError, 'lost foreground'):
+                    joint.confirm_foreground()
+            with patch.object(joint, 'front_asn', side_effect=[qa, qa, qa]):
+                self.assertEqual(joint.confirm_foreground(), 123)
 
 
 class WindowPixels(unittest.TestCase):
