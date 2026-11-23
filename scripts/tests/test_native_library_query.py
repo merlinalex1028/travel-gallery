@@ -14,6 +14,29 @@ batch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(batch)
 
 
+def pagination_frames(names, direction, *, scope=False):
+    def frame(cards, loaded, selected=False):
+        rows = ['Window: "旅图 · Travel Gallery", App: Travel Gallery Offline Bench.',
+                '\t\t2 HTML content Description: 旅图 · Travel Gallery, URL: tauri://localhost#/library',
+                f'\t\t\t\t48 button 改为{direction}',
+                f'\t\t\t\t59 text · 当前查询 {len(names)} 张',
+                f'\t\t\t\t77 text {loaded} 张已加载']
+        if selected:
+            rows.extend(['\t\t\t\t61 text 已选 124 张 冻结快照',
+                         '\t\t\t\t72 text 已排除 1 张 冻结于 2026/11/23 11:37'])
+            if scope:
+                rows.append('\t\t\t\t74 text 筛选已改变；本次 124 张的冻结选区保持原范围。重新选择全部匹配才会更新范围。')
+        for index, name in enumerate(cards):
+            i = 81 + 6 * index
+            rows.extend([f'\t\t\t\t{i} container (selected) {name}，未处理，0 星',
+                         f'\t\t\t\t\t{i+1} image {name}', f'\t\t\t\t\t{i+2} text {name}'])
+        return '\n'.join(rows)
+
+    return dict(axFrames=[frame(names[start:start + 21], 120 if start < 100 else len(names))
+                          for start in range(0, len(names), 20)],
+                axSelection=frame(names[:15], len(names), selected=True))
+
+
 class LibraryQueryEvidence(unittest.TestCase):
     def setUp(self):
         self.db = sqlite3.connect(':memory:')
@@ -88,6 +111,56 @@ class LibraryQueryEvidence(unittest.TestCase):
         with self.assertRaises(AssertionError):
             batch.verify('changed', batch.read_catalog(self.db), self.source, wrong, None)
 
+    def test_ax_orders_read_only_card_labels_and_combine_adjacent_frames(self):
+        for step, evidence, expected in [
+            ('frozen', pagination_frames(batch.MATCH, '降序'), self.narrow),
+            ('changed', pagination_frames(self.names[::-1], '升序', scope=True), self.wide),
+        ]:
+            with self.subTest(step=step):
+                self.assertEqual(batch.pagination_observation(step, evidence), expected)
+
+    def test_ax_rejects_incomplete_and_inconsistent_capture(self):
+        evidence = pagination_frames(batch.MATCH, '降序')
+        frames, selection = evidence['axFrames'], evidence['axSelection']
+        for altered, problem in [
+            (self.narrow, 'Supply ordered'),
+            (dict(evidence, axFrames=[frames[0], *frames[2:]]), 'must overlap'),
+            (dict(evidence, axFrames=frames[:-1]), 'entire paginated query'),
+            (dict(evidence, axFrames=[frames[0], frames[1].replace('match-021.tiff', 'match-020.tiff'), *frames[2:]]),
+             'duplicate cards'),
+            (dict(evidence, axFrames=[frames[0], frames[1].replace('match-021.tiff', 'match-019.tiff'), *frames[2:]]),
+             'order disagrees'),
+            (dict(evidence, axFrames=[frames[0], *frames[1:-1], frames[-1].replace('125 张已加载', '120 张已加载')]),
+             'counts changed inconsistently'),
+            (dict(evidence, axSelection=selection.replace('已排除 1 张', '排除')), 'excluded count'),
+            (dict(evidence, axSelection=selection.replace('match-001.tiff', 'outside-000.tiff')),
+             'Selection frame disagrees'),
+        ]:
+            with self.subTest(problem=problem), self.assertRaisesRegex(ValueError, problem):
+                batch.pagination_observation('frozen', altered)
+
+    def test_ax_requires_unambiguous_native_query_and_selection_labels(self):
+        evidence = pagination_frames(self.names[::-1], '升序', scope=True)
+        for old, new in [
+            ('App: Travel Gallery Offline Bench.', 'App: Travel Gallery.'),
+            ('HTML content', 'image'),
+            ('改为升序', '改为降序'),
+            ('当前查询 130 张', '当前查询 125 张'),
+            ('130 张已加载', '120 张已加载'),
+            ('已选 124 张 冻结快照', '已选 124 张'),
+            ('已排除 1 张', '已排除 2 张\n\t\t\t\t75 text 已排除 1 张'),
+            ('本次 124 张的冻结选区', '本次 125 张的冻结选区'),
+            ('筛选已改变', '查询结果尚未就绪'),
+        ]:
+            with self.subTest(old=old), self.assertRaises(ValueError):
+                batch.pagination_observation('changed', dict(
+                    evidence, axSelection=evidence['axSelection'].replace(old, new)))
+        for frames in ([], [evidence['axFrames'][0]], [None, None]):
+            with self.subTest(frames=frames), self.assertRaises(ValueError):
+                batch.pagination_observation('changed', dict(evidence, axFrames=frames))
+        with self.assertRaises(ValueError):
+            batch.pagination_observation('changed', dict(evidence, axSelection=None))
+
     def test_premature_frozen_submissions_retry_without_advancing_or_publishing(self):
         with (tempfile.TemporaryDirectory(prefix='travel-gallery-query-controller-') as temporary,
               ExitStack() as stack):
@@ -107,6 +180,7 @@ class LibraryQueryEvidence(unittest.TestCase):
 
             state = dict(normalBefore={}, sourceBefore=[])
             events = []
+            frozen_ax = pagination_frames(batch.MATCH, '降序')
 
             def submit(step, **observed):
                 pending = work / 'control/pending'
@@ -120,11 +194,11 @@ class LibraryQueryEvidence(unittest.TestCase):
                 elif stage == 'nativeCheckpointNotReady':
                     assert state['expectedCheckpoint'] == 'frozen'
                     if details['reason'].startswith('Invalid request'):
-                        submit('frozen', **self.narrow)
+                        submit('frozen', **frozen_ax)
                     elif details['reason'].startswith('Background work'):
                         with db:
                             db.execute("UPDATE jobs SET status='completed' WHERE id='scan'")
-                        submit('frozen', **self.narrow)
+                        submit('frozen', **frozen_ax)
                     elif details['reason'].startswith('No frozen selection'):
                         with db:
                             db.execute('INSERT INTO selection_snapshots VALUES(?,?,?,?,?,?,?)',
@@ -132,6 +206,8 @@ class LibraryQueryEvidence(unittest.TestCase):
                             db.executemany('INSERT INTO selection_snapshot_items VALUES(?,?)',
                                            self.db.execute('SELECT * FROM selection_snapshot_items'))
                         submit('frozen', **self.narrow)
+                    elif details['reason'].startswith('Supply ordered'):
+                        submit('frozen', **frozen_ax)
                 elif stage == 'nativeLibraryQueryCheckpoint' and details['step'] == 'frozen':
                     self.assertEqual(details['observedNames'], 125)
                     self.assertEqual(details['snapshots'], 1)
@@ -142,7 +218,7 @@ class LibraryQueryEvidence(unittest.TestCase):
                   patch.object(batch.reuse, 'source_state', return_value=[]),
                   patch.object(batch.picker, 'verified_process', return_value=42),
                   patch.object(batch, 'STEPS', ('frozen', 'changed', 'finish')),
-                  patch.object(batch.time, 'monotonic', side_effect=[0, 1, 2, 3, 4, 0, 600]),
+                  patch.object(batch.time, 'monotonic', side_effect=[0, 1, 2, 3, 4, 5, 0, 600]),
                   patch.object(batch.exact, 'publish') as publish):
                 with self.assertRaisesRegex(TimeoutError, 'No accepted native checkpoint: changed'):
                     batch.accept(work / 'candidate.app', fixture, {}, {})
@@ -150,7 +226,7 @@ class LibraryQueryEvidence(unittest.TestCase):
 
             self.assertEqual(events, [
                 ('readyForNativeGui', None), ('awaitingNativeCheckpoint', 'frozen'),
-                *[('nativeCheckpointNotReady', 'frozen')] * 3,
+                *[('nativeCheckpointNotReady', 'frozen')] * 4,
                 ('nativeLibraryQueryCheckpoint', 'frozen'), ('awaitingNativeCheckpoint', 'changed'),
             ])
 

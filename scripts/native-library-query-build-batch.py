@@ -5,6 +5,7 @@ import fcntl
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sqlite3
 import sys
 import time
@@ -215,6 +216,77 @@ def checkpoint_observations(control, step):
     raise TimeoutError(f'No accepted native checkpoint: {step}')
 
 
+AX_ROW = r'(?m)^[\t ]*\d+ '
+AX_CARD = re.compile(AX_ROW + r'container (?:\([^\n)]*\) )?([^\n]+\.tiff)，[^\n，]+，[0-5] 星$')
+AX_LOADED = re.compile(AX_ROW + r'text (\d+) 张已加载$')
+AX_TOTAL = re.compile(AX_ROW + r'text · 当前查询 (\d+) 张$')
+AX_FROZEN = re.compile(AX_ROW + r'text 已选 (\d+) 张 冻结快照$')
+AX_EXCLUDED = re.compile(AX_ROW + r'text 已排除 (\d+) 张(?: 冻结于 [^\n]+)?$')
+AX_SCOPE = re.compile(AX_ROW + r'text 筛选已改变；本次 (\d+) 张的冻结选区保持原范围。')
+AX_DIRECTION = re.compile(AX_ROW + r'button 改为(升序|降序)$')
+
+
+def pagination_observation(step, evidence):
+    def one(pattern, frame, label):
+        values = pattern.findall(frame)
+        if len(values) != 1:
+            raise ValueError(f'Expected one native {label} row')
+        return values[0]
+
+    frames = evidence.get('axFrames')
+    selection = evidence.get('axSelection')
+    if (set(evidence) != {'axFrames', 'axSelection'} or not isinstance(frames, list) or len(frames) < 2
+            or not all(isinstance(frame, str) for frame in [*frames, selection])):
+        raise ValueError('Supply ordered native pagination frames and a final selection frame')
+    direction = '降序' if step == 'frozen' else '升序'
+
+    def read(frame):
+        if (not frame.startswith('Window: ') or 'App: Travel Gallery Offline Bench.' not in frame.split('\n', 1)[0]
+                or not re.search(AX_ROW + r'HTML content .*URL: tauri://localhost#/library$', frame)):
+            raise ValueError('Expected a full isolated native library tree or its original AX rows')
+        if one(AX_DIRECTION, frame, 'sort direction') != direction:
+            raise ValueError('Native sort direction changed during capture')
+        cards = AX_CARD.findall(frame)
+        if not cards or len(cards) != len(set(cards)):
+            raise ValueError('Native frame has missing or duplicate cards')
+        return cards, int(one(AX_LOADED, frame, 'loaded count')), int(one(AX_TOTAL, frame, 'query count'))
+
+    order, first_page, total = read(frames[0])
+    if not len(order) <= first_page < total:
+        raise ValueError('First frame does not show a partial page')
+    previous, loaded = order, first_page
+    for frame in frames[1:]:
+        cards, count, frame_total = read(frame)
+        if frame_total != total or not loaded <= count <= total:
+            raise ValueError('Native loaded/query counts changed inconsistently')
+        if cards[0] not in previous:
+            raise ValueError('Adjacent native frames must overlap while scrolling forward')
+        start = order.index(cards[0])
+        overlap = min(len(order) - start, len(cards))
+        if order[start:start + overlap] != cards[:overlap] or set(order).intersection(cards[overlap:]):
+            raise ValueError('Native card order disagrees across frames')
+        order = order + cards[overlap:]
+        if len(order) > count:
+            raise ValueError('Observed more cards than the native loaded count')
+        previous, loaded = cards, count
+    if len(order) != total or loaded != total:
+        raise ValueError('Native capture does not cover the entire paginated query')
+
+    cards, loaded, selection_total = read(selection)
+    if (loaded, selection_total) != (total, total) or cards[0] not in order:
+        raise ValueError('Selection frame does not show the completed query')
+    start = order.index(cards[0])
+    if order[start:start + len(cards)] != cards:
+        raise ValueError('Selection frame disagrees with the observed card order')
+    frozen = one(AX_FROZEN, selection, 'frozen count')
+    excluded = one(AX_EXCLUDED, selection, 'excluded count')
+    scopes = AX_SCOPE.findall(selection)
+    if scopes not in ([], [frozen]) or (bool(scopes) != (step == 'changed')):
+        raise ValueError('Native frozen scope notice is missing or inconsistent')
+    return dict(order=order, firstPage=first_page, frozenCount=int(frozen), excludedCount=int(excluded),
+                scopeNotice=bool(scopes))
+
+
 def verify(step, state, source, observed, previous):
     if step == 'empty':
         assert observed == {} and all(not state[key] for key in
@@ -326,6 +398,12 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
             if reason:
                 b.event('nativeCheckpointNotReady', step=step, reason=reason)
                 continue
+            if step in ('frozen', 'changed'):
+                try:
+                    observed = pagination_observation(step, observed)
+                except ValueError as error:
+                    b.event('nativeCheckpointNotReady', step=step, reason=str(error))
+                    continue
             break
         if step in (*RESTORE_STEPS, MAP_STEP):
             [selected] = list(backup_dir.glob('travel-gallery-*.sqlite'))
