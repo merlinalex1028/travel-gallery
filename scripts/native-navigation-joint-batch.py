@@ -38,6 +38,56 @@ LIMITS = dict(files=25000, logicalBytes=4 * 1024**3, sourceFiles=100)
 
 
 require_unlocked_console = load('native-gui-preflight').require_unlocked_console
+pixels = load('native_navigation_pixels')
+
+
+def observe_window_pixels(index):
+    try:
+        require_unlocked_console()
+    except RuntimeError as error:
+        raise ValueError(str(error)) from error
+    assert type(index) is int and 1 <= index <= 100
+    database = b.DATA / 'catalog.sqlite'
+    pid = focus.picker.verified_process(database)
+    assert pid == b.STATE['verifiedPid'] and len(b.STATE['manifest']) == 100
+
+    def lsappinfo(*args):
+        return subprocess.check_output(['/usr/bin/lsappinfo', '-nonames', *args], text=True, timeout=3).strip()
+
+    asn = lsappinfo('find', f'pid={pid}')
+    if not asn.startswith('ASN:') or lsappinfo('front') != asn:
+        raise ValueError('The isolated viewer must be in front')
+    windows = json.loads(focus.appkit(f'''
+        ObjC.import('CoreGraphics');
+        const windows = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(17, 0)));
+        JSON.stringify(windows.filter(w => w.kCGWindowOwnerPID === {pid} && w.kCGWindowLayer === 0)
+                              .map(w => [w.kCGWindowNumber, w.kCGWindowBounds.Width,
+                                         w.kCGWindowBounds.Height]));
+    '''))
+    if len(windows) != 1:
+        raise ValueError('Expected one visible window owned by the isolated process')
+    window_id, width, height = windows[0]
+    if type(window_id) is not int or window_id <= 0 or not (0 < width <= 4096 and 0 < height <= 4096):
+        raise ValueError('Invalid window ID or size')
+
+    with tempfile.TemporaryDirectory(prefix='window-pixels-', dir=b.WORK) as owned:
+        image, bitmap = Path(owned) / 'window.png', Path(owned) / 'window.bmp'
+        started = time.time_ns() / 1_000_000
+        subprocess.run(['/usr/sbin/screencapture', '-x', '-o', '-a', '-l', str(window_id), str(image)],
+                       check=True, capture_output=True, timeout=8)
+        finished = time.time_ns() / 1_000_000
+        assert lsappinfo('front') == asn and focus.picker.verified_process(database) == pid
+        b.check()
+        subprocess.run(['/usr/bin/sips', '-m', '/System/Library/ColorSync/Profiles/sRGB Profile.icc',
+                        '-s', 'format', 'bmp', str(image), '--out', str(bitmap)],
+                       check=True, capture_output=True, timeout=8)
+        b.check()
+        stats = pixels.check_window_pixels(bitmap.read_bytes(), focus.WIDTH, focus.HEIGHT, focus.colour(index),
+                                           [focus.DIGITS[int(value)] for value in f'{index:03}'])
+        with image.open('rb') as stream:
+            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        return dict(index=index, filename=f'frame-{index:03}.png', pid=pid, windowId=window_id,
+                    startedUnixMs=started, finishedUnixMs=finished, imageSha256=digest, **stats)
 
 
 def probe_result(count):
@@ -88,6 +138,14 @@ def run_gui():
                     screenTargets=len(result['screenDecodedTargetIds']),
                     domComplete=result['focusVariant']['completeDomObservation'],
                     osComplete=result['focusVariant']['osCorroboration']['complete'])
+        elif value['op'] == 'window-pixels':
+            try:
+                observed = observe_window_pixels(value['index'])
+            except (AssertionError, OSError, ValueError, subprocess.SubprocessError) as error:
+                reason = str(error) or 'Isolated process or foreground identity changed'
+                b.event('jointWindowPixelsUnverified', index=value['index'], reason=reason[:250])
+            else:
+                b.event('jointWindowPixelsObserved', **observed)
         elif value['op'] == 'finish':
             assert tuple(focus.completed) == focus.STEPS
             executable = str((b.APP_PATH / 'Contents/MacOS/travel-gallery').resolve())
