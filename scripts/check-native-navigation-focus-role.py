@@ -15,9 +15,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--index', type=int, required=True)
     parser.add_argument('--expect', choices=('qa', 'other'), required=True)
+    parser.add_argument('--joint', action='store_true', help='Check the current joint observer batch')
     args = parser.parse_args()
     assert 1 <= args.index <= 100
-    receipt = ROOT / 'docs/native-navigation-focus-latest.json'
+    receipt = ROOT / ('docs/native-navigation-joint-latest.json' if args.joint
+                      else 'docs/native-navigation-focus-latest.json')
     assert not receipt.is_symlink()
     state = json.loads(receipt.read_text())
     assert state['status'] == 'ready'
