@@ -1,9 +1,12 @@
 """Verify the release gate against the catalog schema without a desktop build."""
+from contextlib import ExitStack, closing
 import importlib.util
 import json
 from pathlib import Path
 import sqlite3
+import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('library_query', ROOT / 'scripts/native-library-query-build-batch.py')
@@ -84,6 +87,72 @@ class LibraryQueryEvidence(unittest.TestCase):
         wrong = dict(self.wide, order=self.wide['order'][:-1] + [self.wide['order'][-2]])
         with self.assertRaises(AssertionError):
             batch.verify('changed', batch.read_catalog(self.db), self.source, wrong, None)
+
+    def test_premature_frozen_submissions_retry_without_advancing_or_publishing(self):
+        with (tempfile.TemporaryDirectory(prefix='travel-gallery-query-controller-') as temporary,
+              ExitStack() as stack):
+            work = Path(temporary).resolve()
+            data = work / 'data'
+            data.mkdir()
+            db_path = data / 'catalog.sqlite'
+            fixture = work / 'fixture'
+            self.db.execute('UPDATE source_roots SET absolute_path=?', (str(fixture / 'source'),))
+            self.db.commit()
+            db = stack.enter_context(closing(sqlite3.connect(db_path)))
+            with db:
+                db.executescript('\n'.join(self.db.iterdump()))
+                db.execute('DELETE FROM selection_snapshot_items')
+                db.execute('DELETE FROM selection_snapshots')
+                db.execute("UPDATE jobs SET status='running' WHERE id='scan'")
+
+            state = dict(normalBefore={}, sourceBefore=[])
+            events = []
+
+            def submit(step, **observed):
+                pending = work / 'control/pending'
+                pending.write_text(json.dumps(dict(step=step, **observed)))
+                pending.replace(work / 'control/step.json')
+
+            def event(stage, **details):
+                events.append((stage, details.get('step')))
+                if stage == 'awaitingNativeCheckpoint' and details['step'] == 'frozen':
+                    submit('finish')
+                elif stage == 'nativeCheckpointNotReady':
+                    assert state['expectedCheckpoint'] == 'frozen'
+                    if details['reason'].startswith('Invalid request'):
+                        submit('frozen', **self.narrow)
+                    elif details['reason'].startswith('Background work'):
+                        with db:
+                            db.execute("UPDATE jobs SET status='completed' WHERE id='scan'")
+                        submit('frozen', **self.narrow)
+                    elif details['reason'].startswith('No frozen selection'):
+                        with db:
+                            db.execute('INSERT INTO selection_snapshots VALUES(?,?,?,?,?,?,?)',
+                                       self.db.execute('SELECT * FROM selection_snapshots').fetchone())
+                            db.executemany('INSERT INTO selection_snapshot_items VALUES(?,?)',
+                                           self.db.execute('SELECT * FROM selection_snapshot_items'))
+                        submit('frozen', **self.narrow)
+                elif stage == 'nativeLibraryQueryCheckpoint' and details['step'] == 'frozen':
+                    self.assertEqual(details['observedNames'], 125)
+                    self.assertEqual(details['snapshots'], 1)
+
+            with (patch.multiple(batch.b, WORK=work, DATA=data, STATE=state, event=event),
+                  patch.object(batch.b, 'check', return_value={}),
+                  patch.object(batch.reuse, 'normal_state', return_value={}),
+                  patch.object(batch.reuse, 'source_state', return_value=[]),
+                  patch.object(batch.picker, 'verified_process', return_value=42),
+                  patch.object(batch, 'STEPS', ('frozen', 'changed', 'finish')),
+                  patch.object(batch.time, 'monotonic', side_effect=[0, 1, 2, 3, 4, 0, 600]),
+                  patch.object(batch.exact, 'publish') as publish):
+                with self.assertRaisesRegex(TimeoutError, 'No accepted native checkpoint: changed'):
+                    batch.accept(work / 'candidate.app', fixture, {}, {})
+                publish.assert_not_called()
+
+            self.assertEqual(events, [
+                ('readyForNativeGui', None), ('awaitingNativeCheckpoint', 'frozen'),
+                *[('nativeCheckpointNotReady', 'frozen')] * 3,
+                ('nativeLibraryQueryCheckpoint', 'frozen'), ('awaitingNativeCheckpoint', 'changed'),
+            ])
 
     def test_concealed_snapshot_replacement_does_not_pass(self):
         baseline = batch.read_catalog(self.db)

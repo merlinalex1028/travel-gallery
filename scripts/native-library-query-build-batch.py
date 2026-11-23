@@ -184,6 +184,37 @@ def verify_map(locations, observed):
         dict(lat=43.47, lon=11.88, count=2), dict(lat=43.5, lon=11.92, count=1)])
 
 
+def frozen_pending_reason(db):
+    if db.execute("SELECT 1 FROM jobs WHERE status IN ('queued','running','paused')").fetchone():
+        return 'Background work is still active; observe the completed scan before submitting again'
+    if not db.execute('SELECT 1 FROM selection_snapshots LIMIT 1').fetchone():
+        return 'No frozen selection exists; capture the actual GUI order and freeze the selection before submitting again'
+    return None
+
+
+def checkpoint_observations(control, step):
+    b.STATE['expectedCheckpoint'] = step
+    b.event('awaitingNativeCheckpoint', step=step)
+    request = control / 'step.json'
+    deadline = time.monotonic() + 600
+    while time.monotonic() < deadline:
+        b.check()
+        if not request.is_file():
+            time.sleep(.25)
+            continue
+        try:
+            observed = json.loads(request.read_text())
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            observed = None
+        finally:
+            request.unlink()
+        if not isinstance(observed, dict) or observed.pop('step', None) != step:
+            b.event('nativeCheckpointNotReady', step=step, reason='Invalid request or unexpected checkpoint')
+            continue
+        yield observed
+    raise TimeoutError(f'No accepted native checkpoint: {step}')
+
+
 def verify(step, state, source, observed, previous):
     if step == 'empty':
         assert observed == {} and all(not state[key] for key in
@@ -266,38 +297,36 @@ def accept(candidate, fixture, release, env, *, check_restore=False):
     baseline, backup, changed = None, None, None
     regular_steps = STEPS[:-1]
     for step in (*regular_steps, *((*RESTORE_STEPS, MAP_STEP) if check_restore else ()), 'finish'):
-        request = control / 'step.json'
-        deadline = time.monotonic() + 600
-        while not request.is_file():
-            b.check()
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f'No native checkpoint: {step}')
-            time.sleep(.25)
-        observed = json.loads(request.read_text())
-        request.unlink()
-        assert observed.pop('step') == step
-        assert reuse.normal_state() == b.STATE['normalBefore']
-        assert reuse.source_state() == b.STATE['sourceBefore']
-        if step == 'finish':
-            assert not observed and exact.exited(b.APP_PATH) and exact.exited(b.NORMAL)
-            assert batch.verify_inputs() == b.STATE['sourceCommit']
-            exact.check_release(release, b.NORMAL)
-            exact.publish(candidate, release, env)
-            b.STATE.update(status='finished', qaQuitNormally=True)
-            return
-        current_pid = picker.verified_process(database)
-        assert pid is None or current_pid == pid
-        pid = current_pid
-        with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
-            db.execute('BEGIN')
-            state = read_catalog(db)
-            if check_restore and step in ('time-restored', *RESTORE_STEPS, MAP_STEP):
-                restore_state = read_restore_state(db)
-            if step == MAP_STEP:
-                locations = read_map_locations(db)
-            if step == 'backed-up':
-                completed_backups = db.execute("""SELECT status,progress_done,progress_total,failure_count
-                    FROM jobs WHERE type='BACKUP'""").fetchall()
+        for observed in checkpoint_observations(control, step):
+            assert reuse.normal_state() == b.STATE['normalBefore']
+            assert reuse.source_state() == b.STATE['sourceBefore']
+            if step == 'finish':
+                assert not observed and exact.exited(b.APP_PATH) and exact.exited(b.NORMAL)
+                assert batch.verify_inputs() == b.STATE['sourceCommit']
+                exact.check_release(release, b.NORMAL)
+                exact.publish(candidate, release, env)
+                b.STATE.pop('expectedCheckpoint')
+                b.STATE.update(status='finished', qaQuitNormally=True)
+                return
+            current_pid = picker.verified_process(database)
+            assert pid is None or current_pid == pid
+            pid = current_pid
+            with closing(sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)) as db:
+                db.execute('BEGIN')
+                reason = frozen_pending_reason(db) if step == 'frozen' else None
+                if reason is None:
+                    state = read_catalog(db)
+                    if check_restore and step in ('time-restored', *RESTORE_STEPS, MAP_STEP):
+                        restore_state = read_restore_state(db)
+                    if step == MAP_STEP:
+                        locations = read_map_locations(db)
+                    if step == 'backed-up':
+                        completed_backups = db.execute("""SELECT status,progress_done,progress_total,failure_count
+                            FROM jobs WHERE type='BACKUP'""").fetchall()
+            if reason:
+                b.event('nativeCheckpointNotReady', step=step, reason=reason)
+                continue
+            break
         if step in (*RESTORE_STEPS, MAP_STEP):
             [selected] = list(backup_dir.glob('travel-gallery-*.sqlite'))
             if step == 'backed-up':
