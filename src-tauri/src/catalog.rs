@@ -686,10 +686,7 @@ impl Catalog {
     fn aggregates(&self, c: &Connection, name: &str, r: &Value) -> Result<Value> {
         let f: query::Filter =
             serde_json::from_value(r.get("filter").cloned().unwrap_or(json!({})))?;
-        if let Some(id) = &f.selection_snapshot_id {
-            query::validate_snapshot(c, id)?;
-        }
-        let (w, p) = query::conditions(&f)?;
+        let (w, p) = query::scoped_conditions(c, &f)?;
         if name == "timeline_stats" {
             let mut st=c.prepare(&format!("SELECT {date} AS day,count(*),sum(r.pick_state<>'unreviewed'),sum(({date}) IS NOT NULL AND a.capture_tz_min IS NULL),sum(a.media_kind='image'),sum(a.media_kind='video') {from} WHERE {w} GROUP BY day ORDER BY day IS NULL,day DESC",date=query::CAPTURE_DATE,from=query::FROM))?;
             let rows=st.query_map(rusqlite::params_from_iter(p),|r|Ok(json!({"date":r.get::<_,Option<String>>(0)?,"count":r.get::<_,i64>(1)?,"reviewed":r.get::<_,i64>(2)?,"unknownTimezone":r.get::<_,i64>(3)?,"photos":r.get::<_,i64>(4)?,"videos":r.get::<_,i64>(5)?})))?;

@@ -80,15 +80,12 @@ pub const CAPTURE_DATE: &str = "CASE WHEN a.capture_time_source IN ('exif','quic
 pub fn cull_progress(c: &Connection, request: &Value) -> Result<Value> {
     let mut filter: Filter = serde_json::from_value(request["filter"].clone())?;
     filter.pick_states = None;
-    if let Some(snapshot) = &filter.selection_snapshot_id {
-        validate_snapshot(c, snapshot)?;
-    }
+    let (condition, values) = scoped_conditions(c, &filter)?;
     let (source, path, filename, date): (String,String,String,String) = c.query_row(
         "SELECT source_id,relative_path,filename,substr(COALESCE(capture_local,datetime(mtime_ms/1000,'unixepoch','localtime'),'未知日期'),1,10) FROM media_assets WHERE id=?",
         [required(request,"assetId")?], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?)),
     ).optional()?.ok_or_else(|| AppError::new("INVALID_SELECTION","素材不存在"))?;
     let parent = path.strip_suffix(&filename).unwrap_or("");
-    let (condition, values) = conditions(&filter)?;
     let day = "substr(COALESCE(a.capture_local,datetime(a.mtime_ms/1000,'unixepoch','localtime'),'未知日期'),1,10)=?";
     let folder =
         "a.source_id=? AND substr(a.relative_path,1,length(a.relative_path)-length(a.filename))=?";
@@ -134,6 +131,22 @@ fn list(
     Ok(())
 }
 pub fn conditions(f: &Filter) -> Result<(String, Vec<Sql>)> {
+    conditions_at(f, now())
+}
+
+pub fn scoped_conditions(c: &Connection, f: &Filter) -> Result<(String, Vec<Sql>)> {
+    scoped_conditions_at(c, f, now())
+}
+
+fn scoped_conditions_at(c: &Connection, f: &Filter, at: i64) -> Result<(String, Vec<Sql>)> {
+    if let Some(id) = &f.selection_snapshot_id {
+        validate_snapshot_with_clock(c, id, || at)?;
+    }
+    // Use the same expiry cutoff for validation and every SQL predicate in this request.
+    conditions_at(f, at)
+}
+
+fn conditions_at(f: &Filter, at: i64) -> Result<(String, Vec<Sql>)> {
     let mut w = vec!["s.is_enabled=1".to_string()];
     let mut p = vec![];
     if let Some(group) = &f.ai_cluster_id {
@@ -177,7 +190,7 @@ pub fn conditions(f: &Filter) -> Result<(String, Vec<Sql>)> {
     }
     if let Some(snapshot) = &f.selection_snapshot_id {
         w.push("EXISTS(SELECT 1 FROM selection_snapshot_items si JOIN selection_snapshots ss ON ss.id=si.snapshot_id WHERE si.asset_id=a.id AND si.snapshot_id=? AND ss.expires_at>?)".into());
-        p.extend([Sql::Text(snapshot.clone()), Sql::Integer(now())]);
+        p.extend([Sql::Text(snapshot.clone()), Sql::Integer(at)]);
     }
     list(&mut w, &mut p, "a.source_id", &f.source_ids, None)?;
     list(
@@ -321,7 +334,7 @@ pub fn conditions(f: &Filter) -> Result<(String, Vec<Sql>)> {
     if f.combine_linked.unwrap_or(true) {
         let mut expanded = f.clone();
         expanded.combine_linked = Some(false);
-        let (primary_where, args) = conditions(&expanded)?;
+        let (primary_where, args) = conditions_at(&expanded, at)?;
         w.push(format!("NOT EXISTS(SELECT 1 FROM linked_media lm WHERE lm.secondary_asset_id=a.id AND lm.confirmed=1 AND EXISTS(SELECT 1{FROM}WHERE a.id=lm.primary_asset_id AND {primary_where}))"));
         p.extend(args);
     }
@@ -360,7 +373,7 @@ fn key_value(v: &Value) -> Result<Sql> {
 pub fn query(c: &Connection, q: Query) -> Result<Value> {
     let fp = fingerprint(&q.filter, &q.sort)?;
     let tx = c.unchecked_transaction()?;
-    let result = query_page(&tx, &q, &fp)?;
+    let result = query_page(&tx, &q, &fp, now())?;
     tx.commit()?;
     // Save the query definition after releasing the read snapshot. The fingerprint
     // identifies the definition independently of the version of the returned rows.
@@ -374,17 +387,14 @@ pub fn query(c: &Connection, q: Query) -> Result<Value> {
     )?;
     Ok(result)
 }
-fn query_page(c: &Connection, q: &Query, fp: &str) -> Result<Value> {
+fn query_page(c: &Connection, q: &Query, fp: &str, at: i64) -> Result<Value> {
     if let Some(id) = &q.selection_snapshot_id {
-        validate_snapshot(c, id)?;
+        validate_snapshot_with_clock(c, id, || at)?;
     }
-    if let Some(id) = &q.filter.selection_snapshot_id {
-        validate_snapshot(c, id)?;
-    }
+    let (w, mut p) = scoped_conditions_at(c, &q.filter, at)?;
     if !(1..=500).contains(&q.page_size) {
         return Err(AppError::new("INVALID_FILTER", "每页数量须为 1–500"));
     }
-    let (w, mut p) = conditions(&q.filter)?;
     let col = sort_column(&q.sort)?;
     let epoch = db::epoch(c)?;
     // A stale cursor can be rejected without counting the current matches.
@@ -609,6 +619,31 @@ mod query_transaction_tests {
     }
 
     #[test]
+    fn snapshot_scoped_page_uses_the_same_deadline_for_validation_and_filtering() {
+        let (_temp, mut c) = ordering_fixture();
+        let frozen = snapshot(&mut c, &json!({"filter":{},"sort":Sort::default()})).unwrap();
+        let id = frozen["id"].as_str().unwrap();
+        // Model expiry during the query without changing the system clock or sleeping.
+        let deadline = now() - 1;
+        c.execute("UPDATE selection_snapshots SET expires_at=? WHERE id=?", params![deadline, id]).unwrap();
+        let request = Query {
+            filter: Filter { selection_snapshot_id: Some(id.into()), ..Filter::default() },
+            sort: Sort { field: "filename".into(), direction: "asc".into() },
+            cursor: None,
+            page_size: 3,
+            selection_snapshot_id: Some(id.into()),
+        };
+        let fp = fingerprint(&request.filter, &request.sort).unwrap();
+        let read = c.unchecked_transaction().unwrap();
+        let page = query_page(&read, &request, &fp, deadline - 1).unwrap();
+        assert_eq!(page["total"], 8);
+        assert_eq!(page["items"].as_array().unwrap().len(), 3);
+        assert_eq!(page["selectionMembership"], json!({"snapshotId":id,"assetIds":["d","g","h"]}));
+        assert!(page["nextCursor"].is_string());
+        assert_eq!(query_page(&read, &request, &fp, deadline).unwrap_err().code, "SNAPSHOT_EXPIRED");
+    }
+
+    #[test]
     fn page_keeps_its_epoch_and_rows_while_a_catalog_update_commits() {
         let temp = tempfile::tempdir().unwrap();
         let database = temp.path().join("catalog.sqlite");
@@ -638,7 +673,7 @@ mod query_transaction_tests {
         db::bump(&tx).unwrap();
         tx.commit().unwrap();
 
-        let before = query_page(&read, &request, &fp).unwrap();
+        let before = query_page(&read, &request, &fp, now()).unwrap();
         assert_eq!(before["catalogEpoch"], epoch);
         assert_eq!(before["items"][0]["filename"], "before.jpg");
         assert_eq!(before["total"], 1);
@@ -669,11 +704,10 @@ pub fn snapshot(c: &mut Connection, r: &Value) -> Result<Value> {
     let f: Filter = serde_json::from_value(r["filter"].clone())?;
     let s: Sort = serde_json::from_value(r["sort"].clone())?;
     sort_column(&s)?;
-    let (mut w, p) = conditions(&f)?;
     let key = fingerprint(&f, &s)?;
     let snap = id();
-    let at = now();
     let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let at = now();
     if let Some(expected) = r.get("expectedCatalogEpoch") {
         let expected = expected
             .as_i64()
@@ -686,11 +720,9 @@ pub fn snapshot(c: &mut Connection, r: &Value) -> Result<Value> {
             ));
         }
     }
-    if let Some(id) = &f.selection_snapshot_id {
-        validate_snapshot(&tx, id)?;
-    }
+    let (mut w, p) = scoped_conditions_at(&tx, &f, at)?;
     if let Some(target) = r.get("target") {
-        let ids = target_ids(&tx, target)?;
+        let ids = target_ids_with_clock(&tx, target, || at)?;
         tx.execute_batch("CREATE TEMP TABLE frozen_target_ids(id TEXT PRIMARY KEY)")?;
         let mut insert = tx.prepare("INSERT INTO frozen_target_ids VALUES(?)")?;
         for id in ids {
@@ -820,12 +852,9 @@ impl Catalog {
             .ok_or_else(|| AppError::new("INVALID_FILTER", "浏览会话已过期"))?;
         let ctx: Value = serde_json::from_str(&context)?;
         let f: Filter = serde_json::from_value(ctx["filter"].clone())?;
-        if let Some(id) = &f.selection_snapshot_id {
-            validate_snapshot(c, id)?;
-        }
+        let (w, p) = scoped_conditions(c, &f)?;
         let s: Sort = serde_json::from_value(ctx["sort"].clone())?;
         let col = sort_column(&s)?;
-        let (w, p) = conditions(&f)?;
         let aid = required(r, "assetId")?;
         let raw: Sql = c.query_row(&format!("SELECT {col}{FROM}WHERE a.id=?"), [aid], |r| {
             r.get(0)

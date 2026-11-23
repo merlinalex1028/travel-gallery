@@ -26,14 +26,8 @@ fn filter_json(filter: &query::Filter) -> Value {
     }
     value
 }
-fn scope(c: &Connection, filter: &query::Filter) -> Result<(String, Vec<Sql>)> {
-    if let Some(id) = &filter.selection_snapshot_id {
-        query::validate_snapshot(c, id)?;
-    }
-    query::conditions(filter)
-}
 fn counts(c: &Connection, filter: &query::Filter) -> Result<(usize, usize)> {
-    let (condition, args) = scope(c, filter)?;
+    let (condition, args) = query::scoped_conditions(c, filter)?;
     let mut values = vec![Sql::Text(version().into())];
     values.extend(args);
     Ok(c.query_row(&format!("SELECT count(*),COALESCE(sum(EXISTS(SELECT 1 FROM ai_embeddings e WHERE e.asset_id=a.id AND e.model_version=? AND {CURRENT})),0) {} WHERE {condition}",query::FROM),params_from_iter(values),|r|Ok((r.get(0)?,r.get(1)?)))?)
@@ -392,7 +386,7 @@ pub fn search(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Value> {
             "语义搜索范围已超过 100000 项，请缩小范围",
         ));
     }
-    let (condition, mut args) = scope(&tx, &r.filter)?;
+    let (condition, mut args) = query::scoped_conditions(&tx, &r.filter)?;
     args.push(Sql::Text(version().into()));
     let mut st=tx.prepare(&format!("SELECT a.id,e.vector {} JOIN ai_embeddings e ON e.asset_id=a.id WHERE ({condition}) AND e.model_version=? AND {CURRENT}",query::FROM))?;
     let mut rows = st.query(params_from_iter(args))?;
@@ -471,7 +465,7 @@ pub fn groups(c: &Connection, r: &Value) -> Result<Value> {
             combine_linked: Some(false),
             ..Default::default()
         };
-        let (condition, args) = scope(c, &filter)?;
+        let (condition, args) = query::scoped_conditions(c, &filter)?;
         let valid: usize = c.query_row(
             &format!("SELECT count(*) {} WHERE {condition}", query::FROM),
             params_from_iter(&args),

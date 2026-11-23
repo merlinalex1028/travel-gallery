@@ -4,10 +4,7 @@ use serde_json::{json, Value};
 pub fn query(c: &Connection, request: &Value) -> Result<Value> {
     let filter: query::Filter =
         serde_json::from_value(request.get("filter").cloned().unwrap_or(json!({})))?;
-    if let Some(snapshot) = &filter.selection_snapshot_id {
-        query::validate_snapshot(c, snapshot)?;
-    }
-    let (condition, parameters) = query::conditions(&filter)?;
+    let (condition, parameters) = query::scoped_conditions(c, &filter)?;
     let condition=format!("{condition} AND a.gps_lat BETWEEN -90 AND 90 AND a.gps_lon BETWEEN -180 AND 180 AND a.capture_local IS NOT NULL AND a.capture_time_source IN ('exif','quicktime','manual')");
     let total: i64 = c.query_row(
         &format!("SELECT count(*){} WHERE {condition}", query::FROM),

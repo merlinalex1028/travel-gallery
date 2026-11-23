@@ -64,10 +64,7 @@ fn collect(c: &Connection, r: &Request) -> Result<Sequences> {
             "拍摄间隔须为 1–10 秒，每页须为 1–50 组",
         ));
     }
-    if let Some(snapshot) = &r.filter.selection_snapshot_id {
-        query::validate_snapshot(c, snapshot)?;
-    }
-    let (condition, args) = query::conditions(&r.filter)?;
+    let (condition, args) = query::scoped_conditions(c, &r.filter)?;
     let condition = format!("{condition} AND a.media_kind='image' AND a.file_state<>'missing' AND a.capture_time_source IN ('exif','quicktime','manual') AND a.capture_local IS NOT NULL AND length(trim(COALESCE(a.camera_model,'')))>0");
     let total = c.query_row(
         &format!("SELECT count(*){} WHERE {condition}", query::FROM),

@@ -43,10 +43,7 @@ fn version(kind: &str) -> Result<&'static str> {
     }
 }
 fn condition(c: &Connection, filter: &query::Filter) -> Result<(String, Vec<Sql>)> {
-    if let Some(id) = &filter.selection_snapshot_id {
-        query::validate_snapshot(c, id)?;
-    }
-    let (w, p) = query::conditions(filter)?;
+    let (w, p) = query::scoped_conditions(c, filter)?;
     Ok((
         format!("({w}) AND a.media_kind='image' AND a.file_state<>'missing'"),
         p,
