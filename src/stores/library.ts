@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, reactive, shallowRef, watch } from 'vue';
 import { api, errorMessage } from '../services/api';
 import type {
+  AppError,
   AssetDetail,
   AssetFilter,
   AssetSort,
@@ -75,7 +76,7 @@ export const useLibrary = defineStore('library', () => {
     excluded.value = new Set();
     snapshotMembers.value = new Set();
   }
-  function isSnapshotExpired(error: unknown) {
+  function isSnapshotExpired(error: unknown): error is Pick<AppError, 'code' | 'details'> {
     return !!(
       error &&
       typeof error === 'object' &&
@@ -90,6 +91,7 @@ export const useLibrary = defineStore('library', () => {
     if (more && (!cursor.value || loadingMore.value || queryUnavailable.value)) return;
     const seq = more ? generation : ++generation;
     const selectionSnapshotId = snapshot.value?.id;
+    const scopeSnapshotId = filter.selectionSnapshotId;
     if (more) loadingMore.value = true;
     else {
       loading.value = true;
@@ -122,7 +124,12 @@ export const useLibrary = defineStore('library', () => {
     } catch (e) {
       if (seq === generation) {
         error.value = errorMessage(e);
-        if (isSnapshotExpired(e)) clearExpiredSnapshot(selectionSnapshotId);
+        if (selectionSnapshotId && isSnapshotExpired(e)) {
+          const expiredId = e.details?.snapshotId;
+          const onlyOneSnapshot = !scopeSnapshotId || scopeSnapshotId === selectionSnapshotId;
+          if (expiredId === selectionSnapshotId || (expiredId === undefined && onlyOneSnapshot))
+            clearExpiredSnapshot(selectionSnapshotId);
+        }
       }
     } finally {
       if (seq === generation) {

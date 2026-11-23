@@ -133,7 +133,11 @@ const jobs: JobSummary[] = [];
 function snapshotIds(id: string) {
   const snapshot = snapshots.get(id);
   if (!snapshot || snapshot.expiresAt <= Date.now())
-    throw { code: 'SNAPSHOT_EXPIRED', message: '冻结选区已过期，请重新选择并确认数量。' };
+    throw {
+      code: 'SNAPSHOT_EXPIRED',
+      message: '冻结选区已过期，请重新选择并确认数量。',
+      details: { snapshotId: id },
+    };
   return snapshot.ids;
 }
 function captureDate(asset: AssetDetail): string | null {

@@ -180,6 +180,31 @@ it('clears an expired snapshot before allowing a fresh selection', async () => {
   expect(lastQuery?.[1].selectionSnapshotId).toBeUndefined();
 });
 
+it('keeps a valid selection and its exclusions when only the query scope expires', async () => {
+  const lib = await freeze();
+  lib.select(asset('a'), new MouseEvent('click', { metaKey: true }));
+  lib.setFilter({ selectionSnapshotId: 'older-scope' });
+  invoke.mockRejectedValueOnce({ code: 'SNAPSHOT_EXPIRED', details: { snapshotId: 'older-scope' } });
+  await lib.search();
+  expect(lib.queryUnavailable).toBe(true);
+  expect(lib.target).toEqual({ kind: 'snapshot', snapshotId: 'frozen-five', excludeAssetIds: ['a'] });
+
+  lib.setFilter({});
+  await lib.search();
+  expect(lib.queryUnavailable).toBe(false);
+  expect(lib.isSelected('a')).toBe(false);
+  expect(lib.isSelected('b')).toBe(true);
+});
+
+it('clears the current selection when it expires while a different query scope is active', async () => {
+  const lib = await freeze();
+  lib.setFilter({ selectionSnapshotId: 'other-scope' });
+  invoke.mockRejectedValueOnce({ code: 'SNAPSHOT_EXPIRED', details: { snapshotId: 'frozen-five' } });
+  await lib.search();
+  expect(lib.snapshot).toBeNull();
+  expect(lib.filter.selectionSnapshotId).toBe('other-scope');
+});
+
 it('clears the current snapshot when a batch mutation reports expiry', async () => {
   const lib = await freeze();
   invoke.mockRejectedValueOnce({ code: 'SNAPSHOT_EXPIRED', message: 'expired' });

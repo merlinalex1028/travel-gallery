@@ -644,6 +644,30 @@ mod query_transaction_tests {
     }
 
     #[test]
+    fn page_identifies_which_snapshot_expired() {
+        let (_temp, mut c) = ordering_fixture();
+        let request = json!({"filter":{},"sort":Sort::default()});
+        let scope = snapshot(&mut c, &request).unwrap();
+        let selection = snapshot(&mut c, &request).unwrap();
+        let scope_id = scope["id"].as_str().unwrap();
+        let selection_id = selection["id"].as_str().unwrap();
+        for expired_id in [scope_id, selection_id] {
+            c.execute("UPDATE selection_snapshots SET expires_at=? WHERE id IN (?,?)",
+                params![now() + 86_400_000, scope_id, selection_id]).unwrap();
+            c.execute("UPDATE selection_snapshots SET expires_at=0 WHERE id=?", [expired_id]).unwrap();
+            let error = query(&c, Query {
+                filter: Filter { selection_snapshot_id: Some(scope_id.into()), ..Filter::default() },
+                sort: Sort::default(),
+                cursor: None,
+                page_size: 3,
+                selection_snapshot_id: Some(selection_id.into()),
+            }).unwrap_err();
+            assert_eq!(error.code, "SNAPSHOT_EXPIRED");
+            assert_eq!(error.details, json!({"snapshotId": expired_id}));
+        }
+    }
+
+    #[test]
     fn page_keeps_its_epoch_and_rows_while_a_catalog_update_commits() {
         let temp = tempfile::tempdir().unwrap();
         let database = temp.path().join("catalog.sqlite");
@@ -828,10 +852,8 @@ pub fn validate_snapshot(c: &Connection, id: &str) -> Result<()> {
 fn validate_snapshot_with_clock(c: &Connection, id: &str, clock: impl FnOnce() -> i64) -> Result<()> {
     let meta:Option<(i64,i64,i64)>=c.query_row("SELECT initial_count,expires_at,(SELECT count(*) FROM selection_snapshot_items WHERE snapshot_id=ss.id) FROM selection_snapshots ss WHERE id=?",[id],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).optional()?;
     if !meta.is_some_and(|(initial, ttl, current)| ttl > clock() && initial == current) {
-        return Err(AppError::new(
-            "SNAPSHOT_EXPIRED",
-            "冻结选区已过期或数量变化，请重新确认",
-        ));
+        return Err(AppError::new("SNAPSHOT_EXPIRED", "冻结选区已过期或数量变化，请重新确认")
+            .details(json!({"snapshotId": id})));
     }
     Ok(())
 }
