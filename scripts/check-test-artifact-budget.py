@@ -1,6 +1,7 @@
 """Read-only preflight: count logical bytes even for shared APFS clones."""
 from pathlib import Path
 import argparse
+import hashlib
 import importlib.util
 import json
 import sys
@@ -37,10 +38,18 @@ if args.approval_file:
     approval_path=args.approval_file.resolve(strict=True)
     assert approval_path.parent==cleanup.ROOT/'docs'
     approval=json.loads(approval_path.read_text())
-    assert approval['status']=='active' and approval['userAnswer']=='允许这一轮，结束即清理'
+    authority=cleanup.ROOT/'AGENTS.md'
+    standing=(approval.get('authorizationBasis')=='AGENTS.md:standing-resource-2026-11-23'
+        and approval.get('authorizationFileSha256')==hashlib.sha256(authority.read_bytes()).hexdigest()
+        and '后续资源使用都批准' in authority.read_text()
+        and approval.get('cleanupPolicy')=='end-of-batch')
+    assert approval['status']=='active' and (
+        approval.get('userAnswer')=='允许这一轮，结束即清理' or standing)
     limits=approval['limits']
+    assert set(limits)=={'files','logicalBytes','sourceFiles'}
+    assert all(type(value) is int and value>=0 for value in limits.values())
 passed=files<=limits['files'] and logical<=limits['logicalBytes'] and args.planned_source_files<=limits['sourceFiles']
 print(json.dumps(dict(passed=passed,totalPlannedFiles=files,totalPlannedLogicalBytes=logical,
     plannedSourceFiles=args.planned_source_files,limits=limits,
-    note='A larger workload needs an explicit user-approved size/count/cleanup plan; APFS sharing does not lower this logical budget.'),ensure_ascii=False))
+    note='Use finite registered batch limits under explicit or standing user authorization; clean on completion, failure or interruption. APFS sharing does not lower this logical budget.'),ensure_ascii=False))
 raise SystemExit(0 if passed else 1)
