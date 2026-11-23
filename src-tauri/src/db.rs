@@ -169,6 +169,12 @@ pub fn backup_controlled(
             }
         }
         drop(b);
+        // The backup is published as a single file. It must open without
+        // creating WAL or SHM files next to the user's selected backup.
+        let journal_mode: String = target.query_row("PRAGMA journal_mode=DELETE", [], |r| r.get(0))?;
+        if journal_mode != "delete" {
+            return Err(AppError::new("DB_CONFLICT", "无法生成可独立读取的备份"));
+        }
         drop(target);
         std::fs::OpenOptions::new()
             .write(true)
@@ -215,6 +221,29 @@ mod tests {
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?, row.get::<_, i64>(3)?)),
         ).unwrap();
         assert_eq!(review, ("keep".into(), 4, "preserve".into(), 7));
+    }
+
+    #[test]
+    fn backup_of_live_wal_catalog_can_be_read_as_one_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let live_path = directory.path().join("catalog.sqlite");
+        let backup_path = directory.path().join("backup.sqlite");
+        v9_catalog(&live_path);
+        let live = connect(&live_path).unwrap();
+        live.execute("UPDATE asset_reviews SET updated_at=42 WHERE asset_id='a'", []).unwrap();
+        backup(&live, &backup_path).unwrap();
+
+        let header = std::fs::read(&backup_path).unwrap();
+        assert_eq!(&header[18..20], &[1, 1]);
+        let read_only = Connection::open_with_flags(&backup_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        assert_review(&read_only);
+        let updated_at: i64 = read_only.query_row(
+            "SELECT updated_at FROM asset_reviews WHERE asset_id='a'", [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(updated_at, 42);
+        assert!(!directory.path().join("backup.sqlite-wal").exists());
+        assert!(!directory.path().join("backup.sqlite-shm").exists());
+        assert_eq!(live.pragma_query_value::<String, _>(None, "journal_mode", |r| r.get(0)).unwrap(), "wal");
     }
 
     #[test]
