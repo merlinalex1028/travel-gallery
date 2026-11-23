@@ -37,6 +37,12 @@ b.RECEIPT = ROOT / 'docs/native-navigation-joint-latest.json'
 LIMITS = dict(files=25000, logicalBytes=4 * 1024**3, sourceFiles=100)
 
 
+def require_unlocked_console():
+    registry = subprocess.check_output(['/usr/sbin/ioreg', '-l', '-n', 'Root', '-d', '1'], text=True)
+    if '"IOConsoleLocked" = No' not in registry:
+        raise RuntimeError('Unlock the Mac before native GUI acceptance; no observer build or fixture generated')
+
+
 def probe_result(count):
     [log] = list((b.DATA / 'performance').glob('*.jsonl'))
     # Ignore a partially appended final line while the live observer is flushing.
@@ -97,6 +103,7 @@ def run_gui():
 
 
 def main():
+    require_unlocked_console()
     assert not any(path.exists() or path.is_symlink() for path in [*reuse.OWNED, *b.EXTRA, b.GENERATED])
     subprocess.run([sys.executable, str(ROOT / 'scripts/check-test-artifact-budget.py'),
                     '--approval-file', str(b.APPROVAL), '--planned-source-files', '100',
