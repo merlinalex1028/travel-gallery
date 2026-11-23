@@ -22,6 +22,7 @@ if args.allow_network:
     assert Path(os.environ['CARGO_HOME']).resolve().is_relative_to(runtime)
     assert Path(os.environ['CARGO_TARGET_DIR']).resolve().is_relative_to(runtime)
 cargo = shutil.which('cargo') or str(Path.home() / '.cargo/bin/cargo')
+toolchain_env = dict(os.environ, PATH=os.pathsep.join((str(Path(cargo).parent), os.environ.get('PATH', ''))))
 lock = (project / 'src-tauri/Cargo.lock').read_text()
 versions = {}
 for block in lock.split('[[package]]'):
@@ -32,9 +33,11 @@ for block in lock.split('[[package]]'):
 cap = versions['cap-std'][0]
 windows = next(v for v in versions['windows-sys'] if v.startswith('0.61.'))
 source = (project / 'src-tauri/src/files.rs').read_text()
-identity = source[source.index('pub fn identity('):source.index('pub fn source_path(')]
+file_version = source[source.index('pub fn stamp('):source.index('pub fn source_path(')]
 publish = project / 'src-tauri/src/publish.rs'
 power = project / 'src-tauri/src/platform_power.rs'
+errors = project / 'src-tauri/src/error.rs'
+export_errors = project / 'src-tauri/src/export_errors.rs'
 with tempfile.TemporaryDirectory(prefix='travel-gallery-winapi-') as folder:
     root = Path(folder)
     (root / 'src').mkdir()
@@ -45,11 +48,20 @@ edition="2021"
 [dependencies]
 cap-std="={cap}"
 windows-sys={{version="={windows}",features=["Win32_Foundation","Win32_Storage_FileSystem","Win32_System_Power"]}}
+rusqlite="={versions['rusqlite'][0]}"
+serde={{version="={versions['serde'][0]}",features=["derive"]}}
+serde_json="={versions['serde_json'][0]}"
 ''')
     shutil.copyfile(project / 'src-tauri/Cargo.lock', root / 'Cargo.lock')
-    (root / 'src/lib.rs').write_text('#[allow(unused_imports)] use std::{path::Path,fs::{self,File}};\n#[path='+json.dumps(str(publish))+'] pub mod publish;\n#[path='+json.dumps(str(power))+'] pub mod platform_power;\n#[path='+json.dumps(str(project/'src-tauri/src/export_errors.rs'))+'] pub mod export_errors;\n'+identity)
+    modules = {'publish': publish, 'platform_power': power, 'error': errors, 'export_errors': export_errors}
+    declarations = ''.join(f'#[path={json.dumps(str(path))}] pub mod {name};\n'
+                           for name, path in modules.items())
+    (root / 'src/lib.rs').write_text(declarations + '''
+use crate::error::{AppError, Result};
+use std::{fs::{self, File}, io, path::Path, time::UNIX_EPOCH};
+''' + file_version)
     subprocess.run([cargo,'check',*([] if args.allow_network else ['--offline']),
-        '--manifest-path',str(root/'Cargo.toml'),'--target','x86_64-pc-windows-gnu'],check=True)
+        '--manifest-path',str(root/'Cargo.toml'),'--target','x86_64-pc-windows-gnu'],check=True,env=toolchain_env)
 report = {
     'dateUtc': datetime.now(timezone.utc).isoformat(),
     'target': 'x86_64-pc-windows-gnu',
@@ -59,8 +71,9 @@ report = {
     'sourceSha256': {
         'src-tauri/src/publish.rs': hashlib.sha256(publish.read_bytes()).hexdigest(),
         'src-tauri/src/platform_power.rs': hashlib.sha256(power.read_bytes()).hexdigest(),
-        'src-tauri/src/files.rs::identity': hashlib.sha256(identity.encode()).hexdigest(),
-        'src-tauri/src/export_errors.rs': hashlib.sha256((project/'src-tauri/src/export_errors.rs').read_bytes()).hexdigest(),
+        'src-tauri/src/files.rs::fileVersionBlock': hashlib.sha256(file_version.encode()).hexdigest(),
+        'src-tauri/src/error.rs': hashlib.sha256(errors.read_bytes()).hexdigest(),
+        'src-tauri/src/export_errors.rs': hashlib.sha256(export_errors.read_bytes()).hexdigest(),
     },
     'limitations': ['No Windows process executed', 'Not the whole Tauri application build', 'No SQLite cross compilation', 'No installer, ACL, junction or runtime filesystem validation'],
 }
