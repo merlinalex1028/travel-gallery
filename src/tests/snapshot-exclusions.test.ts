@@ -189,6 +189,15 @@ it('clears the current snapshot when a batch mutation reports expiry', async () 
   expect(lib.pending).toBe(0);
 });
 
+it('clears the current snapshot when a tag mutation reports expiry', async () => {
+  const lib = await freeze();
+  invoke.mockRejectedValueOnce({ code: 'SNAPSHOT_EXPIRED', message: 'expired' });
+  await expect(lib.applyTags(['tag'], [])).rejects.toMatchObject({ code: 'SNAPSHOT_EXPIRED' });
+  expect(lib.snapshot).toBeNull();
+  expect(lib.count).toBe(0);
+  expect(lib.pending).toBe(0);
+});
+
 it('does not revive a snapshot after the user cleared the pending selection', async () => {
   const lib = useLibrary();
   let finish!: (value: unknown) => void;
