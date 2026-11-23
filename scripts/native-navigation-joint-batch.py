@@ -30,6 +30,8 @@ def load(name):
 focus = load('native-navigation-focus-batch')
 analysis = load('analyze-native-navigation')
 reuse, b = focus.reuse, focus.b
+b.DATA = b.LIBRARY / 'Application Support' / b.IDENTIFIER
+b.CACHE = b.LIBRARY / 'Caches' / b.IDENTIFIER
 b.APPROVAL = ROOT / 'docs/native-navigation-joint-budget.json'
 b.RECEIPT = ROOT / 'docs/native-navigation-joint-latest.json'
 LIMITS = dict(files=25000, logicalBytes=4 * 1024**3, sourceFiles=100)
