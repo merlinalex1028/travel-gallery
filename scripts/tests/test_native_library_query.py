@@ -376,7 +376,10 @@ class LibraryQueryEvidence(unittest.TestCase):
         self.db.commit()
         with tempfile.TemporaryDirectory(prefix='travel-gallery-backup-version-probe-') as owned:
             work = Path(owned).resolve()
-            original, probe = work / 'original.sqlite', work / 'restore-version-probe.sqlite'
+            backup_dir = work / 'backup'
+            backup_dir.mkdir()
+            original, probe = backup_dir / 'original.sqlite', work / 'restore-version-probe.sqlite'
+            unchanged = work / 'restore-original.sqlite'
             with closing(sqlite3.connect(original)) as target:
                 self.db.backup(target)
             before_bytes = original.read_bytes()
@@ -385,6 +388,13 @@ class LibraryQueryEvidence(unittest.TestCase):
                 batch.prepare_backup_version_probe(original, probe)
                 self.assertEqual(batch.read_backup(probe), baseline)
                 batch.rewrite_backup_version_probe(probe)
+                batch.copy_static_backup(original, unchanged)
+                self.assertEqual(unchanged.read_bytes(), before_bytes)
+                self.assertEqual(batch.read_backup(unchanged), baseline)
+                wal = original.with_name(original.name + '-wal')
+                wal.write_bytes(b'pending frames')
+                with self.assertRaises(AssertionError):
+                    batch.copy_static_backup(original, work / 'incomplete.sqlite')
             self.assertEqual(original.read_bytes(), before_bytes)
             result = batch.read_backup(probe)
             assets = [(*row[:5], 4, *row[6:]) if row[1] == batch.EXCLUDED else row

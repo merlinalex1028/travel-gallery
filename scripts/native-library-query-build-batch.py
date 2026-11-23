@@ -126,10 +126,18 @@ def read_backup(path):
         return read_restore_state(db)
 
 
-def prepare_backup_version_probe(original, probe):
-    assert probe.parent == b.WORK and not original.is_symlink()
-    with original.open('rb') as source, probe.open('xb') as target:
+def copy_static_backup(original, copy):
+    assert original.parent == b.WORK / 'backup' and copy.parent == b.WORK
+    assert original.is_file() and not original.is_symlink()
+    wal = original.with_name(original.name + '-wal')
+    assert not wal.is_symlink() and (not wal.exists() or wal.stat().st_size == 0)
+    with original.open('rb') as source, copy.open('xb') as target:
         shutil.copyfileobj(source, target)
+    assert exact.sha(original) == exact.sha(copy)
+
+
+def prepare_backup_version_probe(original, probe):
+    copy_static_backup(original, probe)
     with closing(sqlite3.connect(probe.as_uri() + '?mode=rw', uri=True)) as db:
         assert db.execute('PRAGMA journal_mode=DELETE').fetchone() == ('delete',)
 
@@ -151,7 +159,7 @@ def verify_backup_version_observation(step, evidence, probe):
     assert set(evidence) == {'axFrame'} and isinstance(frame, str)
     assert frame.startswith('Window: ') and 'App: Travel Gallery Offline Bench.' in frame.split('\n', 1)[0]
     assert re.search(AX_ROW + r'HTML content .*URL: tauri://localhost#/settings$', frame)
-    if step == 'backup-reviewing':
+    if step in ('backup-reviewing', 'original-backup-reviewing'):
         assert str(probe) in frame
         assert re.search(AX_ROW + r'button 备份当前库并恢复(?:$|\s)', frame)
     else:
@@ -500,6 +508,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
     database = b.DATA / 'catalog.sqlite'
     backup_dir = b.WORK / 'backup'
     backup_probe = b.WORK / 'restore-version-probe.sqlite'
+    restore_original = b.WORK / 'restore-original.sqlite'
     if check_restore:
         backup_dir.mkdir()
         b.STATE['backupDirectory'] = str(backup_dir)
@@ -511,7 +520,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
     expiry_state = None
     restore_steps = RESTORE_STEPS
     if check_rejections:
-        restore_steps = (*RESTORE_STEPS[:-1], *RESTORE_VERSION_STEPS, RESTORE_STEPS[-1])
+        restore_steps = (*RESTORE_STEPS[:-1], *RESTORE_VERSION_STEPS, 'original-backup-reviewing', RESTORE_STEPS[-1])
     steps = STEPS[:3] if preflight else STEPS[:-1] + ((*restore_steps, MAP_STEP) if check_restore else ())
     steps += EXPIRY_STEPS if check_rejections else ()
     for step in (*steps, 'finish'):
@@ -559,20 +568,24 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
                 except ValueError as error:
                     b.event('nativeCheckpointNotReady', step=step, reason=str(error))
                     continue
-            if step in RESTORE_VERSION_STEPS:
+            if step in (*RESTORE_VERSION_STEPS, 'original-backup-reviewing'):
                 try:
-                    verify_backup_version_observation(step, observed, backup_probe)
+                    verify_backup_version_observation(step, observed,
+                        restore_original if step == 'original-backup-reviewing' else backup_probe)
                 except AssertionError:
                     b.event('nativeCheckpointNotReady', step=step, reason='Expected native restore confirmation or version conflict')
                     continue
             break
-        if step in RESTORE_VERSION_STEPS:
+        if step in (*RESTORE_VERSION_STEPS, 'original-backup-reviewing'):
             assert restore_state == changed
             assert not list(b.DATA.glob('before-restore-*.sqlite'))
             assert not list(b.DATA.glob('restore-staging-*'))
             if step == 'backup-reviewing':
                 assert read_backup(backup_probe) == backup
                 rewrite_backup_version_probe(backup_probe)
+            if step == 'original-backup-reviewing':
+                assert read_backup(restore_original) == backup
+                assert exact.sha(restore_original) == exact.sha(Path(b.STATE['originalBackup']))
             b.event('nativeBackupVersionCheckpoint', step=step, catalogEpoch=restore_state['epoch'])
             continue
         if step in EXPIRY_STEPS:
@@ -594,6 +607,9 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
             assert read_backup(selected) == backup
             rollback = None
             if step in ('backup-restored', MAP_STEP):
+                if check_rejections:
+                    assert read_backup(restore_original) == backup
+                    assert exact.sha(selected) == exact.sha(restore_original)
                 [auto_backup] = list(b.DATA.glob('before-restore-*.sqlite'))
                 rollback = read_backup(auto_backup)
                 assert not list(b.DATA.glob('restore-staging-*'))
@@ -607,7 +623,10 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
                 changed = restore_state
                 if check_rejections:
                     prepare_backup_version_probe(selected, backup_probe)
+                    copy_static_backup(selected, restore_original)
                     b.STATE['restoreVersionProbe'] = str(backup_probe)
+                    b.STATE['originalBackup'] = str(selected)
+                    b.STATE['restoreOriginalBackup'] = str(restore_original)
             b.event('nativeCatalogEpochCheckpoint', step=step, catalogEpoch=restore_state['epoch'],
                     backupEpoch=backup['epoch'], **observed)
             continue
