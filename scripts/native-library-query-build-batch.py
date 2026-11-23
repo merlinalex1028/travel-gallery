@@ -240,6 +240,9 @@ def checkpoint_observations(control, step):
     b.event('awaitingNativeCheckpoint', step=step)
     request = control / 'step.json'
     deadline = time.monotonic() + 600
+    hard_deadline = deadline + 1200
+    frames = []
+    high_water = 0
     while time.monotonic() < deadline:
         b.check()
         if not request.is_file():
@@ -254,6 +257,31 @@ def checkpoint_observations(control, step):
         if not isinstance(observed, dict) or observed.pop('step', None) != step:
             b.event('nativeCheckpointNotReady', step=step, reason='Invalid request or unexpected checkpoint')
             continue
+        if step in ('frozen', 'changed'):
+            if observed == {'axReset': True}:
+                frames.clear()
+                b.event('nativePaginationCaptureReset', step=step)
+                continue
+            if set(observed) == {'axAppend'}:
+                frame = observed['axAppend']
+                added = frame if isinstance(frame, list) else [frame]
+                try:
+                    if (not added or len(frames) + len(added) > 64 or
+                            any(not isinstance(item, str) or len(item.encode()) > 65536 for item in added)):
+                        raise ValueError('Native AX segment count or size exceeds capture limits')
+                    order, _, loaded, total = pagination_order(step, [*frames, *added])
+                except ValueError as error:
+                    b.event('nativeCheckpointNotReady', step=step, reason=str(error))
+                else:
+                    frames.extend(added)
+                    if len(order) > high_water:
+                        high_water = len(order)
+                        deadline = min(hard_deadline, time.monotonic() + 600)
+                    b.event('nativePaginationSegmentCaptured', step=step, segments=len(frames),
+                            observedNames=len(order), loaded=loaded, total=total, firstName=order[0], lastName=order[-1])
+                continue
+            if set(observed) == {'axSelection'} and frames:
+                observed['axFrames'] = list(frames)
         yield observed
     raise TimeoutError(f'No accepted native checkpoint: {step}')
 
@@ -324,36 +352,32 @@ def set_controlled_expiry(database, pid, snapshot):
         assert changed.rowcount == 1
 
 
-def pagination_observation(step, evidence):
-    def one(pattern, frame, label):
-        values = pattern.findall(frame)
-        if len(values) != 1:
-            raise ValueError(f'Expected one native {label} row')
-        return values[0]
+def one_ax_row(pattern, frame, label):
+    values = pattern.findall(frame)
+    if len(values) != 1:
+        raise ValueError(f'Expected one native {label} row')
+    return values[0]
 
-    frames = evidence.get('axFrames')
-    selection = evidence.get('axSelection')
-    if (set(evidence) != {'axFrames', 'axSelection'} or not isinstance(frames, list) or len(frames) < 2
-            or not all(isinstance(frame, str) for frame in [*frames, selection])):
-        raise ValueError('Supply ordered native pagination frames and a final selection frame')
+
+def read_pagination_frame(step, frame):
     direction = '降序' if step == 'frozen' else '升序'
+    if not native_library_frame(frame):
+        raise ValueError('Expected a full isolated native library tree or its original AX rows')
+    if one_ax_row(AX_DIRECTION, frame, 'sort direction') != direction:
+        raise ValueError('Native sort direction changed during capture')
+    cards = AX_CARD.findall(frame)
+    if not cards or len(cards) != len(set(cards)):
+        raise ValueError('Native frame has missing or duplicate cards')
+    return cards, int(one_ax_row(AX_LOADED, frame, 'loaded count')), int(one_ax_row(AX_TOTAL, frame, 'query count'))
 
-    def read(frame):
-        if not native_library_frame(frame):
-            raise ValueError('Expected a full isolated native library tree or its original AX rows')
-        if one(AX_DIRECTION, frame, 'sort direction') != direction:
-            raise ValueError('Native sort direction changed during capture')
-        cards = AX_CARD.findall(frame)
-        if not cards or len(cards) != len(set(cards)):
-            raise ValueError('Native frame has missing or duplicate cards')
-        return cards, int(one(AX_LOADED, frame, 'loaded count')), int(one(AX_TOTAL, frame, 'query count'))
 
-    order, first_page, total = read(frames[0])
+def pagination_order(step, frames):
+    order, first_page, total = read_pagination_frame(step, frames[0])
     if not len(order) <= first_page < total:
         raise ValueError('First frame does not show a partial page')
     previous, loaded = order, first_page
     for frame in frames[1:]:
-        cards, count, frame_total = read(frame)
+        cards, count, frame_total = read_pagination_frame(step, frame)
         if frame_total != total or not loaded <= count <= total:
             raise ValueError('Native loaded/query counts changed inconsistently')
         if cards[0] not in previous:
@@ -366,17 +390,27 @@ def pagination_observation(step, evidence):
         if len(order) > count:
             raise ValueError('Observed more cards than the native loaded count')
         previous, loaded = cards, count
+    return order, first_page, loaded, total
+
+
+def pagination_observation(step, evidence):
+    frames = evidence.get('axFrames')
+    selection = evidence.get('axSelection')
+    if (set(evidence) != {'axFrames', 'axSelection'} or not isinstance(frames, list) or len(frames) < 2
+            or not all(isinstance(frame, str) for frame in [*frames, selection])):
+        raise ValueError('Supply ordered native pagination frames and a final selection frame')
+    order, first_page, loaded, total = pagination_order(step, frames)
     if len(order) != total or loaded != total:
         raise ValueError('Native capture does not cover the entire paginated query')
 
-    cards, loaded, selection_total = read(selection)
+    cards, loaded, selection_total = read_pagination_frame(step, selection)
     if (loaded, selection_total) != (total, total) or cards[0] not in order:
         raise ValueError('Selection frame does not show the completed query')
     start = order.index(cards[0])
     if order[start:start + len(cards)] != cards:
         raise ValueError('Selection frame disagrees with the observed card order')
-    frozen = one(AX_FROZEN, selection, 'frozen count')
-    excluded = one(AX_EXCLUDED, selection, 'excluded count')
+    frozen = one_ax_row(AX_FROZEN, selection, 'frozen count')
+    excluded = one_ax_row(AX_EXCLUDED, selection, 'excluded count')
     scopes = AX_SCOPE.findall(selection)
     if scopes not in ([], [frozen]) or (bool(scopes) != (step == 'changed')):
         raise ValueError('Native frozen scope notice is missing or inconsistent')
@@ -450,9 +484,9 @@ def verify(step, state, source, observed, previous):
         assert (pick, rating, favorite, note, revision) == (expected_pick, 0, 0, '', expected_revision), name
 
 
-def accept(candidate, fixture, release, env, *, check_restore=False, check_rejections=False):
+def accept(candidate, fixture, release, env, *, check_restore=False, check_rejections=False, preflight=False):
     control = b.WORK / 'control'
-    control.mkdir()
+    control.mkdir(exist_ok=preflight)
     source = (fixture / 'source').resolve()
     database = b.DATA / 'catalog.sqlite'
     backup_dir = b.WORK / 'backup'
@@ -469,7 +503,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
     restore_steps = RESTORE_STEPS
     if check_rejections:
         restore_steps = (*RESTORE_STEPS[:-1], *RESTORE_VERSION_STEPS, RESTORE_STEPS[-1])
-    steps = STEPS[:-1] + ((*restore_steps, MAP_STEP) if check_restore else ())
+    steps = STEPS[:3] if preflight else STEPS[:-1] + ((*restore_steps, MAP_STEP) if check_restore else ())
     steps += EXPIRY_STEPS if check_rejections else ()
     for step in (*steps, 'finish'):
         for observed in checkpoint_observations(control, step):
@@ -477,9 +511,10 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
             assert reuse.source_state() == b.STATE['sourceBefore']
             if step == 'finish':
                 assert not observed and exact.exited(b.APP_PATH) and exact.exited(b.NORMAL)
-                assert batch.verify_inputs() == b.STATE['sourceCommit']
                 exact.check_release(release, b.NORMAL)
-                exact.publish(candidate, release, env)
+                if not preflight:
+                    assert batch.verify_inputs() == b.STATE['sourceCommit']
+                    exact.publish(candidate, release, env)
                 b.STATE.pop('expectedCheckpoint')
                 b.STATE.update(status='finished', qaQuitNormally=True)
                 return
@@ -614,6 +649,22 @@ def is_deadline_batch(name):
     return name == DEADLINE_BATCH or name.startswith(DEADLINE_BATCH + '-')
 
 
+def pagination_preflight():
+    native_gui.require_unlocked_console()
+    b.APPROVAL = batch.ROOT / 'docs/native-library-pagination-preflight-budget.json'
+    b.RECEIPT = batch.ROOT / 'docs/native-library-pagination-preflight-latest.json'
+    reuse.RUN_PREFIX = 'travel-gallery-library-pagination-preflight-'
+    reuse.SCOPE = 'Reuse the accepted App in isolation to verify segmented native pagination; no build or publication'
+    reuse.PLANNED_BYTES, reuse.PLANNED_FILES, reuse.SOURCE_FILES = 512 * 1024**2, 750, len(MATCH + OUTSIDE)
+    reuse.SANDBOX_SEAL_ARGS = ('--webkit-mach-lookup', '--picker-only')
+    reuse.write_sources = write_sources
+    prepare = reuse.main
+    release = json.loads((batch.ROOT / 'artifacts/build-info.json').read_text())
+    exact.check_release(release, b.NORMAL)
+    reuse.main = lambda: prepare(on_ready=lambda: accept(None, b.WORK / 'fixture', release, None, preflight=True))
+    return reuse.run()
+
+
 def register_standing(approval_path, batch_name):
     native_gui.require_unlocked_console()
     authority = batch.ROOT / 'AGENTS.md'
@@ -658,6 +709,8 @@ def claim_approval(approval_path, batch_name):
 
 
 def main(arguments):
+    if tuple(arguments) == ('--pagination-preflight',):
+        return pagination_preflight()
     modes = {(): BATCH, ('--catalog-epoch',): EPOCH_BATCH, ('--catalog-epoch-ax',): EPOCH_AX_BATCH}
     standing = len(arguments) == 2 and arguments[0] == '--catalog-standing'
     if standing:
@@ -667,7 +720,7 @@ def main(arguments):
     elif tuple(arguments) in modes:
         batch_name = modes[tuple(arguments)]
     else:
-        raise ValueError('Usage: native-library-query-build-batch.py [--catalog-epoch|--catalog-epoch-ax|--catalog-standing catalog-NAME]')
+        raise ValueError('Usage: native-library-query-build-batch.py [--pagination-preflight|--catalog-epoch|--catalog-epoch-ax|--catalog-standing catalog-NAME]')
     if batch_name != BATCH:
         b.APPROVAL = batch.ROOT / f'docs/native-{batch_name}-budget.json'
         b.RECEIPT = batch.ROOT / f'docs/native-{batch_name}-latest.json'

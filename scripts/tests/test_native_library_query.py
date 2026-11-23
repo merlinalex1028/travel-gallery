@@ -139,6 +139,29 @@ class LibraryQueryEvidence(unittest.TestCase):
             with self.subTest(problem=problem), self.assertRaisesRegex(ValueError, problem):
                 batch.pagination_observation('frozen', altered)
 
+    def test_segmented_capture_retains_good_frames_after_a_disconnected_segment(self):
+        evidence = pagination_frames(batch.MATCH, '降序')
+        frames = evidence['axFrames']
+        requests = iter([{'axAppend': frames[0]}, {'axAppend': [frames[1], frames[3]]},
+                         {'axAppend': frames[1:]}, {'axSelection': evidence['axSelection']}])
+        events = []
+        with tempfile.TemporaryDirectory(prefix='travel-gallery-query-segments-') as temporary:
+            control = Path(temporary)
+            def event(stage, **details):
+                events.append((stage, details))
+                (control / 'step.json').write_text(json.dumps(dict(step='frozen', **next(requests))))
+
+            with (patch.object(batch.b, 'check'), patch.object(batch.b, 'STATE', {}),
+                  patch.object(batch.b, 'event', side_effect=event),
+                  closing(batch.checkpoint_observations(control, 'frozen')) as observations):
+                self.assertEqual(batch.pagination_observation('frozen', next(observations)), self.narrow)
+        captures = [details for stage, details in events if stage == 'nativePaginationSegmentCaptured']
+        self.assertEqual([row['segments'] for row in captures], [1, len(frames)])
+        self.assertEqual(captures[-1]['observedNames'], 125)
+        rejected = [details for stage, details in events if stage == 'nativeCheckpointNotReady']
+        self.assertEqual(len(rejected), 1)
+        self.assertIn('must overlap', rejected[0]['reason'])
+
     def test_ax_requires_unambiguous_native_query_and_selection_labels(self):
         evidence = pagination_frames(self.names[::-1], '升序', scope=True)
         for old, new in [
