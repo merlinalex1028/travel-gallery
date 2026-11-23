@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
 import { useMediaKeyboard } from '../composables/keyboard';
 import { api } from '../services/api';
+import { TEMPORARY_FILTER_MESSAGE, temporaryFilterField } from '../services/savedFilters';
 import type { AssetFilter, AssetSummary } from '../services/contracts';
 import Icon from '../components/Icon.vue';
 import MediaGrid from '../components/MediaGrid.vue';
@@ -134,6 +135,12 @@ async function cull() {
   });
 }
 async function saveFilter() {
+  const filter = { ...lib.filter };
+  const sort = { ...lib.sort };
+  if (temporaryFilterField(filter)) {
+    ElMessage.error(TEMPORARY_FILTER_MESSAGE);
+    return;
+  }
   const answer = await ElMessageBox.prompt('保存当前筛选规则，之后自动显示符合条件的照片。', '保存智能筛选', {
     inputPlaceholder: '例如：四星以上的保留照片',
     inputValidator: (value) => !!value?.trim() || '请输入名称',
@@ -142,8 +149,8 @@ async function saveFilter() {
     await app.perform(async () => {
       await api('save_filter', {
         name: answer.value.trim(),
-        filter: { ...lib.filter },
-        sort: { ...lib.sort },
+        filter,
+        sort,
       });
       await app.refresh();
     }, '智能筛选已保存');

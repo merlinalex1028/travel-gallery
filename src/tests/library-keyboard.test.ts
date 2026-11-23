@@ -3,7 +3,10 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import LibraryToolbar from '../features/LibraryToolbar.vue';
 import LibraryPage from '../pages/LibraryPage.vue';
+import MainNav from '../components/MainNav.vue';
 import { useLibrary } from '../stores/library';
 import { useApp } from '../stores/app';
 import type { AssetSummary } from '../services/contracts';
@@ -79,6 +82,47 @@ function selectAll(target: EventTarget = document, init: KeyboardEventInit = {})
 }
 
 describe('library keyboard scope', () => {
+  it('explains why a temporary filter cannot be saved before prompting for a name', async () => {
+    const lib = await openLibrary();
+    lib.setFilter({ selectionSnapshotId: 'temporary-range' });
+    vi.mocked(ElMessageBox.prompt).mockReset();
+    vi.mocked(ElMessage.error).mockClear();
+    wrapper!.getComponent(LibraryToolbar).vm.$emit('save');
+    await flushPromises();
+    expect(ElMessageBox.prompt).not.toHaveBeenCalled();
+    expect(ElMessage.error).toHaveBeenCalledWith('请移除临时范围，再保存智能筛选。');
+    expect(invoke.mock.calls.some(([command]) => command === 'save_filter')).toBe(false);
+  });
+
+  it('keeps the current view when a legacy shortcut references a temporary result', async () => {
+    const router = createRouter({ history: createMemoryHistory(), routes: [
+      { path: '/library', component: LibraryPage },
+      { path: '/filter', component: LibraryPage },
+    ] });
+    await router.push('/library');
+    const lib = useLibrary(), app = useApp();
+    lib.setFilter({ favorite: true });
+    const sort = { field: 'filename', direction: 'asc' } as const;
+    app.saved = [
+      { id: 'legacy', name: '旧内容组', filter: { aiClusterId: 'old-job' }, sort },
+      { id: 'normal', name: '照片规则', filter: { mediaKinds: ['image'] }, sort },
+    ];
+    wrapper = mount(MainNav, { global: { plugins: [router], stubs: { Icon: true } } });
+    const shortcut = (name: string) => wrapper!.findAll('button').find((button) => button.text() === name)!;
+    await shortcut('旧内容组').trigger('click');
+    expect(invoke).not.toHaveBeenCalled();
+    expect(lib.filter).toEqual({ favorite: true });
+    expect(router.currentRoute.value.path).toBe('/library');
+    expect(app.saved).toHaveLength(2);
+
+    await shortcut('照片规则').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/filter');
+    expect(invoke).toHaveBeenLastCalledWith('query_assets', expect.objectContaining({
+      filter: { mediaKinds: ['image'] }, sort,
+    }));
+  });
+
   it('selects only the loaded records and removes its listener when leaving', async () => {
     const lib = await openLibrary();
     expect(selectAll().defaultPrevented).toBe(true);

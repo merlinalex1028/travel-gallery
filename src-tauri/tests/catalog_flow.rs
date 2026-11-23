@@ -2505,6 +2505,27 @@ fn deleted_source_after_export_preview_is_a_per_file_failure() {
 }
 
 #[test]
+fn saved_filter_rejects_temporary_result_ids_without_overwriting_rules() {
+    let f = Fixture::new();
+    f.picture("a.jpg", 1);
+    f.add();
+    let sort = json!({"field":"filename","direction":"asc"});
+    let snapshot = f.cat.call("create_selection_snapshot", json!({"filter":{},"sort":sort})).unwrap();
+    assert_eq!(snapshot["count"], 1);
+    let rule = json!({"id":"durable","name":"照片规则","filter":{"mediaKinds":["image"]},"sort":sort});
+    f.cat.call("save_filter", rule).unwrap();
+    let original = f.cat.call("list_saved_filters", json!({})).unwrap();
+    for (field, value) in [("selectionSnapshotId", snapshot["id"].clone()), ("aiClusterId", json!("group"))] {
+        let error = f.cat.call("save_filter", json!({
+            "id":"durable","name":"替换规则","filter":{(field):value},"sort":sort
+        })).unwrap_err();
+        assert_eq!(error.code, "INVALID_FILTER");
+        assert_eq!(error.details["field"], field);
+        assert_eq!(f.cat.call("list_saved_filters", json!({})).unwrap(), original);
+    }
+}
+
+#[test]
 fn trips_saved_filters_and_tag_deletion_keep_history_consistent() {
     let f = Fixture::new();
     f.picture("a.jpg", 1);

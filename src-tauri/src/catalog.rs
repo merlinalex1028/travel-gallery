@@ -677,6 +677,13 @@ impl Catalog {
         } else {
             let f: query::Filter = serde_json::from_value(r["filter"].clone())?;
             let s: query::Sort = serde_json::from_value(r["sort"].clone())?;
+            if let Some(field) = [
+                ("selectionSnapshotId", &f.selection_snapshot_id),
+                ("aiClusterId", &f.ai_cluster_id),
+            ].into_iter().find_map(|(field, value)| value.as_ref().map(|_| field)) {
+                return Err(AppError::new("INVALID_FILTER", "请移除临时范围，再保存智能筛选。")
+                    .details(json!({"field": field})));
+            }
             query::conditions(&f)?;
             query::sort_column(&s)?;
             c.execute("INSERT INTO saved_filters VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,filter_json=excluded.filter_json,sort_json=excluded.sort_json,updated_at=excluded.updated_at",params![r["id"].as_str().map(String::from).unwrap_or_else(id),required(r,"name")?.trim(),r["filter"].to_string(),r["sort"].to_string(),now(),now()])?;

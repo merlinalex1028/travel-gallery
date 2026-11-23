@@ -5,6 +5,7 @@ import modelProfile from '../../src-tauri/resources/ai/siglip2-base224.json';
 import modelCard from '../../src-tauri/resources/ai/MODEL_CARD.md?raw';
 import modelLicense from '../../src-tauri/resources/ai/LICENSE.txt?raw';
 import { settingsWithDefaults } from './settings';
+import { TEMPORARY_FILTER_MESSAGE, temporaryFilterField } from './savedFilters';
 import type {
   AppSettings,
   AssetDetail,
@@ -784,6 +785,8 @@ export async function demoCall(name: keyof Commands, request: unknown): Promise<
       return state.saved;
     case 'save_filter': {
       const req = request as Commands['save_filter']['request'];
+      const field = temporaryFilterField(req.filter);
+      if (field) throw { code: 'INVALID_FILTER', message: TEMPORARY_FILTER_MESSAGE, details: { field } };
       state.saved.push({ ...req, id: crypto.randomUUID() });
       save();
       return { updated: true };

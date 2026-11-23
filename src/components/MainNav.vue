@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { ElMessage } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
-import type { AssetFilter } from '../services/contracts';
+import type { AssetFilter, SavedFilter } from '../services/contracts';
+import { temporaryFilterField } from '../services/savedFilters';
 import Icon from './Icon.vue';
 import { t } from '../i18n';
 const app = useApp(),
@@ -22,6 +24,16 @@ const navigation = [
 function library(filter: AssetFilter) {
   lib.setFilter(filter);
   void router.push('/library');
+  void lib.search();
+}
+function openSavedFilter(saved: SavedFilter) {
+  if (temporaryFilterField(saved.filter)) {
+    ElMessage.error('这条规则包含临时范围。请从图库重新保存规则，并在设置中删除这条旧规则。');
+    return;
+  }
+  lib.setFilter(saved.filter);
+  Object.assign(lib.sort, saved.sort);
+  void router.push('/filter');
   void lib.search();
 }
 </script>
@@ -84,14 +96,7 @@ function library(filter: AssetFilter) {
         v-for="saved in app.saved"
         :key="saved.id"
         class="nav-item"
-        @click="
-          () => {
-            lib.setFilter(saved.filter);
-            Object.assign(lib.sort, saved.sort);
-            router.push('/filter');
-            lib.search();
-          }
-        "
+        @click="openSavedFilter(saved)"
       >
         <Icon name="filter" /><span class="truncate">{{ saved.name }}</span></button
       ><RouterLink class="nav-item" to="/tags" :aria-label="t('nav.tags')" active-class="active"
