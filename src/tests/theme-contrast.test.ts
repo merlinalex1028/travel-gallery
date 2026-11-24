@@ -39,3 +39,10 @@ it.each([':root', ':root.dark'])('keeps %s hints and accent button text readable
     expect(contrast(colors.muted!, colors['surface-raised']!)).toBeGreaterThanOrEqual(4.5);
   expect(contrast(colors['on-accent']!, colors.accent!)).toBeGreaterThanOrEqual(4.5);
 });
+
+it('keeps active review text readable across both ends of the keep and maybe gradients', () => {
+  const text = palette(':root')['on-accent']!;
+  for (const color of ['#5ec988', '#52b87a', '#d4a85d', '#c89855']) {
+    expect(contrast(text, color)).toBeGreaterThanOrEqual(4.5);
+  }
+});

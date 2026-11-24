@@ -1359,6 +1359,7 @@ kbd {
 
 .review-btn.keep.active {
   background: linear-gradient(135deg, #5ec988, #52b87a);
+  color: var(--on-accent);
   box-shadow:
     0 2px 8px rgba(94, 201, 136, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
@@ -1373,6 +1374,7 @@ kbd {
 
 .review-btn.maybe.active {
   background: linear-gradient(135deg, #d4a85d, #c89855);
+  color: var(--on-accent);
   box-shadow:
     0 2px 8px rgba(212, 168, 93, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
