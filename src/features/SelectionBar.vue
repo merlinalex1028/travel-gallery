@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { shallowRef } from 'vue';
+import { computed, shallowRef } from 'vue';
 import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
 import { api } from '../services/api';
 import { date } from '../services/format';
 import Icon from '../components/Icon.vue';
+import CustomSelect from '../components/CustomSelect.vue';
 const app = useApp(),
   lib = useLibrary(),
   tagOpen = shallowRef(false),
@@ -12,6 +13,7 @@ const app = useApp(),
   tags = shallowRef<string[]>([]),
   trip = shallowRef(''),
   tagMode = shallowRef<'add' | 'remove'>('add');
+const tagOptions = computed(() => app.tags.map((tag) => ({ value: tag.id, label: tag.name })));
 defineEmits<{ cull: []; compare: [] }>();
 async function applyTags() {
   await app.perform(async () => {
@@ -143,9 +145,13 @@ async function addToTrip() {
       <select v-model="tagMode" aria-label="标签操作">
         <option value="add">添加这些标签</option>
         <option value="remove">移除这些标签</option></select
-      ><ElSelect v-model="tags" multiple placeholder="选择标签"
-        ><ElOption v-for="t in app.tags" :key="t.id" :label="t.name" :value="t.id"
-      /></ElSelect>
+      ><CustomSelect
+        v-model="tags"
+        multiple
+        placeholder="选择标签"
+        aria-label="批量选择标签"
+        :options="tagOptions"
+      />
     </div>
     <RouterLink to="/tags" class="text-btn" @click="tagOpen = false">创建或管理标签</RouterLink
     ><template #footer

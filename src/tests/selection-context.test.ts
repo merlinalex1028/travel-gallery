@@ -1,7 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import SelectionBar from '../features/SelectionBar.vue';
+import CustomSelect from '../components/CustomSelect.vue';
+import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
 import { date } from '../services/format';
 import type { AssetSummary } from '../services/contracts';
@@ -78,3 +80,47 @@ it.each(['loading', 'error'] as const)(
     wrapper.unmount();
   },
 );
+
+it.each(['add', 'remove'])('saves custom tag choices in %s mode for the current selection', async (mode) => {
+  const lib = useLibrary();
+  lib.selected = new Set(['one', 'two']);
+  const apply = vi.spyOn(lib, 'applyTags').mockResolvedValue({
+    changeBatchId: 'batch',
+    affectedCount: 2,
+    unchangedCount: 0,
+    conflicts: [],
+  });
+  const app = useApp();
+  app.tags = [{ id: 'sunset', name: '日落', color: null, count: 2 }];
+  vi.spyOn(app, 'refresh').mockResolvedValue();
+  const wrapper = mount(SelectionBar, {
+    global: {
+      stubs: {
+        ...options.global.stubs,
+        ElDialog: {
+          props: ['modelValue', 'title'],
+          template: '<section v-if="modelValue"><h2>{{ title }}</h2><slot/><slot name="footer"/></section>',
+        },
+      },
+    },
+  });
+  try {
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '标签')!
+      .trigger('click');
+    const select = wrapper.getComponent(CustomSelect);
+    expect(select.props()).toMatchObject({ options: [{ value: 'sunset', label: '日落' }] });
+    select.vm.$emit('update:modelValue', ['sunset']);
+    await wrapper.get('[aria-label="标签操作"]').setValue(mode);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '保存标签')!
+      .trigger('click');
+    await flushPromises();
+    expect(apply).toHaveBeenCalledWith(mode === 'add' ? ['sunset'] : [], mode === 'remove' ? ['sunset'] : []);
+    expect(wrapper.text()).not.toContain('批量编辑标签');
+  } finally {
+    wrapper.unmount();
+  }
+});
