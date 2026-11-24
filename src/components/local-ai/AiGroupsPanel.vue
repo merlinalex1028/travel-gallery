@@ -126,8 +126,8 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
   margin-top: 20px;
 }
 .ai-group {
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-lg);
   padding: 14px;
 }
 .ai-group-previews {
@@ -138,7 +138,7 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
 }
 .ai-group-previews :deep(.thumbnail) {
   height: 110px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 .ai-group h3 {
   font-size: 15px;

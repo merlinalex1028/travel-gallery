@@ -42,8 +42,8 @@ const eye = computed(() => props.analysis.observations.find((o) => o.kind === 'e
 .quality-preview {
   position: relative;
   height: 220px;
-  background: var(--surface-raised, #e7eae3);
-  border-radius: 10px;
+  background: var(--surface-raised);
+  border-radius: var(--r-sm);
   overflow: hidden;
 }
 .quality-preview :deep(.thumbnail) {
@@ -58,17 +58,17 @@ const eye = computed(() => props.analysis.observations.find((o) => o.kind === 'e
 }
 rect {
   fill: none;
-  stroke: #f5f7ef;
+  stroke: #eff4fc;
   stroke-width: 1.5;
 }
 text {
   fill: white;
   paint-order: stroke;
-  stroke: #263a30;
+  stroke: #2a3358;
   stroke-width: 2px;
 }
 .hint rect {
-  stroke: #ffb05d;
+  stroke: #f0dca8;
   stroke-width: 2;
 }
 </style>

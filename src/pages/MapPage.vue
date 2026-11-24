@@ -40,6 +40,21 @@ let destroyed = false,
   pendingSourceRefresh = false,
   loadTimer: ReturnType<typeof setTimeout> | undefined;
 const markers = new Map<string, import('maplibre-gl').Marker>();
+function mapPalette() {
+  const style = getComputedStyle(document.documentElement);
+  return Object.fromEntries(
+    ['ocean', 'land', 'coast', 'trail'].map((name) => [name, style.getPropertyValue(`--map-${name}`).trim()]),
+  );
+}
+function updateMapPalette() {
+  if (!map || !ready.value) return;
+  const colors = mapPalette();
+  map.setPaintProperty('ocean', 'background-color', colors.ocean);
+  map.setPaintProperty('land', 'fill-color', colors.land);
+  map.setPaintProperty('coast', 'line-color', colors.coast);
+  map.setPaintProperty('trails', 'line-color', colors.trail);
+}
+watch(() => app.isDark, updateMapPalette, { flush: 'post' });
 function open(point: MapPoint) {
   lib.setFilter({ gpsCell: [point.lat, point.lon], ...(tripId.value ? { collectionId: tripId.value } : {}) });
   void router.push('/filter?showResults=1');
@@ -116,6 +131,7 @@ onMounted(async () => {
     const [maplibre] = await Promise.all([import('maplibre-gl'), reload()]);
     if (!element.value || destroyed) return;
     maplibre.addProtocol(offlineMapProtocol, loadOfflineMapTile);
+    const colors = mapPalette();
     map = new maplibre.Map({
       container: element.value,
       attributionControl: false,
@@ -137,20 +153,20 @@ onMounted(async () => {
           },
         },
         layers: [
-          { id: 'ocean', type: 'background', paint: { 'background-color': '#dce7e5' } },
+          { id: 'ocean', type: 'background', paint: { 'background-color': colors.ocean } },
           {
             id: 'land',
             type: 'fill',
             source: 'world',
             'source-layer': 'land',
-            paint: { 'fill-color': '#f1f1e7' },
+            paint: { 'fill-color': colors.land },
           },
           {
             id: 'coast',
             type: 'line',
             source: 'world',
             'source-layer': 'land',
-            paint: { 'line-color': '#bdcfc7', 'line-width': 1 },
+            paint: { 'line-color': colors.coast, 'line-width': 1 },
           },
           {
             id: 'trails',
@@ -158,7 +174,7 @@ onMounted(async () => {
             source: 'trails',
             layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
             paint: {
-              'line-color': '#7c8c59',
+              'line-color': colors.trail,
               'line-width': 2,
               'line-opacity': 0.7,
               'line-dasharray': [2, 2],
@@ -224,6 +240,7 @@ onMounted(async () => {
       if (loadTimer) clearTimeout(loadTimer);
       mapError.value = '';
       ready.value = true;
+      updateMapPalette();
       if (pendingSourceRefresh) {
         pendingSourceRefresh = false;
         void reload();

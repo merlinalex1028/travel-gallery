@@ -1,0 +1,20 @@
+{
+  "name": "Nunito",
+  "license": "OFL-1.1",
+  "upstreamCommit": "8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5",
+  "files": {
+    "Nunito.ttf": {
+      "bytes": 276932,
+      "sha256": "bb55a5ca5c2042335b3991af27c4d0705d0ef41cac6164ac737fd8f2a1e85207",
+      "sourceUrl": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/nunito/Nunito%5Bwght%5D.ttf"
+    },
+    "OFL.txt": {
+      "bytes": 4384,
+      "sha256": "ee9491ad3ea5d390878695bd6cce49beb3cacd5c4312f8ab574b541e9f7afa21",
+      "sourceUrl": "https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/nunito/OFL.txt",
+      "upstreamBytes": 4385,
+      "upstreamSha256": "580df76c95a1ec5ab878ceb25bb3d85c6a076804e9c970c8c6972aea775fdf65",
+      "normalization": "LF line endings and trailing whitespace only"
+    }
+  }
+}

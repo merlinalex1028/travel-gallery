@@ -109,6 +109,8 @@ def main():
     map_check = subprocess.run(['node', 'scripts/map-resources.mjs', '--check'], cwd=ROOT,
                                capture_output=True, text=True, check=True)
     map_resources = json.loads(map_check.stdout)
+    ui_font_check = subprocess.run(['node', 'scripts/ui-font.mjs'], cwd=ROOT,
+                                   capture_output=True, text=True, check=True)
     negative = []
     if args.self_test:
         missing = copy.deepcopy(inventory)
@@ -137,6 +139,7 @@ def main():
                 raise ValueError(f'Negative check accepted invalid materials: {label}')
     report = dict(atUtc=datetime.datetime.now(datetime.timezone.utc).isoformat(), passed=True, **summary,
                   offlineMapResources=map_resources,
+                  offlineUiFont=json.loads(ui_font_check.stdout),
                   cargoVersions=len(cargo_versions), installedNpmVersions=len(npm_versions), negativeChecks=negative,
                   inputSha256={name: digest(data) for name, data in inputs.items()},
                   checkerSourceSha256=digest(Path(__file__).read_bytes()),

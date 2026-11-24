@@ -136,10 +136,10 @@ async function loadInfo() {
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--surface-raised, #f3f5ee);
+  background: var(--surface-raised);
   padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-sm);
   font-size: 12px;
   line-height: 1.6;
 }

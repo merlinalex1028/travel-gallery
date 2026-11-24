@@ -171,7 +171,7 @@ onUnmounted(() => {
 .burst-preview :deep(.thumbnail) {
   height: 120px;
   width: 100%;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
 }
 .burst-preview span {
   display: block;

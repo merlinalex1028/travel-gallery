@@ -331,7 +331,7 @@ async function start() {
   text-align: center;
 }
 .story-header h1 {
-  font-family: var(--font-display, serif);
+  font-family: var(--font-display);
   font-size: clamp(32px, 5vw, 60px);
   margin: 14px 0;
   overflow-wrap: anywhere;
@@ -342,16 +342,16 @@ async function start() {
 }
 .story-header :deep(.thumbnail) {
   height: min(52vw, 560px);
-  border-radius: 16px;
+  border-radius: var(--r-xl);
   margin-top: 32px;
-  background: var(--surface-raised, #e8ebe4);
+  background: var(--surface-raised);
 }
 .story-chapter {
   margin: 48px auto;
   max-width: 1100px;
 }
 .story-chapter h2 {
-  border-top: 1px solid var(--border, #dce1d7);
+  border-top: var(--bw) solid var(--line);
   padding-top: 24px;
   font-size: 22px;
 }
@@ -363,11 +363,16 @@ async function start() {
 .story-frame {
   margin: 0;
   min-width: 0;
+  padding: 12px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 .story-frame :deep(.thumbnail) {
   height: 300px;
-  border-radius: 12px;
-  background: var(--surface-raised, #e8ebe4);
+  border-radius: var(--r-lg);
+  background: var(--surface-raised);
 }
 .story-frame figcaption {
   display: flex;

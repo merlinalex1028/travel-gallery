@@ -14,7 +14,7 @@ const app = useApp(),
   mergeOpen = shallowRef(false),
   id = shallowRef<string | undefined>(),
   name = shallowRef(''),
-  color = shallowRef('#66846c'),
+  color = shallowRef('#9068c0'),
   mergeFrom = shallowRef(''),
   mergeTo = shallowRef(''),
   busy = shallowRef(false),
@@ -28,7 +28,7 @@ function edit(tag?: (typeof app.tags)[number]) {
   savedDraft = '';
   saveError.value = '';
   name.value = tag?.name ?? '';
-  color.value = tag?.color ?? '#66846c';
+  color.value = tag?.color ?? '#9068c0';
   dialog.value = true;
 }
 async function save() {
@@ -98,7 +98,7 @@ async function merge() {
       <article v-for="tag in app.tags" :key="tag.id" class="tag-card">
         <span
           class="tag-card-icon"
-          :style="{ color: tag.color ?? '#66846c', background: `${tag.color ?? '#66846c'}16` }"
+          :style="{ color: tag.color ?? '#9068c0', background: `${tag.color ?? '#9068c0'}16` }"
           ><Icon name="tags" :size="24" /></span
         ><button
           class="tag-card-name"

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { mapFontNotice } from './map-resources.mjs';
+import { uiFontNotice } from './ui-font.mjs';
 const runner = process.env.npm_execpath;
 if (!runner) throw new Error('Run with pnpm notices.');
 function json(command, args) {
@@ -234,6 +235,7 @@ writeFileSync(
   'public/third-party-notices.txt',
   header +
     mapFontNotice() +
+    uiFontNotice() +
     table +
     '\n\nSUPPLEMENTAL NOTICE SOURCES\n' +
     provenance +

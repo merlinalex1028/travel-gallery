@@ -15,7 +15,11 @@ defineEmits<{
 <template>
   <article
     class="media-card"
-    :class="{ selected, rejected: asset.review.pickState === 'reject' }"
+    :class="{
+      selected,
+      kept: asset.review.pickState === 'keep',
+      rejected: asset.review.pickState === 'reject',
+    }"
     tabindex="0"
     :aria-label="`${asset.filename}，${picks[asset.review.pickState]}，${asset.review.rating} 星`"
     :aria-selected="selected"

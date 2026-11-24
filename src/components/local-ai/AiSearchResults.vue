@@ -49,11 +49,16 @@ const emit = defineEmits<{ view: [] }>();
 .ai-result-card {
   margin: 0;
   min-width: 0;
+  padding: 12px;
+  background: var(--surface);
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
 }
 .ai-result-card :deep(.thumbnail) {
   height: 210px;
-  border-radius: 12px;
-  background: var(--surface-raised, #e7eae3);
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
 }
 .ai-result-card figcaption {
   display: flex;

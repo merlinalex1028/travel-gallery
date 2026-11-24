@@ -197,4 +197,14 @@ const {
     flex-basis: 100%;
   }
 }
+@media (max-width: 780px) {
+  .ai-scope label {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .ai-scope select {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
 </style>

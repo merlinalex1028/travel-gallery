@@ -261,7 +261,7 @@ async function confirmLink(id: string, second: string, type: 'live_photo' | 'raw
             :disabled="!!lib.pending"
             @click="toggleTag(tag.id, !asset!.tagIds.includes(tag.id))"
           >
-            <span :style="{ background: tag.color ?? '#6c8976' }" class="tag-dot" />{{ tag.name
+            <span :style="{ background: tag.color ?? '#9068c0' }" class="tag-dot" />{{ tag.name
             }}<Icon v-if="asset.tagIds.includes(tag.id)" name="check" :size="12" /></button
           ><RouterLink to="/tags" class="tag-chip"><Icon name="plus" :size="12" />管理</RouterLink>
         </div>

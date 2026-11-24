@@ -28,6 +28,7 @@ const labels: Record<string, string> = {
   compare: '多图对比',
   timeline: '时间轴',
   map: '足迹地图',
+  quality: '照片检查',
   ai: '本地 AI',
   welcome: '欢迎使用',
 };

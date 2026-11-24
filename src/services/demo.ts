@@ -93,8 +93,8 @@ function load(): DemoState {
   return {
     assets: seed,
     tags: [
-      { id: 'landscape', name: '风光', color: '#66846c', count: 4 },
-      { id: 'moments', name: '旅途日常', color: '#b58d63', count: 0 },
+      { id: 'landscape', name: '风光', color: '#5fa0d5', count: 4 },
+      { id: 'moments', name: '旅途日常', color: '#9068c0', count: 0 },
     ],
     trips: [
       {

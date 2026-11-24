@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, reactive, shallowRef, watch } from 'vue';
+import { computed, onScopeDispose, reactive, shallowRef, watch } from 'vue';
 import { api, errorMessage } from '../services/api';
 import { settingsWithDefaults } from '../services/settings';
 import { ElMessage } from 'element-plus';
@@ -29,6 +29,16 @@ export const useApp = defineStore('app', () => {
     trips = shallowRef<Trip[]>([]),
     saved = shallowRef<SavedFilter[]>([]);
   const settings = reactive<AppSettings>(settingsWithDefaults());
+  const systemTheme = matchMedia('(prefers-color-scheme: dark)');
+  const systemDark = shallowRef(systemTheme.matches);
+  const isDark = computed(
+    () => settings.theme === 'dark' || (settings.theme === 'system' && systemDark.value),
+  );
+  const updateSystemTheme = (event: MediaQueryListEvent) => {
+    systemDark.value = event.matches;
+  };
+  systemTheme.addEventListener('change', updateSystemTheme);
+  onScopeDispose(() => systemTheme.removeEventListener('change', updateSystemTheme));
   const total = computed(() =>
     sources.value.filter((s) => s.isEnabled).reduce((n, s) => n + s.totalAssets, 0),
   );
@@ -89,13 +99,9 @@ export const useApp = defineStore('app', () => {
     }
   }
   watch(
-    () => [settings.theme, settings.fontSize],
+    () => [isDark.value, settings.fontSize],
     () => {
-      document.documentElement.classList.toggle(
-        'dark',
-        settings.theme === 'dark' ||
-          (settings.theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches),
-      );
+      document.documentElement.classList.toggle('dark', isDark.value);
       document.documentElement.style.fontSize = `${settings.fontSize}px`;
     },
     { immediate: true },
@@ -119,6 +125,7 @@ export const useApp = defineStore('app', () => {
     watcher,
     power,
     settings,
+    isDark,
     total,
     running,
     refresh,

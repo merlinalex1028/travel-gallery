@@ -254,8 +254,8 @@ function reloadPreviews() {
   left: 12px;
   margin: 0;
   padding: 6px 9px;
-  border-radius: 7px;
-  background: rgb(19 30 24 / 75%);
+  border-radius: var(--r-sm);
+  background: rgb(14 20 40 / 75%);
   color: #fff;
   font-size: 12px;
   pointer-events: none;

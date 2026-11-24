@@ -211,7 +211,7 @@ const {
 }
 .quality-controls input[type='checkbox'],
 .card-heading input[type='checkbox'] {
-  width: auto;
+  width: 17px;
   accent-color: var(--accent);
 }
 .scope-count {
@@ -235,13 +235,18 @@ const {
 }
 .quality-card {
   min-width: 0;
+  padding: 14px;
+  border: var(--bw) solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 .preview-button {
   display: block;
   border: 0;
   padding: 0;
   width: 100%;
-  border-radius: 10px;
+  border-radius: var(--r-sm);
   cursor: zoom-in;
   background: transparent;
 }
@@ -268,6 +273,16 @@ const {
 @media (max-width: 1100px) {
   .detail-setting {
     flex-wrap: wrap;
+  }
+}
+@media (max-width: 780px) {
+  .quality-controls label {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .quality-controls select {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 </style>
