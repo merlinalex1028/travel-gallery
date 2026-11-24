@@ -40,6 +40,7 @@
   --shadow-lg: 0 10px 40px rgb(70 100 180 / 13%);
   --shadow-btn: 0 2px 0 0 rgb(70 100 180 / 15%);
   --focus-ring: rgb(95 160 213 / 20%);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%235fa0d5'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
   --r-xs: 6px;
   --r-sm: 9px;
   --r: 14px;
@@ -95,6 +96,7 @@
   --shadow-lg: 0 10px 40px rgb(0 0 0 / 50%);
   --shadow-btn: 0 3px 0 0 rgb(0 0 0 / 30%);
   --focus-ring: rgb(124 179 232 / 25%);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%237cb3e8'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
   --map-ocean: #121b36;
   --map-land: #202c4a;
   --map-coast: #485b89;

@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string | number | boolean | (string | number | boolean)[] | null">
-import { computed, useTemplateRef, watchPostEffect } from 'vue';
+import { computed, nextTick, useTemplateRef, watchPostEffect } from 'vue';
 
 const model = defineModel<T>();
 const props = withDefaults(
@@ -44,6 +44,13 @@ function handleSpace(event: KeyboardEvent) {
     new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }),
   );
 }
+
+async function describeListbox(open: boolean) {
+  if (!open) return;
+  await nextTick();
+  const id = select.value?.$el.querySelector('[role="combobox"]')?.getAttribute('aria-controls');
+  if (id && props.multiple) document.getElementById(id)?.setAttribute('aria-multiselectable', 'true');
+}
 </script>
 
 <template>
@@ -64,6 +71,7 @@ function handleSpace(event: KeyboardEvent) {
     no-data-text="暂无选项"
     no-match-text="没有匹配的选项"
     @keydown.capture="handleSpace"
+    @visible-change="describeListbox"
   >
     <template v-if="multiple" #tag>
       <span class="custom-select-summary" :title="selectedLabels" role="status" aria-live="polite">

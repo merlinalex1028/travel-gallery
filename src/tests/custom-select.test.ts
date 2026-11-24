@@ -61,6 +61,9 @@ it('toggles multiple values, reports the count and keeps the popup open', async 
   expect(wrapper.text()).toContain('请选择');
   await key(' ', 'Space');
   expect(input.attributes('aria-expanded')).toBe('true');
+  expect(
+    document.getElementById(input.attributes('aria-controls')!)?.getAttribute('aria-multiselectable'),
+  ).toBe('true');
   await choose('JPG');
   expect(wrapper.get('[role="status"]').text()).toBe('已选 1 项');
   expect(option('JPG').getAttribute('aria-selected')).toBe('true');
