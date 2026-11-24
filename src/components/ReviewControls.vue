@@ -9,7 +9,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
     <div class="pick-controls">
       <button
         :disabled="busy"
-        class="review-btn"
+        class="review-btn keep"
         :class="{ active: review?.pickState === 'keep' }"
         :aria-pressed="review?.pickState === 'keep'"
         @click="$emit('patch', { pickState: 'keep' })"
@@ -17,7 +17,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
         <Icon name="flag" />保留<kbd>P</kbd></button
       ><button
         :disabled="busy"
-        class="review-btn"
+        class="review-btn maybe"
         :class="{ active: review?.pickState === 'maybe' }"
         :aria-pressed="review?.pickState === 'maybe'"
         @click="$emit('patch', { pickState: 'maybe' })"

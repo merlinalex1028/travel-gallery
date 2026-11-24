@@ -8,36 +8,38 @@
 }
 
 :root {
-  --bg: #eff4fc;
+  --bg: #f0f4fa;
   --surface: #fff;
-  --sidebar: #e8f0fa;
+  --sidebar: #e9f0f9;
   --surface-raised: var(--sidebar);
-  --text: #2a3358;
-  --muted: #6272a4;
+  --text: #1a2847;
+  --text-secondary: #3d4a6b;
+  --muted: #5e6d88;
   --faint: #94a0c8;
-  --line: #c8d4ee;
+  --line: #e0e8f0;
   --border: var(--line);
   --accent: #5fa0d5;
   --accent-hue: #a7bde3;
-  --accent-soft: #e2edf8;
-  --accent-hover: #4088c0;
+  --accent-soft: #e8f1f8;
+  --accent-hover: #3d7bbc;
   --accent-ink: #356c9c;
-  --on-accent: #172942;
+  --on-accent: #0f1621;
   --lavender: #c8b0e6;
   --lavender-dk: #9068c0;
   --lavender-soft: #eee8fa;
-  --mint: #b8e8c4;
-  --mint-dk: #347447;
+  --mint: #5ec988;
+  --mint-dk: #52b87a;
   --mint-soft: #e0f4e4;
-  --gold: #f0dca8;
-  --gold-dk: #9a7020;
-  --warning: #9a6830;
+  --gold: #d4a85d;
+  --gold-dk: #c89855;
+  --warning: #d4a85d;
   --warning-bg: #faf0dc;
-  --danger: #c05870;
+  --danger: #e06b8c;
   --danger-bg: #fae8ee;
   --shadow: 0 4px 18px rgb(80 110 200 / 9%);
   --shadow-lg: 0 10px 40px rgb(70 100 180 / 13%);
   --shadow-btn: 0 2px 0 0 rgb(70 100 180 / 15%);
+  --focus-ring: rgb(95 160 213 / 20%);
   --r-xs: 6px;
   --r-sm: 9px;
   --r: 14px;
@@ -64,16 +66,18 @@
 
 :root.dark {
   --bg: #0e1428;
-  --surface: #161c36;
-  --sidebar: #121830;
-  --text: #c8d8f4;
-  --muted: #9ba9ce;
-  --faint: #7383b0;
-  --line: #222e58;
-  --accent: #a7bde3;
+  --surface: #1a2648;
+  --sidebar: #131c38;
+  --surface-raised: #203052;
+  --text: #e0e8f4;
+  --text-secondary: #c0d0e8;
+  --muted: #8899b8;
+  --faint: #6880a0;
+  --line: #2f3f68;
+  --accent: #7cb3e8;
   --accent-hue: #a7bde3;
-  --accent-soft: #182248;
-  --accent-hover: #bcd0f0;
+  --accent-soft: #1a2f52;
+  --accent-hover: #9ccbf0;
   --accent-ink: #a7bde3;
   --lavender: #bca8dc;
   --lavender-dk: #c8b4e8;
@@ -90,6 +94,7 @@
   --shadow: 0 4px 16px rgb(0 0 0 / 40%);
   --shadow-lg: 0 10px 40px rgb(0 0 0 / 50%);
   --shadow-btn: 0 3px 0 0 rgb(0 0 0 / 30%);
+  --focus-ring: rgb(124 179 232 / 25%);
   --map-ocean: #121b36;
   --map-land: #202c4a;
   --map-coast: #485b89;
