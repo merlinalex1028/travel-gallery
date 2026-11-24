@@ -2,6 +2,7 @@
 from contextlib import ExitStack, closing
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -437,6 +438,60 @@ class LibraryQueryEvidence(unittest.TestCase):
                                          backup, backup, changed, changed)
                 self.db.execute('ROLLBACK TO altered')
                 self.db.execute('RELEASE altered')
+
+    def test_legacy_fixture_is_standalone_wal_and_keeps_the_portable_backup(self):
+        self.db.execute('CREATE TABLE app_meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL)')
+        self.db.execute("INSERT INTO app_meta VALUES('epoch', 130)")
+        self.db.commit()
+        with tempfile.TemporaryDirectory(prefix='travel-gallery-legacy-restore-gate-') as owned:
+            work = Path(owned).resolve()
+            (work / 'backup').mkdir()
+            original = work / 'backup/portable.sqlite'
+            with closing(sqlite3.connect(original)) as target:
+                self.db.backup(target)
+            before = original.read_bytes()
+            with patch.object(batch.b, 'WORK', work):
+                legacy, state = batch.prepare_legacy_backup(original)
+                self.assertEqual(original.read_bytes(), before)
+                self.assertEqual(before[18:20], b'\x01\x01')
+                self.assertEqual(legacy.read_bytes()[18:20], b'\x02\x02')
+                self.assertEqual(batch.legacy_backup_state(legacy), state)
+                with closing(sqlite3.connect(legacy.as_uri() + '?immutable=1', uri=True)) as db:
+                    self.assertEqual(batch.read_restore_state(db), batch.read_backup(original))
+                self.assertEqual(batch.legacy_backup_state(legacy), state)
+                sidecar = legacy.with_name(legacy.name + '-wal')
+                sidecar.write_bytes(b'pending frames')
+                with self.assertRaises(AssertionError):
+                    batch.legacy_backup_state(legacy)
+                sidecar.unlink()
+                old_stat = legacy.stat()
+                with closing(sqlite3.connect(legacy)) as db, db:
+                    db.execute('UPDATE asset_reviews SET rating=4 WHERE asset_id=?', (batch.EXCLUDED,))
+                os.utime(legacy, ns=(old_stat.st_atime_ns, old_stat.st_mtime_ns))
+                self.assertEqual(legacy.stat().st_size, old_stat.st_size)
+                self.assertNotEqual(batch.legacy_backup_state(legacy), state)
+                alias = work / 'outside.sqlite'
+                alias.symlink_to(legacy)
+                with self.assertRaises(AssertionError):
+                    batch.legacy_backup_state(alias)
+
+    def test_legacy_restore_requires_its_selected_file_and_actual_success_message(self):
+        settings = ('Window: "旅图", App: Travel Gallery Offline Bench.\n'
+                    '  2 HTML content Description: 旅图, URL: tauri://localhost#/settings')
+        legacy = Path('/owned/legacy-restore/selected.sqlite')
+        reviewing = f'{settings}\n  3 text 恢复“{legacy}”中的整理记录？\n  4 button 备份当前库并恢复'
+        restored = f'{settings}\n  5 text 已恢复资料库，并保留恢复前的自动备份'
+        for step, frame in [('legacy-backup-reviewing', reviewing),
+                            ('legacy-backup-restored', restored)]:
+            batch.verify_legacy_restore_observation(step, {'axFrame': frame}, legacy)
+        for step, frame in [
+            ('legacy-backup-reviewing', reviewing.replace(str(legacy), '/wrong.sqlite')),
+            ('legacy-backup-restored', reviewing),
+            ('legacy-backup-restored', restored.replace('#/settings', '#/library')),
+            ('legacy-backup-restored', restored.replace('App: Travel Gallery Offline Bench.', 'App: Travel Gallery.')),
+        ]:
+            with self.subTest(step=step, frame=frame), self.assertRaises(AssertionError):
+                batch.verify_legacy_restore_observation(step, {'axFrame': frame}, legacy)
 
     def test_rating_requires_one_exact_history_item_and_receipt(self):
         backup, changed = self.restore_states()

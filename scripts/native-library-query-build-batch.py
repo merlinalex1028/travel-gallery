@@ -39,6 +39,7 @@ KNOWN_ZONE_DATE = '2024-04-11'
 STEPS = ('empty', 'frozen', 'changed', 'applied', 'undone', 'time-saved', 'time-restored', 'finish')
 RESTORE_STEPS = ('backed-up', 'rating-changed', 'backup-restored')
 RESTORE_VERSION_STEPS = ('backup-reviewing', 'backup-version-rejected')
+LEGACY_RESTORE_STEPS = ('legacy-backup-reviewing', 'legacy-backup-restored')
 MAP_STEP = 'map-rendered'
 EXPIRY_STEPS = ('expiry-frozen', 'expiry-rejected', 'expiry-refreshed', 'expiry-reselected')
 SNAPSHOT_TTL_MS = 86_400_000
@@ -140,6 +141,51 @@ def prepare_backup_version_probe(original, probe):
     copy_static_backup(original, probe)
     with closing(sqlite3.connect(probe.as_uri() + '?mode=rw', uri=True)) as db:
         assert db.execute('PRAGMA journal_mode=DELETE').fetchone() == ('delete',)
+
+
+def legacy_backup_state(path):
+    assert path.parent == b.WORK / 'legacy-restore' and path.resolve(strict=True) == path
+    assert path.is_file() and not path.is_symlink()
+    assert sorted(entry.name for entry in path.parent.iterdir()) == [path.name]
+    with path.open('rb') as stream:
+        assert stream.read(20)[18:20] == b'\x02\x02'
+    stat = path.stat()
+    return dict(sha256=exact.sha(path), bytes=stat.st_size, mtimeNs=stat.st_mtime_ns,
+                inode=stat.st_ino)
+
+
+def prepare_legacy_backup(original):
+    # This is a generated, fully checkpointed fixture, never a live user database.
+    with original.open('rb') as stream:
+        assert stream.read(20)[18:20] == b'\x01\x01', 'New backups must use DELETE mode'
+    legacy = b.WORK / 'legacy-restore/selected.sqlite'
+    legacy.parent.mkdir()
+    with original.open('rb') as source, legacy.open('xb') as target:
+        shutil.copyfileobj(source, target)
+    with closing(sqlite3.connect(legacy.as_uri() + '?mode=rw', uri=True)) as db:
+        assert db.execute('PRAGMA journal_mode=WAL').fetchone() == ('wal',)
+        assert db.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()[0] == 0
+    before = legacy_backup_state(legacy)
+    # Immutable is only for independently reading this owned static fixture.
+    # The App must exercise its normal selected-file restore path.
+    with closing(sqlite3.connect(legacy.as_uri() + '?immutable=1', uri=True)) as db:
+        assert db.execute('PRAGMA quick_check').fetchone() == ('ok',)
+        assert not db.execute('PRAGMA foreign_key_check').fetchone()
+        assert read_restore_state(db) == read_backup(original)
+    assert legacy_backup_state(legacy) == before
+    return legacy, before
+
+
+def verify_legacy_restore_observation(step, evidence, path):
+    if step == 'legacy-backup-reviewing':
+        verify_backup_version_observation('original-backup-reviewing', evidence, path)
+        return
+    assert step == 'legacy-backup-restored' and set(evidence) == {'axFrame'}
+    frame = evidence['axFrame']
+    assert isinstance(frame, str) and frame.startswith('Window: ')
+    assert 'App: Travel Gallery Offline Bench.' in frame.split('\n', 1)[0]
+    assert re.search(AX_ROW + r'HTML content .*URL: tauri://localhost#/settings$', frame)
+    assert '已恢复资料库，并保留恢复前的自动备份' in frame
 
 
 def rewrite_backup_version_probe(probe):
@@ -518,10 +564,12 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
     pid, previous, excluded_name = None, None, EXCLUDED
     baseline, backup, changed = None, None, None
     expiry_state = None
+    legacy_path, legacy_before, legacy_previous, legacy_auto_before = None, None, None, None
     restore_steps = RESTORE_STEPS
     if check_rejections:
         restore_steps = (*RESTORE_STEPS[:-1], *RESTORE_VERSION_STEPS, 'original-backup-reviewing', RESTORE_STEPS[-1])
     steps = STEPS[:3] if preflight else STEPS[:-1] + ((*restore_steps, MAP_STEP) if check_restore else ())
+    steps += LEGACY_RESTORE_STEPS if check_rejections else ()
     steps += EXPIRY_STEPS if check_rejections else ()
     for step in (*steps, 'finish'):
         for observed in checkpoint_observations(control, step):
@@ -531,6 +579,9 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
                 assert not observed and exact.exited(b.APP_PATH) and exact.exited(b.NORMAL)
                 exact.check_release(release, b.NORMAL)
                 if not preflight:
+                    if check_rejections:
+                        assert b.STATE.get('legacyRestoreVerified')
+                        assert legacy_backup_state(legacy_path) == legacy_before
                     assert batch.verify_inputs() == b.STATE['sourceCommit']
                     exact.publish(candidate, release, env)
                 b.STATE.pop('expectedCheckpoint')
@@ -544,7 +595,7 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
                 reason = frozen_pending_reason(db) if step == 'frozen' else None
                 if reason is None:
                     state = read_catalog(db)
-                    if step in (*restore_steps, MAP_STEP, *EXPIRY_STEPS) or (check_restore and step == 'time-restored'):
+                    if step in (*restore_steps, *LEGACY_RESTORE_STEPS, MAP_STEP, *EXPIRY_STEPS) or (check_restore and step == 'time-restored'):
                         restore_state = read_restore_state(db)
                     if step == MAP_STEP:
                         locations = read_map_locations(db)
@@ -575,7 +626,33 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
                 except AssertionError:
                     b.event('nativeCheckpointNotReady', step=step, reason='Expected native restore confirmation or version conflict')
                     continue
+            if step in LEGACY_RESTORE_STEPS:
+                try:
+                    verify_legacy_restore_observation(step, observed, legacy_path)
+                except AssertionError:
+                    b.event('nativeCheckpointNotReady', step=step, reason='Expected native legacy backup confirmation or restore success')
+                    continue
             break
+        if step in LEGACY_RESTORE_STEPS:
+            assert legacy_backup_state(legacy_path) == legacy_before
+            assert not list(b.DATA.glob('restore-staging-*'))
+            assert not list(b.DATA.glob('restore-input-*'))
+            automatic = {path: exact.sha(path) for path in b.DATA.glob('before-restore-*.sqlite')}
+            if step == 'legacy-backup-reviewing':
+                assert restore_state == expiry_state
+                assert len(automatic) == 1
+                legacy_previous, legacy_auto_before = restore_state, automatic
+            else:
+                assert len(automatic) == len(legacy_auto_before) + 1
+                assert all(automatic.get(path) == digest for path, digest in legacy_auto_before.items())
+                [created] = automatic.keys() - legacy_auto_before.keys()
+                verify_restored_state(restore_state, backup, legacy_previous, read_backup(created))
+                expiry_state = restore_state
+                b.STATE['legacyRestoreVerified'] = True
+            b.event('nativeLegacyRestoreCheckpoint', step=step, catalogEpoch=restore_state['epoch'],
+                    backupEpoch=backup['epoch'], selectedFileUnchanged=True,
+                    selectedDirectoryEntries=1, automaticBackups=len(automatic))
+            continue
         if step in (*RESTORE_VERSION_STEPS, 'original-backup-reviewing'):
             assert restore_state == changed
             assert not list(b.DATA.glob('before-restore-*.sqlite'))
@@ -604,6 +681,9 @@ def accept(candidate, fixture, release, env, *, check_restore=False, check_rejec
             if step == 'backed-up':
                 backup = read_backup(selected)
                 assert completed_backups == [('completed', 1, 1, 0)]
+                if check_rejections:
+                    legacy_path, legacy_before = prepare_legacy_backup(selected)
+                    b.STATE.update(legacyRestoreBackup=str(legacy_path), legacyBackupBefore=legacy_before)
             assert read_backup(selected) == backup
             rollback = None
             if step in ('backup-restored', MAP_STEP):
@@ -700,7 +780,7 @@ def register_standing(approval_path, batch_name):
     authority = batch.ROOT / 'AGENTS.md'
     scope = 'Full locked Rust, 50k synthetic query benchmark, one macOS candidate, and 130 owned TIFFs for native pagination, frozen review, capture time, backup/restore and map checks'
     if is_deadline_batch(batch_name):
-        scope += ', plus a changed backup copy and controlled expiry of one isolated snapshot with explicit reselection'
+        scope += ', plus changed-backup rejection, standalone legacy WAL selected-file restore, and controlled expiry of one isolated snapshot with explicit reselection'
     registration = dict(
         batch=batch_name, status='active', limits=batch.LIMITS,
         requiredFreeBytes=batch.LIMITS['logicalBytes'],
