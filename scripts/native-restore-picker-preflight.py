@@ -37,6 +37,7 @@ def write_sources(source):
 
 
 def accept():
+    b.WORK = b.WORK.resolve()
     control = b.WORK / 'control'
     b.STATE['controlDirectory'] = str(control)
     database = b.DATA / 'catalog.sqlite'
@@ -59,8 +60,8 @@ def accept():
         assert reuse.source_state() == b.STATE['sourceBefore']
         if step == 'finish':
             executable = str((b.APP_PATH / 'Contents/MacOS/travel-gallery').resolve())
-            assert executable not in subprocess.check_output(
-                ['ps', '-axww', '-o', 'comm='], text=True).splitlines()
+            assert executable not in {line.strip() for line in subprocess.check_output(
+                ['ps', '-axww', '-o', 'comm='], text=True).splitlines()}
             b.STATE.update(qaQuitNormally=True, pickerPreflightPassed=True)
             b.STATE.pop('expectedCheckpoint')
             return
