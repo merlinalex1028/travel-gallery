@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import FilterPanel from '../features/FilterPanel.vue';
+import CustomSelect from '../components/CustomSelect.vue';
 import type { AssetFilter } from '../services/contracts';
 
 vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn() } }));
@@ -61,4 +62,33 @@ it('discards an unapplied draft and reads the new conditions on reopening', asyn
   expect(wrapper.emitted('apply')![0]).toEqual([replacement]);
   expect(original).toEqual({ ratingMin: 4, tagRule: { mode: 'any', tagIds: ['travel'] } });
   wrapper.unmount();
+});
+
+it('applies custom format, free-form camera and tag selections without mutating the active filter', async () => {
+  const filter: AssetFilter = { keyword: '旅行' };
+  const wrapper = mount(FilterPanel, { ...options, props: { filter, modelValue: true } });
+  try {
+    const [formats, cameras, tags] = wrapper.findAllComponents(CustomSelect);
+    expect(formats!.props()).toHaveProperty('options.length', 16);
+    expect(cameras!.props()).toHaveProperty('allowCreate', true);
+    formats!.vm.$emit('update:modelValue', ['jpg', 'heic']);
+    cameras!.vm.$emit('update:modelValue', ['Canon EOS R5']);
+    tags!.vm.$emit('update:modelValue', ['sunset', 'travel']);
+    await wrapper.vm.$nextTick();
+    expect(filter).toEqual({ keyword: '旅行' });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '应用筛选')!
+      .trigger('click');
+    expect(wrapper.emitted('apply')![0]).toEqual([
+      {
+        keyword: '旅行',
+        extensions: ['jpg', 'heic'],
+        cameraModels: ['Canon EOS R5'],
+        tagRule: { mode: 'any', tagIds: ['sunset', 'travel'] },
+      },
+    ]);
+  } finally {
+    wrapper.unmount();
+  }
 });

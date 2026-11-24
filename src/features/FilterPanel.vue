@@ -4,6 +4,7 @@ import { useApp } from '../stores/app';
 import type { AssetFilter, PickState, MediaKind, FileState } from '../services/contracts';
 import { picks, files } from '../services/format';
 import Icon from '../components/Icon.vue';
+import CustomSelect from '../components/CustomSelect.vue';
 const props = defineProps<{ filter: AssetFilter }>(),
   open = defineModel<boolean>({ default: false });
 const emit = defineEmits<{ apply: [filter: AssetFilter] }>(),
@@ -18,6 +19,28 @@ const form = reactive<AssetFilter>({}),
 const pickOptions: PickState[] = ['unreviewed', 'keep', 'maybe', 'reject'],
   kindOptions: MediaKind[] = ['image', 'video'],
   fileOptions: FileState[] = ['available', 'offline', 'missing', 'unsupported', 'corrupt'];
+const extensionOptions = [
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'heic',
+  'heif',
+  'tif',
+  'tiff',
+  'arw',
+  'cr2',
+  'cr3',
+  'nef',
+  'dng',
+  'mov',
+  'mp4',
+  'webm',
+].map((value) => ({ value, label: value.toUpperCase() }));
+const tagOptions = computed(() => app.tags.map((tag) => ({ value: tag.id, label: tag.name })));
+const cameraModelOptions = computed(() =>
+  (form.cameraModels ?? []).map((value) => ({ value, label: value })),
+);
 const numericFields = [
   'ratingMin',
   'ratingMax',
@@ -297,30 +320,14 @@ function reset() {
       <label
         >文件格式（多选）
         <div role="group" aria-label="文件格式（多选）" v-bind="validationAttrs('extensions')">
-          <ElSelect v-model="form.extensions" multiple placeholder="全部格式" aria-label="文件格式（多选）"
-            ><ElOption
-              v-for="s in [
-                'jpg',
-                'jpeg',
-                'png',
-                'webp',
-                'heic',
-                'heif',
-                'tif',
-                'tiff',
-                'arw',
-                'cr2',
-                'cr3',
-                'nef',
-                'dng',
-                'mov',
-                'mp4',
-                'webm',
-              ]"
-              :key="s"
-              :label="s.toUpperCase()"
-              :value="s"
-          /></ElSelect>
+          <CustomSelect
+            v-model="form.extensions"
+            multiple
+            placeholder="全部格式"
+            aria-label="文件格式（多选）"
+            :options="extensionOptions"
+            v-bind="validationAttrs('extensions')"
+          />
         </div>
         <small v-if="errors.extensions" :id="errorId('extensions')" class="filter-field-error" role="alert">{{
           errors.extensions
@@ -328,14 +335,15 @@ function reset() {
       ><label
         >设备型号
         <div role="group" aria-label="设备型号" v-bind="validationAttrs('cameraModels')">
-          <ElSelect
+          <CustomSelect
             v-model="form.cameraModels"
             multiple
             filterable
             allow-create
-            default-first-option
             aria-label="设备型号"
             placeholder="输入 EXIF 中的完整型号"
+            :options="cameraModelOptions"
+            v-bind="validationAttrs('cameraModels')"
           />
         </div>
         <small
@@ -440,9 +448,14 @@ function reset() {
         </select></label
       >
       <div role="group" aria-label="选择标签" v-bind="validationAttrs('tagIds')">
-        <ElSelect v-model="tagIds" multiple placeholder="选择标签" aria-label="选择标签"
-          ><ElOption v-for="t in app.tags" :key="t.id" :label="t.name" :value="t.id"
-        /></ElSelect>
+        <CustomSelect
+          v-model="tagIds"
+          multiple
+          placeholder="选择标签"
+          aria-label="选择标签"
+          :options="tagOptions"
+          v-bind="validationAttrs('tagIds')"
+        />
       </div>
       <small v-if="errors.tagIds" :id="errorId('tagIds')" class="filter-field-error" role="alert">{{
         errors.tagIds
