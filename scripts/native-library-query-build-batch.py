@@ -28,6 +28,7 @@ b.RECEIPT = batch.ROOT / 'docs/native-library-query-latest.json'
 EPOCH_BATCH = 'catalog-epoch'
 EPOCH_AX_BATCH = 'catalog-epoch-ax'
 DEADLINE_BATCH = 'catalog-snapshot-deadline'
+PICKER_PREFLIGHT = batch.ROOT / 'docs/native-restore-picker-preflight-latest.json'
 MATCH = tuple(f'match-{i:03}.tiff' for i in range(125))
 OUTSIDE = tuple(f'outside-{i:03}.tiff' for i in range(5))
 EXCLUDED = MATCH[0]
@@ -775,8 +776,40 @@ def pagination_preflight():
     return reuse.run()
 
 
+def require_picker_preflight():
+    message = 'Complete the accepted-App directory/file picker preflight before registering or building this candidate'
+    try:
+        if PICKER_PREFLIGHT.is_symlink():
+            raise ValueError('Symbolic preflight receipt')
+        raw = PICKER_PREFLIGHT.read_bytes()
+        receipt = json.loads(raw)
+        release = json.loads((batch.ROOT / 'artifacts/build-info.json').read_text())
+        completed = [row for row in receipt['events'] if row['stage'] == 'nativePickerPreflightCheckpoint']
+        foreground = [row for row in receipt['events'] if row['stage'] == 'nativeForegroundObserved']
+        valid = (
+            receipt['status'] == 'finished'
+            and all(receipt.get(key) is True for key in
+                    ('pickerPreflightPassed', 'qaQuitNormally', 'temporaryDirectoryRemoved',
+                     'sourceUnchanged', 'normalPreserved'))
+            and not receipt.get('forcedCleanupPids')
+            and receipt['acceptedRelease']['zipSha256'] == release['sha256']
+            and receipt['acceptedRelease']['executableSha256'] == release['executableSha256']
+            and [row['step'] for row in completed] == ['empty', 'imported', 'backed-up', 'file-reviewing']
+            and len({row['pid'] for row in completed}) == 1
+            and any(row['pid'] == completed[0]['pid']
+                    and row['applicationAsn'].startswith('ASN:')
+                    and row['applicationAsn'] == row['frontAsn'] for row in foreground)
+        )
+        if not valid:
+            raise ValueError('Incomplete, failed or mismatched preflight')
+    except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError) as error:
+        raise RuntimeError(message) from error
+    return hashlib.sha256(raw).hexdigest()
+
+
 def register_standing(approval_path, batch_name):
     native_gui.require_unlocked_console()
+    preflight = require_picker_preflight() if is_deadline_batch(batch_name) else None
     authority = batch.ROOT / 'AGENTS.md'
     scope = 'Full locked Rust, 50k synthetic query benchmark, one macOS candidate, and 130 owned TIFFs for native pagination, frozen review, capture time, backup/restore and map checks'
     if is_deadline_batch(batch_name):
@@ -790,6 +823,8 @@ def register_standing(approval_path, batch_name):
         scope=scope + '; publish only after all checkpoints and normal QA exit',
         cleanup='Remove owned fixtures, catalogs, caches, builds, candidate and rollback copies on success, failure or interruption',
         recordedAt=datetime.now(timezone.utc).isoformat())
+    if preflight is not None:
+        registration['pickerPreflightSha256'] = preflight
     with approval_path.open('x') as handle:
         json.dump(registration, handle, ensure_ascii=False, indent=2)
         handle.write('\n')
@@ -810,6 +845,8 @@ def claim_approval(approval_path, batch_name):
         subprocess.run([*batch.BUDGET, '--approval-file', str(approval_path)],
                        cwd=batch.ROOT, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         native_gui.require_unlocked_console()
+        if is_deadline_batch(batch_name) and approval.get('pickerPreflightSha256') != require_picker_preflight():
+            raise RuntimeError('Picker preflight changed after registration; choose a fresh candidate batch')
         approval['claimedAt'] = datetime.now(timezone.utc).isoformat()
         handle.seek(0)
         json.dump(approval, handle, ensure_ascii=False, indent=2)
