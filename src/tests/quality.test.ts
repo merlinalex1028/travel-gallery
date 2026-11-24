@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -145,7 +146,7 @@ it('does not display late results from the previous travel scope', async () => {
           }),
   );
   const { wrapper } = await setup();
-  await wrapper.get('[aria-label="检查旅行范围"]').setValue('trip');
+  await setSelect(wrapper, '检查旅行范围', 'trip');
   await flushPromises();
   finish(one);
   await flushPromises();
@@ -190,7 +191,7 @@ it('does not import after unmounting during the native picker', async () => {
 it('freezes the enabled analysis types and scope when submitting a background task', async () => {
   mockBase({ ...status, detailEnabled: true });
   const { wrapper } = await setup();
-  await wrapper.get('[aria-label="检查旅行范围"]').setValue('trip');
+  await setSelect(wrapper, '检查旅行范围', 'trip');
   await flushPromises();
   invoke.mockImplementation((name: string) =>
     name === 'start_quality_analysis'

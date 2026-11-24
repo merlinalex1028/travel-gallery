@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { computed, nextTick, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -277,16 +278,16 @@ useMediaKeyboard((key, event) => {
       />
       <div class="gallery-heading">
         <span
-          ><Icon name="calendar" :size="14" /><select
+          ><Icon name="calendar" :size="14" /><CustomSelect
             v-model="groupBy"
             class="group-select"
             aria-label="日期分组"
-          >
-            <option value="day">按日分组</option>
-            <option value="month">按月分组</option>
-            <option value="none">不分组</option>
-          </select></span
-        >
+            :options="[
+              { value: 'day', label: '按日分组' },
+              { value: 'month', label: '按月分组' },
+              { value: 'none', label: '不分组' },
+            ]"
+        /></span>
         <div>
           <span v-if="lib.pending" class="muted">正在保存…</span
           ><span v-else-if="lib.loading" class="muted">正在更新匹配结果…</span

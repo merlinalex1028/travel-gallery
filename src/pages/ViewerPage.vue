@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { useViewer } from '../composables/viewer';
 import Icon from '../components/Icon.vue';
 import MediaStage from '../components/MediaStage.vue';
@@ -51,16 +52,17 @@ function fullscreen() {
         >
       </div>
       <div class="viewer-options">
-        <select
+        <CustomSelect
           v-if="culling"
-          :value="scope"
+          v-model="scope"
           aria-label="本次挑片范围"
-          @change="v.changeScope(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="all">当前范围全部</option>
-          <option value="unreviewed">仅未处理</option>
-          <option value="maybe">仅待定</option></select
-        ><button
+          @change="v.changeScope"
+          :options="[
+            { value: 'all', label: '当前范围全部' },
+            { value: 'unreviewed', label: '仅未处理' },
+            { value: 'maybe', label: '仅待定' },
+          ]"
+        /><button
           class="icon-btn"
           :aria-pressed="app.settings.showFilmstrip"
           :aria-label="app.settings.showFilmstrip ? '隐藏胶片条' : '显示胶片条'"

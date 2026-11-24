@@ -17,7 +17,7 @@ function setup(props: Record<string, unknown> = {}) {
       'aria-label': '文件格式',
       ...props,
     },
-    global: { components: { ElSelect, ElOption } },
+    global: { components: { ElSelect, ElOption }, stubs: { ElSelect: false, ElOption: false } },
   });
   return wrapper.get('[role="combobox"]');
 }
@@ -39,6 +39,7 @@ async function choose(label: string) {
 
 it('selects a single value by keyboard, skips disabled options and closes with Escape', async () => {
   const input = setup();
+  expect(wrapper.text()).toContain('请选择');
   expect(input.attributes('aria-label')).toBe('文件格式');
   await input.trigger('focus');
   await key('Enter');
@@ -118,3 +119,27 @@ it('does not open or change a disabled select', async () => {
   expect(input.attributes('aria-expanded')).toBe('false');
   expect(wrapper.emitted('update:modelValue')).toBeUndefined();
 });
+
+it.each([
+  ['空字符串', ''],
+  ['零', 0],
+  ['排除', false],
+  ['全部', undefined],
+  ['最近一次', null],
+] as const)(
+  'preserves the typed %s value and change event through the custom popup',
+  async (label, value) => {
+    setup({
+      modelValue: 'other',
+      options: [
+        { label, value },
+        { label: '其他', value: 'other' },
+      ],
+    });
+    await key('Enter');
+    await choose(label);
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([value]);
+    expect(wrapper.emitted('change')?.at(-1)).toEqual([value]);
+    expect(wrapper.text()).toContain(label);
+  },
+);

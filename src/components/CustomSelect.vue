@@ -1,22 +1,51 @@
-<script setup lang="ts" generic="T extends string | number | boolean | (string | number | boolean)[] | null">
+<script
+  setup
+  lang="ts"
+  generic="T extends string | number | boolean | (string | number | boolean)[] | null | undefined"
+>
 import { computed, nextTick, useTemplateRef, watchPostEffect } from 'vue';
+import Icon from './Icon.vue';
 
 const model = defineModel<T>();
 const props = withDefaults(
   defineProps<{
-    options?: { value: string | number | boolean; label: string; disabled?: boolean }[];
+    options?: { value: string | number | boolean | null | undefined; label: string; disabled?: boolean }[];
     placeholder?: string;
     multiple?: boolean;
     disabled?: boolean;
     filterable?: boolean;
     allowCreate?: boolean;
+    ariaLabel?: string;
     ariaInvalid?: boolean;
     ariaDescribedby?: string;
   }>(),
   { options: () => [], placeholder: '请选择' },
 );
+const emit = defineEmits<{ change: [value: T] }>();
 const select = useTemplateRef<{ $el: HTMLElement }>('select');
-const selected = computed(() => (Array.isArray(model.value) ? model.value : []));
+// ElOption accepts objects but not null/undefined. Keep optional filters distinct from false, 0 and ''.
+const unsetValue = { value: 'unset' },
+  nullValue = { value: 'null' };
+function encode(value: string | number | boolean | null | undefined) {
+  return value === undefined ? unsetValue : value === null ? nullValue : value;
+}
+function decode(value: unknown) {
+  return (value === unsetValue ? undefined : value === nullValue ? null : value) as T;
+}
+const internal = computed({
+  get: () => {
+    if (props.multiple) return Array.isArray(model.value) ? model.value : [];
+    if (model.value == null && !props.options.some((option) => option.value === model.value))
+      return undefined;
+    return encode(model.value as string | number | boolean | null | undefined);
+  },
+  set: (value) => {
+    model.value = decode(value);
+  },
+});
+const selected = computed<(string | number | boolean)[]>(() =>
+  Array.isArray(model.value) ? model.value : [],
+);
 const selectedLabels = computed(() =>
   selected.value
     .map((value) => props.options.find((option) => option.value === value)?.label ?? value)
@@ -56,7 +85,7 @@ async function describeListbox(open: boolean) {
 <template>
   <ElSelect
     ref="select"
-    v-model="model"
+    v-model="internal"
     class="custom-select"
     :multiple="multiple"
     :disabled="disabled"
@@ -65,6 +94,9 @@ async function describeListbox(open: boolean) {
     :allow-create="allowCreate"
     :default-first-option="allowCreate"
     :reserve-keyword="false"
+    :empty-values="[undefined]"
+    :show-arrow="false"
+    :aria-label="ariaLabel"
     :aria-invalid="ariaInvalid || undefined"
     :aria-describedby="ariaDescribedby"
     popper-class="custom-select-dropdown"
@@ -72,36 +104,62 @@ async function describeListbox(open: boolean) {
     no-match-text="没有匹配的选项"
     @keydown.capture="handleSpace"
     @visible-change="describeListbox"
+    @change="emit('change', decode($event))"
   >
+    <template #header>
+      <div class="custom-select-heading" aria-hidden="true">
+        <span>{{ ariaLabel || placeholder }}</span>
+        <span class="custom-select-mode">{{ multiple ? '可多选' : '选择一项' }}</span>
+      </div>
+    </template>
     <template v-if="multiple" #tag>
-      <span class="custom-select-summary" :title="selectedLabels" role="status" aria-live="polite">
+      <span
+        v-if="selected.length"
+        class="custom-select-summary"
+        :title="selectedLabels"
+        role="status"
+        aria-live="polite"
+      >
         已选 {{ selected.length }} 项
       </span>
     </template>
     <ElOption
       v-for="option in options"
-      :key="String(option.value)"
-      :value="option.value"
+      :key="`${typeof option.value}:${String(option.value)}`"
+      :value="encode(option.value)"
       :label="option.label"
       :disabled="option.disabled"
-    />
+    >
+      <span
+        class="custom-select-marker"
+        :class="{
+          multiple,
+          checked: multiple
+            ? selected.includes(option.value as string | number | boolean)
+            : model === option.value,
+        }"
+        aria-hidden="true"
+        ><Icon name="check" :size="12"
+      /></span>
+      <span class="custom-select-option-label">{{ option.label }}</span>
+    </ElOption>
   </ElSelect>
 </template>
 
 <style scoped>
 .custom-select {
-  width: 100%;
+  width: var(--select-width, 100%);
   min-width: 0;
 }
 .custom-select :deep(.el-select__wrapper) {
-  min-height: 40px;
-  padding: 10px 14px;
+  min-height: var(--select-height, 40px);
+  padding: var(--select-padding, 10px 14px);
   border-radius: var(--r-sm);
   background: var(--surface);
   box-shadow:
     inset 0 0 0 var(--bw) var(--line),
     var(--shadow-btn);
-  font: 700 13px / 20px var(--font);
+  font: 700 var(--select-font-size, 13px) / 20px var(--font);
   transition:
     background-color 150ms,
     box-shadow 150ms,

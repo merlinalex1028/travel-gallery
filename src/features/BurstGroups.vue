@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useApp } from '../stores/app';
@@ -82,21 +83,28 @@ onUnmounted(() => {
       >
     </div>
     <div class="duplicate-controls">
-      <select v-model="source" :disabled="!!opening" aria-label="拍摄组来源">
-        <option value="">全部已启用来源</option>
-        <option v-for="s in app.sources.filter((s) => s.isEnabled)" :key="s.id" :value="s.id">
-          {{ s.displayName }}
-        </option>
-      </select>
+      <CustomSelect
+        v-model="source"
+        :disabled="!!opening"
+        aria-label="拍摄组来源"
+        :options="[
+          { value: '', label: '全部已启用来源' },
+          ...app.sources.filter((s) => s.isEnabled).map((s) => ({ value: s.id, label: s.displayName })),
+        ]"
+      />
       <label
         >相邻间隔
-        <select v-model.number="gap" :disabled="!!opening" aria-label="拍摄组相邻间隔">
-          <option :value="1">1 秒</option>
-          <option :value="2">2 秒</option>
-          <option :value="5">5 秒</option>
-          <option :value="10">10 秒</option>
-        </select></label
-      >
+        <CustomSelect
+          v-model="gap"
+          :disabled="!!opening"
+          aria-label="拍摄组相邻间隔"
+          :options="[
+            { value: 1, label: '1 秒' },
+            { value: 2, label: '2 秒' },
+            { value: 5, label: '5 秒' },
+            { value: 10, label: '10 秒' },
+          ]"
+      /></label>
       <button class="btn small-btn" :disabled="loading || !!opening" @click="load()">
         <Icon name="refresh" :size="14" />刷新拍摄组
       </button>

@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -149,7 +150,7 @@ it('applies a saved preset explicitly and saves rules without destination author
   await flushPromises();
   const checks = () => wrapper.findAll<HTMLInputElement>('input[type="checkbox"]');
   expect(checks()[1]!.element.checked).toBe(false);
-  await wrapper.get('select[aria-label="导出预设"]').setValue('preset');
+  await setSelect(wrapper, '导出预设', 'preset');
   expect(checks()[1]!.element.checked).toBe(true);
   expect(wrapper.get<HTMLInputElement>('[aria-label="文件名模板"]').element.value).toBe('旅行_{seq}');
   await wrapper.get('.folder-picker').trigger('click');

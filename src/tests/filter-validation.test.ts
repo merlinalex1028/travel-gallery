@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
@@ -106,7 +107,7 @@ it('associates a reversed star range with both star controls', async () => {
   const wrapper = panel({ ratingMin: 4, ratingMax: 2, favorite: true });
   expect(describedError(wrapper, '最低星级')).toContain('最低星级不能高于最高星级');
   expect(describedError(wrapper, '最高星级')).toContain('最低星级不能高于最高星级');
-  await wrapper.get('[aria-label="最高星级"]').setValue('4');
+  await setSelect(wrapper, '最高星级', 4);
   await applyButton(wrapper).trigger('click');
   expect(wrapper.emitted('apply')![0][0]).toEqual({ ratingMin: 4, ratingMax: 4, favorite: true });
   wrapper.unmount();

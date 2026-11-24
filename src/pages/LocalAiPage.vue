@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { useLocalAi } from '../composables/useLocalAi';
 import AiModelPanel from '../components/local-ai/AiModelPanel.vue';
 import AiSearchResults from '../components/local-ai/AiSearchResults.vue';
@@ -77,16 +78,22 @@ const {
       <section class="settings-card ai-work-card">
         <div class="ai-scope">
           <label
-            >旅行范围<select v-model="trip" aria-label="AI 旅行范围">
-              <option value="">全部已启用来源</option>
-              <option v-for="item in app.trips" :key="item.id" :value="item.id">{{ item.name }}</option>
-            </select></label
+            >旅行范围<CustomSelect
+              v-model="trip"
+              aria-label="AI 旅行范围"
+              :options="[
+                { value: '', label: '全部已启用来源' },
+                ...app.trips.map((item) => ({ value: item.id, label: item.name })),
+              ]" /></label
           ><label
-            >整理状态<select v-model="range" aria-label="AI 整理范围">
-              <option value="all">全部内容</option>
-              <option value="keep">仅保留项</option>
-            </select></label
-          >
+            >整理状态<CustomSelect
+              v-model="range"
+              aria-label="AI 整理范围"
+              :options="[
+                { value: 'all', label: '全部内容' },
+                { value: 'keep', label: '仅保留项' },
+              ]"
+          /></label>
         </div>
         <div class="ai-index-summary">
           <strong>{{ status.indexedCount }} / {{ status.total }}</strong
@@ -151,7 +158,7 @@ const {
   align-items: center;
   white-space: nowrap;
 }
-.ai-scope select {
+.ai-scope .custom-select {
   min-width: 160px;
   max-width: 360px;
   width: auto;
@@ -202,7 +209,7 @@ const {
     flex-wrap: wrap;
     max-width: 100%;
   }
-  .ai-scope select {
+  .ai-scope .custom-select {
     min-width: 0;
     max-width: 100%;
   }

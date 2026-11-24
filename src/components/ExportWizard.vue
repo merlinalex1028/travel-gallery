@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from './CustomSelect.vue';
 import { computed, onUnmounted, shallowRef, watch } from 'vue';
 import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
@@ -184,11 +185,16 @@ async function start() {
       </p>
       <div class="form-stack">
         <label
-          >导出预设<select v-model="presetId" :disabled="busy" aria-label="导出预设" @change="applyPreset">
-            <option value="">手动配置 / 新建预设</option>
-            <option v-for="preset in presets" :key="preset.id" :value="preset.id">{{ preset.name }}</option>
-          </select></label
-        >
+          >导出预设<CustomSelect
+            v-model="presetId"
+            :disabled="busy"
+            aria-label="导出预设"
+            @change="applyPreset"
+            :options="[
+              { value: '', label: '手动配置 / 新建预设' },
+              ...presets.map((preset) => ({ value: preset.id, label: preset.name })),
+            ]"
+        /></label>
         <div class="preset-controls">
           <input
             v-model="presetName"
@@ -226,17 +232,25 @@ async function start() {
             <Icon name="folder" /><span>{{ destination || '通过系统选择器授权目标目录' }}</span
             ><Icon name="right" /></button></label
         ><label
-          >目录结构<select v-model="layout" :disabled="busy">
-            <option value="flat">全部放在目标目录</option>
-            <option value="captureMonth">按拍摄月份分文件夹</option>
-            <option value="sourceRelative">保留来源目录结构</option>
-          </select></label
+          >目录结构<CustomSelect
+            v-model="layout"
+            :disabled="busy"
+            aria-label="目录结构"
+            :options="[
+              { value: 'flat', label: '全部放在目标目录' },
+              { value: 'captureMonth', label: '按拍摄月份分文件夹' },
+              { value: 'sourceRelative', label: '保留来源目录结构' },
+            ]" /></label
         ><label
-          >同名文件<select v-model="policy" :disabled="busy">
-            <option value="rename">自动改名，如 photo (2).jpg</option>
-            <option value="skip">跳过已有文件</option>
-          </select></label
-        >
+          >同名文件<CustomSelect
+            v-model="policy"
+            :disabled="busy"
+            aria-label="同名文件"
+            :options="[
+              { value: 'rename', label: '自动改名，如 photo (2).jpg' },
+              { value: 'skip', label: '跳过已有文件' },
+            ]"
+        /></label>
         <label class="check-label"
           ><input v-model="namingEnabled" :disabled="busy" type="checkbox" />自定义导出副本名称</label
         >

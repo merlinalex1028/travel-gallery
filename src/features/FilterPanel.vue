@@ -218,34 +218,45 @@ function reset() {
     </div>
     <div class="filter-section form-stack">
       <label
-        >最低星级<select
-          v-model.number="form.ratingMin"
+        >最低星级<CustomSelect
+          v-model="form.ratingMin"
           aria-label="最低星级"
           v-bind="validationAttrs('ratingMin')"
-        >
-          <option :value="undefined">不限</option>
-          <option v-for="n in 6" :key="n" :value="n - 1">{{ n - 1 }} 星及以上</option></select
-        ><small v-if="errors.ratingMin" :id="errorId('ratingMin')" class="filter-field-error" role="alert">{{
+          :options="[
+            { value: undefined, label: '不限' },
+            ...Array.from({ length: 6 }, (_, index) => {
+              const n = index + 1;
+              return { value: n - 1, label: String(n - 1) + ' 星及以上' };
+            }),
+          ]"
+        /><small v-if="errors.ratingMin" :id="errorId('ratingMin')" class="filter-field-error" role="alert">{{
           errors.ratingMin
         }}</small></label
       ><label
-        >最高星级<select
-          v-model.number="form.ratingMax"
+        >最高星级<CustomSelect
+          v-model="form.ratingMax"
           aria-label="最高星级"
           v-bind="validationAttrs('ratingMax')"
-        >
-          <option :value="undefined">不限</option>
-          <option v-for="n in 6" :key="n" :value="n - 1">{{ n - 1 }} 星及以下</option></select
-        ><small v-if="errors.ratingMax" :id="errorId('ratingMax')" class="filter-field-error" role="alert">{{
+          :options="[
+            { value: undefined, label: '不限' },
+            ...Array.from({ length: 6 }, (_, index) => {
+              const n = index + 1;
+              return { value: n - 1, label: String(n - 1) + ' 星及以下' };
+            }),
+          ]"
+        /><small v-if="errors.ratingMax" :id="errorId('ratingMax')" class="filter-field-error" role="alert">{{
           errors.ratingMax
         }}</small></label
       ><label
-        >收藏<select v-model="form.favorite">
-          <option :value="undefined">全部</option>
-          <option :value="true">仅收藏</option>
-          <option :value="false">排除收藏</option>
-        </select></label
-      >
+        >收藏<CustomSelect
+          v-model="form.favorite"
+          aria-label="收藏"
+          :options="[
+            { value: undefined, label: '全部' },
+            { value: true, label: '仅收藏' },
+            { value: false, label: '排除收藏' },
+          ]"
+      /></label>
     </div>
     <div class="filter-section">
       <h4>来源目录</h4>
@@ -265,11 +276,14 @@ function reset() {
     <div class="filter-section form-stack">
       <label>目录片段<input v-model="form.folder" placeholder="相对来源的目录前缀" /></label
       ><label
-        >拍摄日期可信度<select v-model="form.captureDateKnown" aria-label="拍摄日期可信度">
-          <option :value="undefined">全部</option>
-          <option :value="true">有拍摄日期</option>
-          <option :value="false">未知日期 / 仅文件修改时间</option>
-        </select></label
+        >拍摄日期可信度<CustomSelect
+          v-model="form.captureDateKnown"
+          aria-label="拍摄日期可信度"
+          :options="[
+            { value: undefined, label: '全部' },
+            { value: true, label: '有拍摄日期' },
+            { value: false, label: '未知日期 / 仅文件修改时间' },
+          ]" /></label
       ><label
         >拍摄日期
         <div class="input-pair">
@@ -441,12 +455,15 @@ function reset() {
     </div>
     <div class="filter-section form-stack">
       <label
-        >标签规则<select v-model="tagMode">
-          <option value="any">包含任一标签</option>
-          <option value="all">包含全部标签</option>
-          <option value="exclude">排除这些标签</option>
-        </select></label
-      >
+        >标签规则<CustomSelect
+          v-model="tagMode"
+          aria-label="标签规则"
+          :options="[
+            { value: 'any', label: '包含任一标签' },
+            { value: 'all', label: '包含全部标签' },
+            { value: 'exclude', label: '排除这些标签' },
+          ]"
+      /></label>
       <div role="group" aria-label="选择标签" v-bind="validationAttrs('tagIds')">
         <CustomSelect
           v-model="tagIds"
@@ -473,14 +490,17 @@ function reset() {
     </div>
     <div class="filter-section form-stack">
       <label
-        >重复分组<select v-model="form.duplicateKind">
-          <option :value="undefined">不限</option>
-          <option value="exact">精确重复组</option>
-          <option value="similar">视觉相似组</option>
-          <option value="any">任一分组</option>
-          <option value="none">未加入重复组</option>
-        </select></label
-      >
+        >重复分组<CustomSelect
+          v-model="form.duplicateKind"
+          aria-label="重复分组"
+          :options="[
+            { value: undefined, label: '不限' },
+            { value: 'exact', label: '精确重复组' },
+            { value: 'similar', label: '视觉相似组' },
+            { value: 'any', label: '任一分组' },
+            { value: 'none', label: '未加入重复组' },
+          ]"
+      /></label>
     </div>
     <template #footer
       ><button class="btn" @click="reset">清空条件</button

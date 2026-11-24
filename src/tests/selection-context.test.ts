@@ -1,8 +1,8 @@
+import { selectControl, setSelect } from './helpers/select';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
 import SelectionBar from '../features/SelectionBar.vue';
-import CustomSelect from '../components/CustomSelect.vue';
 import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
 import { date } from '../services/format';
@@ -109,10 +109,10 @@ it.each(['add', 'remove'])('saves custom tag choices in %s mode for the current 
       .findAll('button')
       .find((button) => button.text() === '标签')!
       .trigger('click');
-    const select = wrapper.getComponent(CustomSelect);
+    const select = selectControl(wrapper, '批量选择标签');
     expect(select.props()).toMatchObject({ options: [{ value: 'sunset', label: '日落' }] });
     select.vm.$emit('update:modelValue', ['sunset']);
-    await wrapper.get('[aria-label="标签操作"]').setValue(mode);
+    await setSelect(wrapper, '标签操作', mode);
     await wrapper
       .findAll('button')
       .find((button) => button.text() === '保存标签')!

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { onMounted, shallowRef } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { useApp } from '../stores/app';
@@ -142,22 +143,30 @@ onMounted(async () => {
           <strong>外观主题</strong>
           <p>适应环境，也适应你的习惯</p>
         </div>
-        <select v-model="app.settings.theme" aria-label="外观主题">
-          <option value="system">跟随系统</option>
-          <option value="light">浅色</option>
-          <option value="dark">深色</option>
-        </select>
+        <CustomSelect
+          v-model="app.settings.theme"
+          aria-label="外观主题"
+          :options="[
+            { value: 'system', label: '跟随系统' },
+            { value: 'light', label: '浅色' },
+            { value: 'dark', label: '深色' },
+          ]"
+        />
       </div>
       <div class="setting-row">
         <div>
           <strong>界面字体</strong>
           <p>调整文字大小，保留完整操作</p>
         </div>
-        <select v-model.number="app.settings.fontSize" aria-label="界面字体">
-          <option :value="13">紧凑 · 13px</option>
-          <option :value="14">标准 · 14px</option>
-          <option :value="16">舒适 · 16px</option>
-        </select>
+        <CustomSelect
+          v-model="app.settings.fontSize"
+          aria-label="界面字体"
+          :options="[
+            { value: 13, label: '紧凑 · 13px' },
+            { value: 14, label: '标准 · 14px' },
+            { value: 16, label: '舒适 · 16px' },
+          ]"
+        />
       </div>
       <div class="setting-row">
         <div>
@@ -177,11 +186,15 @@ onMounted(async () => {
           <strong>相邻照片预取</strong>
           <p>预取少量预览，减少连续翻图等待</p>
         </div>
-        <select v-model.number="app.settings.prefetch" aria-label="预取数量">
-          <option :value="0">关闭</option>
-          <option :value="1">1 张</option>
-          <option :value="2">2 张</option>
-        </select>
+        <CustomSelect
+          v-model="app.settings.prefetch"
+          aria-label="预取数量"
+          :options="[
+            { value: 0, label: '关闭' },
+            { value: 1, label: '1 张' },
+            { value: 2, label: '2 张' },
+          ]"
+        />
       </div>
     </div>
     <div class="settings-card">
@@ -232,22 +245,33 @@ onMounted(async () => {
           <strong>后台并发上限</strong>
           <p>移动硬盘建议使用较低并发</p>
         </div>
-        <select v-model.number="app.settings.scanConcurrency" aria-label="后台并发上限">
-          <option v-for="n in 4" :key="n" :value="n">{{ n }} 个任务</option>
-        </select>
+        <CustomSelect
+          v-model="app.settings.scanConcurrency"
+          aria-label="后台并发上限"
+          :options="[
+            ...Array.from({ length: 4 }, (_, index) => {
+              const n = index + 1;
+              return { value: n, label: String(n) + ' 个任务' };
+            }),
+          ]"
+        />
       </div>
       <div class="setting-row">
         <div>
           <strong>缓存空间上限</strong>
           <p>按最近使用情况淘汰预览，不影响整理记录</p>
         </div>
-        <select v-model.number="app.settings.cacheLimitGb" aria-label="缓存空间上限">
-          <option :value="0.5">512 MB</option>
-          <option :value="1">1 GB</option>
-          <option :value="5">5 GB</option>
-          <option :value="10">10 GB</option>
-          <option :value="20">20 GB</option>
-        </select>
+        <CustomSelect
+          v-model="app.settings.cacheLimitGb"
+          aria-label="缓存空间上限"
+          :options="[
+            { value: 0.5, label: '512 MB' },
+            { value: 1, label: '1 GB' },
+            { value: 5, label: '5 GB' },
+            { value: 10, label: '10 GB' },
+            { value: 20, label: '20 GB' },
+          ]"
+        />
       </div>
       <div class="setting-row">
         <div>

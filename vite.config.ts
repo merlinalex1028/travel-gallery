@@ -12,6 +12,6 @@ export default defineConfig({
     headers: { 'Content-Security-Policy': desktop.app.security.csp },
   },
   build: { target: 'es2022', chunkSizeWarningLimit: 900 },
-  test: { environment: 'happy-dom', include: ['src/**/*.test.ts'] },
+  test: { environment: 'happy-dom', include: ['src/**/*.test.ts'], setupFiles: ['src/tests/setup.ts'] },
   clearScreen: false,
 });

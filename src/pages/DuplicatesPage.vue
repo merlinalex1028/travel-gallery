@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
@@ -231,12 +232,14 @@ async function loadMembers(group: DuplicateGroup) {
     <BurstGroups v-if="kind === 'burst'" />
     <template v-else>
       <div class="duplicate-controls">
-        <select v-model="source" aria-label="检测来源">
-          <option value="">全部已启用来源</option>
-          <option v-for="s in app.sources.filter((s) => s.isEnabled)" :key="s.id" :value="s.id">
-            {{ s.displayName }}
-          </option></select
-        ><label class="check-label"><input v-model="onlyUnreviewed" type="checkbox" />仅检测未处理</label
+        <CustomSelect
+          v-model="source"
+          aria-label="检测来源"
+          :options="[
+            { value: '', label: '全部已启用来源' },
+            ...app.sources.filter((s) => s.isEnabled).map((s) => ({ value: s.id, label: s.displayName })),
+          ]"
+        /><label class="check-label"><input v-model="onlyUnreviewed" type="checkbox" />仅检测未处理</label
         ><template v-if="kind === 'similar'"
           ><label>最大汉明距离<input v-model.number="threshold" type="number" min="0" max="20" /></label
           ><label
@@ -266,7 +269,9 @@ async function loadMembers(group: DuplicateGroup) {
             <strong>第 {{ index + 1 }} 组</strong><span class="muted">{{ group.memberCount }} 个有效成员</span
             ><span v-if="group.kind === 'exact'" class="muted small"
               >全组理论冗余约
-              {{ bytes(Math.max(0, group.memberCount - 1) * (group.members[0]?.asset.byteSize ?? 0)) }}，仅估算</span
+              {{
+                bytes(Math.max(0, group.memberCount - 1) * (group.members[0]?.asset.byteSize ?? 0))
+              }}，仅估算</span
             ><span v-if="group.stale" class="warning-text">{{
               group.kind === 'exact' ? '结果过期，请检查来源和任务中心' : '结果过期，请重算'
             }}</span>

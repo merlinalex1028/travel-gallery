@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { computed } from 'vue';
 import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
@@ -102,13 +103,19 @@ function remove(key: string) {
         <Icon name="filter" :size="15" />筛选<span v-if="activeCount" class="filter-count">{{
           activeCount
         }}</span></button
-      ><select v-model="lib.sort.field" class="sort-select" aria-label="排序字段" @change="lib.search()">
-        <option value="captureUtcMs">拍摄时间</option>
-        <option value="indexedAt">导入时间</option>
-        <option value="filename">文件名称</option>
-        <option value="byteSize">文件大小</option>
-        <option value="rating">星级评分</option></select
-      ><button
+      ><CustomSelect
+        v-model="lib.sort.field"
+        class="sort-select"
+        aria-label="排序字段"
+        @change="lib.search()"
+        :options="[
+          { value: 'captureUtcMs', label: '拍摄时间' },
+          { value: 'indexedAt', label: '导入时间' },
+          { value: 'filename', label: '文件名称' },
+          { value: 'byteSize', label: '文件大小' },
+          { value: 'rating', label: '星级评分' },
+        ]"
+      /><button
         class="icon-btn"
         :aria-label="lib.sort.direction === 'asc' ? '改为降序' : '改为升序'"
         @click="

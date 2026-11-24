@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount, flushPromises } from '@vue/test-utils';
@@ -127,7 +128,7 @@ it('ignores semantic results from an old scope and leaves the library untouched'
     text: '一座教堂',
     limit: 60,
   });
-  await wrapper.get('[aria-label="AI 旅行范围"]').setValue('trip');
+  await setSelect(wrapper, 'AI 旅行范围', 'trip');
   await flushPromises();
   finish(result);
   await flushPromises();

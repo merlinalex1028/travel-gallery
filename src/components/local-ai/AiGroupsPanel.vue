@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../CustomSelect.vue';
 import type { AiClusters, JobSummary, Trip } from '../../services/contracts';
 import { date } from '../../services/format';
 import MediaThumbnail from '../MediaThumbnail.vue';
@@ -50,13 +51,17 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
       组。会先补齐当前范围索引；画面高度相近时实际组数可能更少。分组与相近程度不改变保留状态、星级、收藏或标签。
     </p>
     <label v-if="completedGroups.length" class="ai-history"
-      >查看已生成的分组<select v-model="selectedJob" aria-label="内容分组历史">
-        <option :value="null">当前范围最近一次</option>
-        <option v-for="job in completedGroups" :key="job.id" :value="job.id">
-          {{ date(job.createdAt, true) }} · {{ job.progressDone }} 步
-        </option>
-      </select></label
-    >
+      >查看已生成的分组<CustomSelect
+        v-model="selectedJob"
+        aria-label="内容分组历史"
+        :options="[
+          { value: null, label: '当前范围最近一次' },
+          ...completedGroups.map((job) => ({
+            value: job.id,
+            label: String(date(job.createdAt, true)) + ' · ' + String(job.progressDone) + ' 步',
+          })),
+        ]"
+    /></label>
     <template v-if="groups?.jobId"
       ><p class="muted small">
         {{ date(groups.createdAt, true) }} ·
@@ -116,7 +121,7 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
 .ai-history {
   margin: 20px 0;
 }
-.ai-history select {
+.ai-history .custom-select {
   max-width: 360px;
 }
 .ai-group-grid {

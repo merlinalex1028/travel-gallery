@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useApp } from '../stores/app';
@@ -285,11 +286,16 @@ onUnmounted(() => {
     <div class="row map-options">
       <label
         >旅行范围
-        <select v-model="tripId" :disabled="loading" aria-label="地图旅行范围" @change="reload">
-          <option value="">全部媒体</option>
-          <option v-for="trip in app.trips" :key="trip.id" :value="trip.id">{{ trip.name }}</option>
-        </select></label
-      >
+        <CustomSelect
+          v-model="tripId"
+          :disabled="loading"
+          aria-label="地图旅行范围"
+          @change="reload"
+          :options="[
+            { value: '', label: '全部媒体' },
+            ...app.trips.map((trip) => ({ value: trip.id, label: trip.name })),
+          ]"
+      /></label>
       <label class="check-label"
         ><input
           v-model="showTrails"

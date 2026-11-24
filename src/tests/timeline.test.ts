@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -39,7 +40,7 @@ it('excludes unknown dates from shooting-day totals and preserves trip scope whe
   expect(wrapper.findAll('.timeline-summary strong').map((n) => n.text())).toEqual(['1', '3', '1', '1']);
   expect(wrapper.findAll('.timeline-day')[0]!.text()).toContain('1 项时区未知');
   expect(wrapper.findAll('.timeline-day')[0]!.text()).toContain('1 照片 · 1 视频');
-  await wrapper.get('select').setValue('trip');
+  await setSelect(wrapper, '时间轴旅行范围', 'trip');
   await flushPromises();
   expect(invoke).toHaveBeenLastCalledWith('timeline_stats', { filter: { collectionId: 'trip' } });
   await wrapper.findAll('.timeline-day')[1]!.trigger('click');
@@ -69,7 +70,7 @@ it('keeps the selected travel range when an earlier aggregate returns late', asy
   );
   invoke.mockResolvedValueOnce([days[1]]);
   const { wrapper } = await setup();
-  await wrapper.get('select').setValue('trip');
+  await setSelect(wrapper, '时间轴旅行范围', 'trip');
   await flushPromises();
   finishOld([days[0]!]);
   await flushPromises();

@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { defineComponent, nextTick } from 'vue';
@@ -80,7 +81,7 @@ it.each(['field', 'direction', 'kind', 'linked'] as const)(
   async (change) => {
     await openGrid();
     await scrollTo(3000);
-    if (change === 'field') await wrapper!.get('[aria-label="排序字段"]').setValue('rating');
+    if (change === 'field') await setSelect(wrapper!, '排序字段', 'rating');
     if (change === 'direction') await wrapper!.get('[aria-label="改为升序"]').trigger('click');
     if (change === 'kind')
       await wrapper!

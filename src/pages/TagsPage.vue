@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { shallowRef } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { useApp } from '../stores/app';
@@ -148,18 +149,22 @@ async function merge() {
       ><p class="dialog-lead">原标签的照片关联会转移到目标标签，重复关联只保留一次。</p>
       <div class="form-stack">
         <label
-          >要合并的标签<select v-model="mergeFrom">
-            <option value="">请选择</option>
-            <option v-for="t in app.tags" :key="t.id" :value="t.id">{{ t.name }}</option>
-          </select></label
+          >要合并的标签<CustomSelect
+            v-model="mergeFrom"
+            aria-label="要合并的标签"
+            :options="[
+              { value: '', label: '请选择' },
+              ...app.tags.map((t) => ({ value: t.id, label: t.name })),
+            ]" /></label
         ><label
-          >合并到<select v-model="mergeTo">
-            <option value="">请选择</option>
-            <option v-for="t in app.tags.filter((t) => t.id !== mergeFrom)" :key="t.id" :value="t.id">
-              {{ t.name }}
-            </option>
-          </select></label
-        >
+          >合并到<CustomSelect
+            v-model="mergeTo"
+            aria-label="合并到"
+            :options="[
+              { value: '', label: '请选择' },
+              ...app.tags.filter((t) => t.id !== mergeFrom).map((t) => ({ value: t.id, label: t.name })),
+            ]"
+        /></label>
       </div>
       <template #footer
         ><button class="btn" @click="mergeOpen = false">取消</button

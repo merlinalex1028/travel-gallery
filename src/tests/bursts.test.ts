@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount, shallowMount } from '@vue/test-utils';
@@ -49,7 +50,7 @@ it('keeps only the latest shooting query and opens all members through a frozen 
     throw new Error(name);
   });
   const wrapper = mount(BurstGroups, { global: { plugins: [router], stubs: { MediaThumbnail: true } } });
-  await wrapper.get('[aria-label="拍摄组相邻间隔"]').setValue('5');
+  await setSelect(wrapper, '拍摄组相邻间隔', 5);
   await flushPromises();
   resolveOld({ items: [], total: 0, nextCursor: null, examinedCount: 0 });
   await flushPromises();

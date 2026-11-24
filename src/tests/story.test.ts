@@ -1,3 +1,4 @@
+import { setSelect } from './helpers/select';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -108,7 +109,7 @@ it('shows trusted chapters and video posters, and pages using the same catalog e
   expect(wrapper.findAll('.story-frame')).toHaveLength(3);
   expect(wrapper.find('.story-more').exists()).toBe(false);
   invoke.mockResolvedValueOnce({ ...story, items: [], total: 0, nextOffset: null });
-  await wrapper.get('select').setValue('keep');
+  await setSelect(wrapper, '故事范围', 'keep');
   await flushPromises();
   expect(invoke).toHaveBeenLastCalledWith('get_trip_story', {
     tripId: 'trip',

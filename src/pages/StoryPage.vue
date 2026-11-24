@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { computed, onUnmounted, shallowRef, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { api, errorMessage } from '../services/api';
@@ -172,11 +173,14 @@ async function start() {
       <div class="row">
         <label
           >故事范围
-          <select v-model="range" aria-label="故事范围">
-            <option value="all">全部旅行内容</option>
-            <option value="keep">仅保留项</option>
-          </select></label
-        >
+          <CustomSelect
+            v-model="range"
+            aria-label="故事范围"
+            :options="[
+              { value: 'all', label: '全部旅行内容' },
+              { value: 'keep', label: '仅保留项' },
+            ]"
+        /></label>
         <button class="btn primary" :disabled="!story?.total || loading" @click="openExport">
           <Icon name="export" :size="16" />导出离线故事
         </button>
@@ -321,7 +325,7 @@ async function start() {
   font-size: 13px;
   white-space: nowrap;
 }
-.story-toolbar select {
+.story-toolbar .custom-select {
   width: auto;
   min-width: 160px;
 }

@@ -1,8 +1,8 @@
+import { selectControl, setSelect } from './helpers/select';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { mount } from '@vue/test-utils';
 import FilterPanel from '../features/FilterPanel.vue';
-import CustomSelect from '../components/CustomSelect.vue';
 import type { AssetFilter } from '../services/contracts';
 
 vi.mock('element-plus', () => ({ ElMessage: { error: vi.fn() } }));
@@ -35,7 +35,7 @@ it('shows and preserves existing conditions when a route opens the panel on moun
   const wrapper = mount(FilterPanel, { ...options, props: { filter, modelValue: true } });
   const checked = wrapper.findAll<HTMLInputElement>('input[type="checkbox"]:checked');
   expect(checked.map((input) => input.element.parentElement!.textContent!.trim())).toEqual(['保留', '照片']);
-  expect(wrapper.findAll<HTMLSelectElement>('select')[0].element.value).toBe('4');
+  expect(selectControl(wrapper, '最低星级').props()).toMatchObject({ modelValue: 4 });
   expect(wrapper.get<HTMLInputElement>('[aria-label="拍摄起始日期"]').element.value).toBe('2024-01-01');
   await wrapper
     .findAll('button')
@@ -49,12 +49,12 @@ it('discards an unapplied draft and reads the new conditions on reopening', asyn
   const original: AssetFilter = { ratingMin: 4, tagRule: { mode: 'any', tagIds: ['travel'] } };
   const wrapper = mount(FilterPanel, { ...options, props: { filter: original, modelValue: false } });
   await wrapper.setProps({ modelValue: true });
-  await wrapper.findAll('select')[0].setValue('2');
+  await setSelect(wrapper, '最低星级', 2);
   expect(original.ratingMin).toBe(4);
   await wrapper.setProps({ modelValue: false });
   const replacement: AssetFilter = { ratingMax: 3, tagRule: { mode: 'exclude', tagIds: ['work'] } };
   await wrapper.setProps({ filter: replacement, modelValue: true });
-  expect(wrapper.findAll<HTMLSelectElement>('select')[1].element.value).toBe('3');
+  expect(selectControl(wrapper, '最高星级').props()).toMatchObject({ modelValue: 3 });
   await wrapper
     .findAll('button')
     .find((button) => button.text() === '应用筛选')!
@@ -68,7 +68,9 @@ it('applies custom format, free-form camera and tag selections without mutating 
   const filter: AssetFilter = { keyword: '旅行' };
   const wrapper = mount(FilterPanel, { ...options, props: { filter, modelValue: true } });
   try {
-    const [formats, cameras, tags] = wrapper.findAllComponents(CustomSelect);
+    const formats = selectControl(wrapper, '文件格式（多选）'),
+      cameras = selectControl(wrapper, '设备型号'),
+      tags = selectControl(wrapper, '选择标签');
     expect(formats!.props()).toHaveProperty('options.length', 16);
     expect(cameras!.props()).toHaveProperty('allowCreate', true);
     formats!.vm.$emit('update:modelValue', ['jpg', 'heic']);

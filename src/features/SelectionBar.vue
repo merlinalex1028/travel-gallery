@@ -142,10 +142,14 @@ async function addToTrip() {
   <ElDialog v-model="tagOpen" title="批量编辑标签" width="420px"
     ><p class="dialog-lead">应用到本次选中的 {{ lib.count }} 张照片。</p>
     <div class="form-stack">
-      <select v-model="tagMode" aria-label="标签操作">
-        <option value="add">添加这些标签</option>
-        <option value="remove">移除这些标签</option></select
-      ><CustomSelect
+      <CustomSelect
+        v-model="tagMode"
+        aria-label="标签操作"
+        :options="[
+          { value: 'add', label: '添加这些标签' },
+          { value: 'remove', label: '移除这些标签' },
+        ]"
+      /><CustomSelect
         v-model="tags"
         multiple
         placeholder="选择标签"
@@ -161,10 +165,14 @@ async function addToTrip() {
       </button></template
     ></ElDialog
   ><ElDialog v-model="tripOpen" title="加入旅行相册" width="420px"
-    ><select v-model="trip" aria-label="选择旅行相册">
-      <option value="" disabled>选择旅行相册</option>
-      <option v-for="t in app.trips" :key="t.id" :value="t.id">{{ t.name }}</option></select
-    ><template #footer
+    ><CustomSelect
+      v-model="trip"
+      aria-label="选择旅行相册"
+      :options="[
+        { value: '', label: '选择旅行相册', disabled: true },
+        ...app.trips.map((t) => ({ value: t.id, label: t.name })),
+      ]"
+    /><template #footer
       ><button class="btn" @click="tripOpen = false">取消</button
       ><button class="btn primary" :disabled="!trip" @click="addToTrip">
         加入 {{ lib.count }} 张

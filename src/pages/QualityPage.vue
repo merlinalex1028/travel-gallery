@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CustomSelect from '../components/CustomSelect.vue';
 import { isDemo } from '../services/api';
 import { useQuality } from '../composables/useQuality';
 import AiModelPanel from '../components/local-ai/AiModelPanel.vue';
@@ -77,24 +78,33 @@ const {
     <section class="settings-card scope-card">
       <div class="quality-controls">
         <label
-          >来源范围<select v-model="source" aria-label="检查来源范围">
-            <option value="">全部已启用来源</option>
-            <option v-for="item in app.sources.filter((s) => s.isEnabled)" :key="item.id" :value="item.id">
-              {{ item.displayName }}
-            </option>
-          </select></label
-        >
+          >来源范围<CustomSelect
+            v-model="source"
+            aria-label="检查来源范围"
+            :options="[
+              { value: '', label: '全部已启用来源' },
+              ...app.sources
+                .filter((s) => s.isEnabled)
+                .map((item) => ({ value: item.id, label: item.displayName })),
+            ]"
+        /></label>
         <label
-          >旅行范围<select v-model="trip" aria-label="检查旅行范围">
-            <option value="">全部已启用来源</option>
-            <option v-for="item in app.trips" :key="item.id" :value="item.id">{{ item.name }}</option>
-          </select></label
+          >旅行范围<CustomSelect
+            v-model="trip"
+            aria-label="检查旅行范围"
+            :options="[
+              { value: '', label: '全部已启用来源' },
+              ...app.trips.map((item) => ({ value: item.id, label: item.name })),
+            ]" /></label
         ><label
-          >整理状态<select v-model="range" aria-label="检查整理范围">
-            <option value="all">全部照片</option>
-            <option value="keep">仅保留照片</option>
-          </select></label
-        >
+          >整理状态<CustomSelect
+            v-model="range"
+            aria-label="检查整理范围"
+            :options="[
+              { value: 'all', label: '全部照片' },
+              { value: 'keep', label: '仅保留照片' },
+            ]"
+        /></label>
       </div>
       <p class="scope-count">
         <strong>{{ status?.total ?? '—' }}</strong> 张照片 · 闭眼分析 {{ status?.eyesCount ?? 0 }} 项 ·
@@ -204,7 +214,7 @@ const {
   gap: 10px;
   align-items: center;
 }
-.quality-controls select {
+.quality-controls .custom-select {
   min-width: 150px;
   width: auto;
   max-width: 340px;
@@ -280,7 +290,7 @@ const {
     flex-wrap: wrap;
     max-width: 100%;
   }
-  .quality-controls select {
+  .quality-controls .custom-select {
     min-width: 0;
     max-width: 100%;
   }
