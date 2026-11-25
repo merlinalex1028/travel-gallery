@@ -195,9 +195,9 @@ if __name__ == '__main__':
     assert not b.APPROVAL.exists() or json.loads(b.APPROVAL.read_text())['status'] == 'closed'
     if b.RECEIPT.exists():
         previous = json.loads(b.RECEIPT.read_text())
-        if previous.get('status') == 'failed':
+        if previous.get('status') in ('failed', 'blocked-console-lock'):
             b.STATE['previousAttempt'] = {key: previous.get(key) for key in (
-                'startedAt', 'finishedAt', 'error', 'temporaryDirectoryRemoved')}
+                'startedAt', 'finishedAt', 'status', 'error', 'temporaryDirectoryRemoved')}
     b.APPROVAL.write_text(json.dumps(dict(
         status='active', batch='native-brand-release', limits=LIMITS,
         requiredFreeBytes=LIMITS['logicalBytes'],
@@ -208,6 +208,9 @@ if __name__ == '__main__':
     ), ensure_ascii=False, indent=2) + '\n')
     b.main = main
     result = b.run()
+    if 'Unlock the Mac' in b.STATE.get('error', ''):
+        b.STATE.update(status='blocked-console-lock',
+                       nativeAcceptance='not run; console locked before GUI observation')
     for name in ('.vite', '.vite-temp'):
         path = ROOT / 'node_modules' / name
         if path.exists():
