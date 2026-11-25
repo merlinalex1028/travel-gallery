@@ -63,6 +63,23 @@ def active():
         if len(parts := row.strip().split(None, 1)) == 2 and parts[1] == executable]
 
 
+def build_candidate(env):
+    front = b.frontend('production', env)
+    # Helpers are unchanged. The accepted formal bundle supplies their signed bytes;
+    # compiling the main executable must not require deleted intermediate sidecars.
+    config = dict(build=dict(frontendDist=str(front)), bundle=dict(externalBin=[]))
+    b.command('compileBrandCandidate', [
+        'node', 'scripts/native.mjs', 'cargo', 'build', '--release', '--locked',
+        '--manifest-path', 'src-tauri/Cargo.toml', '--features',
+        'desktop,custom-protocol', '--bin', 'travel-gallery',
+    ], {**env, 'TAURI_CONFIG': json.dumps(config)})
+    candidate = b.WORK / 'normal-candidate/Travel Gallery.app'
+    candidate.parent.mkdir()
+    b.command('copyAcceptedResources', ['ditto', str(b.NORMAL), str(candidate)], env)
+    shutil.copy2(b.WORK / 'target/release/travel-gallery', candidate / 'Contents/MacOS/travel-gallery')
+    return candidate
+
+
 def publish(candidate, env):
     previous = json.loads((ROOT / 'artifacts/build-info.json').read_text())
     rollback = b.WORK / 'rollback'
@@ -115,7 +132,7 @@ def main():
     b.OWNS_GENERATED = True
     env = b.prepare_home()
     env['CARGO_BUILD_JOBS'] = '4'
-    candidate = b.build(False, env)
+    candidate = build_candidate(env)
     b.STATE['normalCandidate'] = str(candidate)
     shutil.copy2(ROOT / 'src-tauri/icons/icon.icns', candidate / 'Contents/Resources/icon.icns')
     info_path = candidate / 'Contents/Info.plist'
@@ -176,6 +193,11 @@ def main():
 if __name__ == '__main__':
     guard.require_unlocked_console()
     assert not b.APPROVAL.exists() or json.loads(b.APPROVAL.read_text())['status'] == 'closed'
+    if b.RECEIPT.exists():
+        previous = json.loads(b.RECEIPT.read_text())
+        if previous.get('status') == 'failed':
+            b.STATE['previousAttempt'] = {key: previous.get(key) for key in (
+                'startedAt', 'finishedAt', 'error', 'temporaryDirectoryRemoved')}
     b.APPROVAL.write_text(json.dumps(dict(
         status='active', batch='native-brand-release', limits=LIMITS,
         requiredFreeBytes=LIMITS['logicalBytes'],
