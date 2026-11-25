@@ -38,7 +38,9 @@ src-tauri/resources/media-tools/
 *.onnx
 *.tflite
 *.p12
+*.p8
 *.key
+/release-dist/
 .env
 .env.*
 !.env.example

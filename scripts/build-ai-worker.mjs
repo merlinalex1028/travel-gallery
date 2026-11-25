@@ -15,6 +15,7 @@ if (!target || !/^[\w.-]+$/.test(target)) throw new Error('Cannot identify the n
 const debug = process.argv.includes('--debug');
 const args = [
   'build',
+  '--locked',
   '--manifest-path',
   path.join(root, 'src-tauri/Cargo.toml'),
   '--features',

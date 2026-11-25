@@ -38,6 +38,17 @@ jobs:
             mingw-w64-ucrt-x86_64-zlib
       - run: pnpm install --frozen-lockfile
       - run: node --test scripts/tests/media-tools-build.test.mjs
+      - run: node --test scripts/tests/release.test.mjs
+      - name: Parse Windows release signing hook
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+              "$env:GITHUB_WORKSPACE/scripts/sign-windows.ps1", [ref]$tokens, [ref]$errors
+          ) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
       - run: pnpm test
       - run: pnpm build
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml

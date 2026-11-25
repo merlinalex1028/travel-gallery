@@ -1,0 +1,241 @@
+name: Release signed desktop installers
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag (e.g. v0.1.0 or v0.2.0-beta.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
+  CARGO_BUILD_JOBS: '2'
+  CARGO_INCREMENTAL: '0'
+  CARGO_PROFILE_RELEASE_DEBUG: '0'
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Resolve release source commit and validate tag
+        id: release
+        run: node scripts/release.mjs resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  macos:
+    needs: resolve
+    # Explicit native ARM runner; prepare also asserts darwin/arm64.
+    runs-on: macos-15
+    environment: release-signing
+    timeout-minutes: 150
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+      CARGO_BUILD_TARGET: aarch64-apple-darwin
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Check signing credentials and prepare release version
+        run: node scripts/release.mjs prepare macos-arm64
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin
+      - run: pnpm install --frozen-lockfile
+      - run: node --test scripts/tests/release.test.mjs scripts/tests/media-tools-build.test.mjs
+      - run: pnpm test
+      - name: Build native media tools and notices
+        run: |
+          node scripts/build-media-tools.mjs
+          node scripts/smoke-media-tools.mjs --output "$RUNNER_TEMP/media-tools-smoke.json"
+          pnpm notices
+      - name: Compile release and native workers
+        run: node scripts/native.mjs tauri build --features desktop --target aarch64-apple-darwin --no-bundle --ci -- --locked
+      - name: Sign, notarize and bundle App and DMG
+        run: node scripts/native.mjs tauri bundle --features desktop --target aarch64-apple-darwin --bundles app,dmg --ci --config "$RUNNER_TEMP/travel-gallery-signing.json"
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      - name: Verify Developer ID, ARM binaries, App ticket and notarize outer DMG
+        run: bash scripts/verify-macos-release.sh
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      - run: node scripts/release.mjs collect macos-arm64
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-macos-arm64
+          path: release-dist/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove temporary notarization material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/travel-gallery-notary.p8" "$RUNNER_TEMP/travel-gallery-signing.json" "$RUNNER_TEMP/travel-gallery-dmg-notary.json"
+
+  windows:
+    needs: resolve
+    runs-on: windows-2025
+    environment: release-signing
+    timeout-minutes: 150
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+      CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
+      ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+      ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+      ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+      WINDOWS_PUBLISHER_NAME: ${{ vars.WINDOWS_PUBLISHER_NAME }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Check signing configuration and prepare release version
+        run: node scripts/release.mjs prepare windows-x64
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          targets: x86_64-pc-windows-msvc
+      - uses: msys2/setup-msys2@3c51bf698df1e37b2261f53cb67797b97761185c # v2
+        id: msys2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make diffutils curl tar
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-zlib
+      - name: Use the isolated MSYS2 media toolchain
+        shell: pwsh
+        env:
+          MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: '"TRAVEL_GALLERY_MSYS2_ROOT=$env:MSYS2_ROOT" >> $env:GITHUB_ENV'
+      - run: pnpm install --frozen-lockfile
+      - run: node --test scripts/tests/release.test.mjs scripts/tests/media-tools-build.test.mjs
+      - run: pnpm test
+      - name: Build native media tools
+        run: node scripts/build-media-tools.mjs
+      - name: Verify native media tools
+        run: node scripts/smoke-media-tools.mjs --output "$env:RUNNER_TEMP/media-tools-smoke.json"
+      - run: pnpm notices
+      - name: Compile release and native workers before obtaining the signing session
+        run: node scripts/native.mjs tauri build --features desktop --target x86_64-pc-windows-msvc --no-bundle --ci -- --locked
+      - name: Install the pinned Microsoft signing module
+        run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.20 -Scope CurrentUser -Force -Repository PSGallery
+      - name: Authenticate signing with GitHub OIDC
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign native binaries, uninstaller and NSIS installer
+        run: node scripts/native.mjs tauri bundle --features desktop --target x86_64-pc-windows-msvc --bundles nsis --ci --config "$env:RUNNER_TEMP/travel-gallery-signing.json"
+      - name: Verify final installer and sidecar signatures and timestamps
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer' }
+          & ./scripts/sign-windows.ps1 -VerifyOnly -FilePath $installers[0].FullName
+          foreach ($name in @('travel-gallery-ai', 'travel-gallery-quality', 'ffmpeg', 'ffprobe')) {
+              & ./scripts/sign-windows.ps1 -VerifyOnly -FilePath "src-tauri/binaries/$name-x86_64-pc-windows-msvc.exe"
+          }
+      - run: node scripts/release.mjs collect windows-x64
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-windows-x64
+          path: release-dist/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove temporary signing configuration
+        if: always()
+        run: Remove-Item -LiteralPath "$env:RUNNER_TEMP/travel-gallery-signing.json" -Force -ErrorAction SilentlyContinue
+
+  publish:
+    needs: [resolve, macos, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: release-*
+          path: release-dist
+          merge-multiple: true
+      - name: Verify both checksums and source commit, then publish together
+        run: node scripts/release.mjs publish
+        env:
+          GH_TOKEN: ${{ github.token }}
