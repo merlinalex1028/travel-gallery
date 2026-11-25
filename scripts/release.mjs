@@ -48,9 +48,19 @@ function run(command, args, cwd = root) {
 function requireEnvironment(names) {
   const missing = names.filter((name) => !process.env[name]?.trim());
   if (missing.length)
-    throw new Error(
-      `Missing release configuration: ${missing.join(', ')}. See docs/RELEASING.md; unsigned fallback is disabled.`,
-    );
+    throw new Error(`Missing release configuration: ${missing.join(', ')}. See docs/RELEASING.md.`);
+}
+
+export function releaseSigningMode(value = process.env.RELEASE_SIGNING ?? 'unsigned') {
+  if (!['signed', 'unsigned'].includes(value)) throw new Error('RELEASE_SIGNING must be signed or unsigned.');
+  return value;
+}
+
+export function signingDescription(platform, mode = releaseSigningMode()) {
+  if (!platforms[platform]) throw new Error(`Unsupported release platform: ${platform}`);
+  releaseSigningMode(mode);
+  if (mode === 'unsigned') return platform === 'macos-arm64' ? 'ad-hoc; not notarized' : 'unsigned';
+  return platform === 'macos-arm64' ? 'Developer ID; notarized and stapled' : 'Authenticode; timestamped';
 }
 
 export function synchronizeVersion(directory, tag) {
@@ -77,7 +87,15 @@ export function synchronizeVersion(directory, tag) {
   for (const [name, text] of updates) writeFileSync(path.join(directory, name), text);
 }
 
-export function signingConfig(directory, platform) {
+export function signingConfig(directory, platform, mode = releaseSigningMode()) {
+  releaseSigningMode(mode);
+  if (mode === 'unsigned') {
+    if (platform === 'macos-arm64')
+      return { bundle: { macOS: { signingIdentity: '-', hardenedRuntime: false } } };
+    if (platform === 'windows-x64')
+      return { bundle: { windows: { signCommand: null, certificateThumbprint: null } } };
+    throw new Error(`Unsupported release platform: ${platform}`);
+  }
   if (platform === 'macos-arm64') return { bundle: { macOS: { hardenedRuntime: true } } };
   if (platform !== 'windows-x64') throw new Error(`Unsupported release platform: ${platform}`);
   return {
@@ -129,6 +147,7 @@ export function collectArtifact(directory, tag, commit, platform) {
     commit,
     platform,
     target: spec.target,
+    signing: signingDescription(platform),
     file: filename,
     bytes: statSync(destination).size,
     sha256: sha256(destination),
@@ -152,6 +171,7 @@ export function verifyReleaseArtifacts(directory, tag, commit) {
       receipt.commit !== commit ||
       receipt.platform !== platform ||
       receipt.target !== platforms[platform].target ||
+      receipt.signing !== signingDescription(platform) ||
       receipt.file !== file ||
       receipt.bytes !== statSync(installer).size ||
       receipt.sha256 !== sha256(installer)
@@ -209,7 +229,8 @@ async function main() {
     if (!platforms[platform] || process.platform !== expected[0] || process.arch !== expected[1]) {
       throw new Error(`Wrong native release runner for ${platform}: ${process.platform}/${process.arch}`);
     }
-    if (platform === 'macos-arm64') {
+    const mode = releaseSigningMode();
+    if (mode === 'signed' && platform === 'macos-arm64') {
       requireEnvironment([
         'APPLE_CERTIFICATE',
         'APPLE_CERTIFICATE_PASSWORD',
@@ -226,7 +247,7 @@ async function main() {
       const key = path.join(process.env.RUNNER_TEMP, 'travel-gallery-notary.p8');
       writeFileSync(key, process.env.APPLE_API_PRIVATE_KEY, { mode: 0o600 });
       appendFileSync(process.env.GITHUB_ENV, `APPLE_API_KEY_PATH=${key}\n`);
-    } else {
+    } else if (mode === 'signed') {
       requireEnvironment([
         'AZURE_CLIENT_ID',
         'AZURE_TENANT_ID',
@@ -244,6 +265,7 @@ async function main() {
         );
       }
     }
+    console.log(`Release mode: ${signingDescription(platform, mode)}`);
     synchronizeVersion(root, tag);
     writeFileSync(
       path.join(process.env.RUNNER_TEMP, 'travel-gallery-signing.json'),
@@ -269,16 +291,23 @@ async function main() {
     if (release) {
       run('gh', ['release', 'upload', tag, ...files, '--clobber', ...repo]);
     } else {
+      const notes = path.join(root, 'release-dist/RELEASE-NOTES.md');
+      writeFileSync(
+        notes,
+        `Travel Gallery ${tag}\n\nmacOS arm64 DMG: ${signingDescription('macos-arm64')}.\nWindows x64 installer: ${signingDescription('windows-x64')}.\n\n${releaseSigningMode() === 'unsigned' ? 'These builds have no trusted publisher signature. macOS Gatekeeper or Windows SmartScreen may require manual approval. See the repository README for installation instructions.\n\n' : ''}Verify downloads with SHA256SUMS.txt.\nSource commit: ${commit}\n`,
+      );
       run('gh', [
         'release',
         'create',
         tag,
         ...files,
+        notes,
         '--draft',
         '--verify-tag',
         '--title',
         `Travel Gallery ${tag}`,
-        '--generate-notes',
+        '--notes-file',
+        notes,
         ...(version.includes('-') ? ['--prerelease'] : []),
         ...repo,
       ]);

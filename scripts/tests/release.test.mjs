@@ -9,6 +9,8 @@ import {
   collectArtifact,
   platforms,
   releaseVersion,
+  releaseSigningMode,
+  signingDescription,
   signingConfig,
   synchronizeVersion,
   verifyReleaseArtifacts,
@@ -104,7 +106,7 @@ test('invalid manifest layout fails before changing any version file', (t) => {
 
 test('signing config preserves spaces and uses a literal Tauri file placeholder', () => {
   const directory = path.resolve('repository with spaces');
-  const command = signingConfig(directory, 'windows-x64').bundle.windows.signCommand;
+  const command = signingConfig(directory, 'windows-x64', 'signed').bundle.windows.signCommand;
   assert.equal(command.cmd, 'pwsh');
   assert.deepEqual(command.args, [
     '-NoProfile',
@@ -114,8 +116,18 @@ test('signing config preserves spaces and uses a literal Tauri file placeholder'
     '-FilePath',
     '%1',
   ]);
-  assert.equal(signingConfig(directory, 'macos-arm64').bundle.macOS.hardenedRuntime, true);
+  assert.equal(signingConfig(directory, 'macos-arm64', 'signed').bundle.macOS.hardenedRuntime, true);
   assert.throws(() => signingConfig(directory, 'windows-arm64'));
+});
+
+test('unsigned mode requires no external signing identity and labels each platform honestly', () => {
+  const config = signingConfig('/repository', 'macos-arm64', 'unsigned');
+  assert.equal(config.bundle.macOS.signingIdentity, '-');
+  assert.equal(config.bundle.macOS.hardenedRuntime, false);
+  assert.equal(signingConfig('/repository', 'windows-x64', 'unsigned').bundle.windows.signCommand, null);
+  assert.equal(signingDescription('macos-arm64', 'unsigned'), 'ad-hoc; not notarized');
+  assert.equal(signingDescription('windows-x64', 'unsigned'), 'unsigned');
+  assert.throws(() => releaseSigningMode('false'));
 });
 
 test('requires both platform artifacts from the same tag/commit and checks file contents', (t) => {

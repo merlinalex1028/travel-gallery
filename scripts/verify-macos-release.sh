@@ -2,10 +2,6 @@
 set -euo pipefail
 
 : "${RELEASE_VERSION:?}"
-: "${APPLE_SIGNING_IDENTITY:?}"
-: "${APPLE_API_KEY_PATH:?}"
-: "${APPLE_API_KEY:?}"
-: "${APPLE_API_ISSUER:?}"
 : "${RUNNER_TEMP:?}"
 
 bundle="src-tauri/target/aarch64-apple-darwin/release/bundle"
@@ -31,6 +27,21 @@ verify_identity() {
 }
 
 codesign --verify --deep --strict --verbose=2 "$app"
+if [[ "${RELEASE_SIGNING:-unsigned}" == "unsigned" ]]; then
+    for name in travel-gallery travel-gallery-ai travel-gallery-quality ffmpeg ffprobe; do
+        binary="$app/Contents/MacOS/$name"
+        codesign --verify --strict --verbose=2 "$binary"
+        codesign --display --verbose=4 "$binary" 2>&1 | grep -Fqx 'Signature=adhoc'
+    done
+    codesign --display --verbose=4 "$app" 2>&1 | grep -Fqx 'Signature=adhoc'
+    hdiutil verify "$dmg"
+    echo 'Verified ARM App integrity and DMG; ad-hoc only, not notarized. Gatekeeper may require manual approval.'
+    exit 0
+fi
+: "${APPLE_SIGNING_IDENTITY:?}"
+: "${APPLE_API_KEY_PATH:?}"
+: "${APPLE_API_KEY:?}"
+: "${APPLE_API_ISSUER:?}"
 verify_identity "$app"
 for name in travel-gallery travel-gallery-ai travel-gallery-quality ffmpeg ffprobe; do
     binary="$app/Contents/MacOS/$name"

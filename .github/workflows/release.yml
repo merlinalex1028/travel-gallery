@@ -1,4 +1,4 @@
-name: Release signed desktop installers
+name: Release desktop installers
 
 on:
   push:
@@ -20,6 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  RELEASE_SIGNING: ${{ vars.RELEASE_SIGNING || 'unsigned' }}
   RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag || github.ref_name }}
   CARGO_BUILD_JOBS: '2'
   CARGO_INCREMENTAL: '0'
@@ -71,7 +72,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Check signing credentials and prepare release version
+      - name: Prepare release version and signing mode
         run: node scripts/release.mjs prepare macos-arm64
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -94,7 +95,11 @@ jobs:
           pnpm notices
       - name: Compile release and native workers
         run: node scripts/native.mjs tauri build --features desktop --target aarch64-apple-darwin --no-bundle --ci -- --locked
+      - name: Bundle ad-hoc App and unsigned DMG
+        if: env.RELEASE_SIGNING == 'unsigned'
+        run: node scripts/native.mjs tauri bundle --features desktop --target aarch64-apple-darwin --bundles app,dmg --ci --config "$RUNNER_TEMP/travel-gallery-signing.json"
       - name: Sign, notarize and bundle App and DMG
+        if: env.RELEASE_SIGNING == 'signed'
         run: node scripts/native.mjs tauri bundle --features desktop --target aarch64-apple-darwin --bundles app,dmg --ci --config "$RUNNER_TEMP/travel-gallery-signing.json"
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -102,7 +107,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      - name: Verify Developer ID, ARM binaries, App ticket and notarize outer DMG
+      - name: Verify ARM binaries and DMG for the selected signing mode
         run: bash scripts/verify-macos-release.sh
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -147,7 +152,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - name: Check signing configuration and prepare release version
+      - name: Prepare release version and signing mode
         run: node scripts/release.mjs prepare windows-x64
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -181,19 +186,22 @@ jobs:
       - name: Verify native media tools
         run: node scripts/smoke-media-tools.mjs --output "$env:RUNNER_TEMP/media-tools-smoke.json"
       - run: pnpm notices
-      - name: Compile release and native workers before obtaining the signing session
+      - name: Compile release and native workers
         run: node scripts/native.mjs tauri build --features desktop --target x86_64-pc-windows-msvc --no-bundle --ci -- --locked
       - name: Install the pinned Microsoft signing module
+        if: env.RELEASE_SIGNING == 'signed'
         run: Install-Module -Name ArtifactSigning -RequiredVersion 0.1.20 -Scope CurrentUser -Force -Repository PSGallery
       - name: Authenticate signing with GitHub OIDC
+        if: env.RELEASE_SIGNING == 'signed'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Sign native binaries, uninstaller and NSIS installer
+      - name: Bundle NSIS installer with the selected signing mode
         run: node scripts/native.mjs tauri bundle --features desktop --target x86_64-pc-windows-msvc --bundles nsis --ci --config "$env:RUNNER_TEMP/travel-gallery-signing.json"
       - name: Verify final installer and sidecar signatures and timestamps
+        if: env.RELEASE_SIGNING == 'signed'
         shell: pwsh
         run: |
           $installers = @(Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe')
