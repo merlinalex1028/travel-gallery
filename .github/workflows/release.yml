@@ -28,6 +28,7 @@ env:
 
 jobs:
   resolve:
+    if: github.event.deleted != true
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
