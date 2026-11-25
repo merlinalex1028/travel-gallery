@@ -103,7 +103,7 @@ fn main() {
     if let Some(root) = std::env::var_os("TRAVEL_GALLERY_MEDIA_FIXTURES") {
         let root = PathBuf::from(root);
         let manifest: Value =
-            serde_json::from_str(include_str!("../../docs/media-samples-manifest.json")).unwrap();
+            serde_json::from_str(include_str!("../../tests/fixtures/media-samples-manifest.json")).unwrap();
         for entry in manifest
             .as_array()
             .unwrap()

@@ -35,7 +35,7 @@ fn real_model_import_index_chinese_search_groups_and_cleanup_keep_sources_and_re
             .expect("set the isolated three-image probe cache"),
     );
     let manifest: Value =
-        serde_json::from_str(include_str!("../../docs/local-ai-model-probe.json")).unwrap();
+        serde_json::from_str(include_str!("../../tests/fixtures/local-ai-inputs.json")).unwrap();
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("photos");
     fs::create_dir(&source).unwrap();

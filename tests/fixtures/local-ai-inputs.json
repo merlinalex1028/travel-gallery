@@ -1,0 +1,19 @@
+{
+  "inputs": [
+    {
+      "filename": "DSCN0040.jpg",
+      "cacheFile": "410345cc1789b97a5a76de5b7b6c8f15ae0d143d24bc8c8c136209ba99ade038.jpg",
+      "sha256": "410345cc1789b97a5a76de5b7b6c8f15ae0d143d24bc8c8c136209ba99ade038"
+    },
+    {
+      "filename": "DSCN0042.jpg",
+      "cacheFile": "d094bb66a3d6c173f75c1fc155a8aa787f6b31ce4de1b1660e69f5af0e78b1fb.jpg",
+      "sha256": "d094bb66a3d6c173f75c1fc155a8aa787f6b31ce4de1b1660e69f5af0e78b1fb"
+    },
+    {
+      "filename": "native-fallback-ffv1.mkv",
+      "cacheFile": "ddbcacc8122147dfdae7fd9d16f96ab2e681598e0bc1d311d5ca354e6cae9598.jpg",
+      "sha256": "ddbcacc8122147dfdae7fd9d16f96ab2e681598e0bc1d311d5ca354e6cae9598"
+    }
+  ]
+}

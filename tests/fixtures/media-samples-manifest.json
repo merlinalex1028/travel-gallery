@@ -1,0 +1,452 @@
+[
+  {
+    "file": "exif-samples/jpg/Canon_40D.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Canon_40D.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 7958,
+    "sha256": "6bfdabd4fc33d112283c147acccc574e770bbe6fbdbc3d4da968ba7b606ecc2f"
+  },
+  {
+    "file": "exif-samples/jpg/Canon_40D_photoshop_import.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Canon_40D_photoshop_import.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 9686,
+    "sha256": "40a7aa2cc28d8544b31408e6d54c568e6b749a8faf239c7a6234b315e953b9d5"
+  },
+  {
+    "file": "exif-samples/jpg/Canon_DIGITAL_IXUS_400.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Canon_DIGITAL_IXUS_400.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 9198,
+    "sha256": "23c1ec51c075d6864862412d07b9d0f07e84237af68972c1d1293e4c28f73e4f"
+  },
+  {
+    "file": "exif-samples/jpg/Canon_PowerShot_S40.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Canon_PowerShot_S40.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 32764,
+    "sha256": "8a9d04b92d0de5836c59ede8ae421235488e4031e893e07b1fe7e4b78f6a9901"
+  },
+  {
+    "file": "exif-samples/jpg/Fujifilm_FinePix6900ZOOM.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Fujifilm_FinePix6900ZOOM.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 4278,
+    "sha256": "40afc753b4e83d72cfa1080ae7a10310e0fcbb9e4f6ebdf32c7b2f1553c83fe3"
+  },
+  {
+    "file": "exif-samples/jpg/Fujifilm_FinePix_E500.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Fujifilm_FinePix_E500.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 2241,
+    "sha256": "ffbee7b07bf267dc0fb52817f8866df647758f7d48ac93e7a73d1914fb4c74da"
+  },
+  {
+    "file": "exif-samples/jpg/Kodak_CX7530.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Kodak_CX7530.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 5958,
+    "sha256": "ac759931999a215ef78469a82bdfc382ccba96eb8d039ec9e81e53a9a419d35e"
+  },
+  {
+    "file": "exif-samples/jpg/Konica_Minolta_DiMAGE_Z3.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Konica_Minolta_DiMAGE_Z3.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 36971,
+    "sha256": "b1b914f47528384e6252fa7caabb489f123b88c81ebd62ecb8eacdf64c46fd5e"
+  },
+  {
+    "file": "exif-samples/jpg/Nikon_COOLPIX_P1.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Nikon_COOLPIX_P1.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 7068,
+    "sha256": "896b47424dc1c87154a50b40394ae887a0b0d7d830f38a9d969295995f27ef43"
+  },
+  {
+    "file": "exif-samples/jpg/Nikon_D70.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Nikon_D70.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 14034,
+    "sha256": "8e2a627b96ca71c20129161f46bda3d338407da99bd11b1055adb27af27d7ef5"
+  },
+  {
+    "file": "exif-samples/jpg/Olympus_C8080WZ.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Olympus_C8080WZ.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 3224,
+    "sha256": "3495de26279d8d1e442177ba43cef855438e3b321481b9ee2ff513decb13ed9c"
+  },
+  {
+    "file": "exif-samples/jpg/Panasonic_DMC-FZ30.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Panasonic_DMC-FZ30.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 10769,
+    "sha256": "c092a4ade7ae7b63ac13d50c3dc9da51ce2fb465caf7d1b6193d4c53f59e8ad8"
+  },
+  {
+    "file": "exif-samples/jpg/Pentax_K10D.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Pentax_K10D.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 12077,
+    "sha256": "146601c9d406410abdaa832508ee4ccddbc7ad54530e81d57962c1b7728e2e6d"
+  },
+  {
+    "file": "exif-samples/jpg/Reconyx_HC500_Hyperfire.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Reconyx_HC500_Hyperfire.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 425890,
+    "sha256": "d7ba6bc532a225c955411cb96c733a45ee39403fa973312bded7732e6f8e4b3c"
+  },
+  {
+    "file": "exif-samples/jpg/Ricoh_Caplio_RR330.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Ricoh_Caplio_RR330.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 3662,
+    "sha256": "e920d750c491f3088eeb0f31fb4659164755af11e4bbbe269430f32c3ae10928"
+  },
+  {
+    "file": "exif-samples/jpg/Samsung_Digimax_i50_MP3.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Samsung_Digimax_i50_MP3.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 45286,
+    "sha256": "e61da5ee8d7ba1726bd0a887216ed5ae7ca38c97fcf7aac11b808e1c269e1722"
+  },
+  {
+    "file": "exif-samples/jpg/Sony_HDR-HC3.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/Sony_HDR-HC3.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 3565,
+    "sha256": "4f707d9b40d423a5246748bc1e05b66c4b87e30863f7a51ce18904a7ec43a39e"
+  },
+  {
+    "file": "exif-samples/jpg/WWL_(Polaroid)_ION230.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/WWL_%28Polaroid%29_ION230.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 3998,
+    "sha256": "27532bdce8a2ad2afc1e392f4d24105867eec0b1ba126b01b3e398100daab664"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/canon-ixus.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/canon-ixus.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 128037,
+    "sha256": "b2d085bdb261cb2c56d8ba10d79175e38c0acd0d429afe19a4610eddee3b06fe"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/fujifilm-dx10.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/fujifilm-dx10.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 133074,
+    "sha256": "7d6f8f7450f12bd768384a9cae66a9cc0f626cea023431614d967f34150def0d"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/fujifilm-finepix40i.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/fujifilm-finepix40i.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 43183,
+    "sha256": "722fa6b893b01d5970d9b0761df6ee97bcee28fcd5b8e78d761738058c6b7822"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/fujifilm-mx1700.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/fujifilm-mx1700.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 100227,
+    "sha256": "f45a5d2c1c5f3ae55254239c02b569c01dd3926a64e08d4a141ce4dbff637856"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/kodak-dc210.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/kodak-dc210.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 79837,
+    "sha256": "6da5cfdcbd2d462220da5ac1c4e0df32c61f078efe92c777036cf629fe791ad5"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/kodak-dc240.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/kodak-dc240.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 81901,
+    "sha256": "6dcac4b77b55a9f5e5c0486c1f28b8b2eb65b292d3c43499cdde47ef11d367a4"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/nikon-e950.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/nikon-e950.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 164151,
+    "sha256": "7920518dec63a63074ca8e1861b61f69be687b3dd0caa3eb65cdaac4c4f43fd0"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/olympus-c960.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/olympus-c960.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 87599,
+    "sha256": "325671969a8059d2ad0036e2db8476262592add0ca5174c260fa03e9e455809d"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/olympus-d320l.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/olympus-d320l.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 61264,
+    "sha256": "6a41599dc31c73e8a9c896e2669ecfb2b03a74be04fac0dd9371ed457e50a762"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/ricoh-rdc5300.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/ricoh-rdc5300.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 87626,
+    "sha256": "16182006e2f82e60f11e0bad3964cac539bba4e58d14a3152bfe5aeb1907ab19"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/sanyo-vpcg250.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/sanyo-vpcg250.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 62096,
+    "sha256": "4723c892d4d3c200074f3a8a437b0d3e62e631e140b68e2386a54c45f0da2566"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/sanyo-vpcsx550.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/sanyo-vpcsx550.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 102448,
+    "sha256": "74401cc6e0b6bdb03b7d3a1c99a0ba3b4dd5b3ac9b7728a38f6fb3607f3360ea"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/sony-cybershot.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/sony-cybershot.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 63643,
+    "sha256": "0e69b12f261907dc9fcfb89082a6a61948db849d836673017a7e972d49184404"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/sony-d700.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/sony-d700.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 79446,
+    "sha256": "8ff0028190b36a6c4af79989b248dd5e949d289d32c5f0e005be2db45d363c98"
+  },
+  {
+    "file": "exif-samples/jpg/exif-org/sony-powershota5.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/exif-org/sony-powershota5.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 58405,
+    "sha256": "608c6c0a57205c42ca4169b5574823ed1c05e4e636a038cda64b6ef18ae5d274"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0010.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0010.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 161713,
+    "sha256": "17307b1207eb6487d7908e9d154890b46e3d2e0192369cfd3f4c33d5a5af4035"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0012.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0012.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 159137,
+    "sha256": "84d60184ac4098b7967e2ef6dae6b03fc0d98b24624d2b57412dbcd7cb864680"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0021.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0021.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 157382,
+    "sha256": "441daaea545eb8bdb1434817fc36be0baa8992a4c9ad4b089726033bfc4bc963"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0025.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0025.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 150301,
+    "sha256": "9437619d5ab1afe7740d546effe76ffe52548af68b9be72cef259d0cd1f9c90b"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0027.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0027.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 157723,
+    "sha256": "0a7864e5fa07cc118f3df1e38f31e5181350c30010e8115c536c7a8a664c9f13"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0029.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0029.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 150085,
+    "sha256": "941b9c7bfe35e0a3775f013e613748f55d1152736a74bd51e34f1b66bd646697"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0038.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0038.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 157569,
+    "sha256": "84792ae83e6ec83a5d909be82f68e51aeea67fdd6a7019993fdac4be4f6e6a72"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0040.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0040.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 152893,
+    "sha256": "14f6453d145c69c96e77c7e901cdbf58f7984c09fe4ab65ca8914c5d0d37e956"
+  },
+  {
+    "file": "exif-samples/jpg/gps/DSCN0042.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/gps/DSCN0042.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 156695,
+    "sha256": "03837b2881d4cc7e5e03191b301f082088f999e4aa59e4489193874c93c31579"
+  },
+  {
+    "file": "exif-samples/jpg/hdr/canon_hdr_NO.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/hdr/canon_hdr_NO.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 784371,
+    "sha256": "fa2127ebab1b3930c998ab262795044262f41dda7eaf0f7a21a773cff48c8696"
+  },
+  {
+    "file": "exif-samples/jpg/hdr/canon_hdr_YES.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/hdr/canon_hdr_YES.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 722875,
+    "sha256": "30603e14619140acaea51bee6fecab4a72956d1aa570e20f5b9b3d9271b8bdf4"
+  },
+  {
+    "file": "exif-samples/jpg/hdr/iphone_hdr_NO.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/hdr/iphone_hdr_NO.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 1957448,
+    "sha256": "eb81d33a9b1d1bea5d133483f918c2cc927161c0dda44c9fedfa4da87c8b1cc3"
+  },
+  {
+    "file": "exif-samples/jpg/hdr/iphone_hdr_YES.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/hdr/iphone_hdr_YES.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 1976579,
+    "sha256": "5125870f6f4a94a2329bc9f53482680772d3277399aed71c2f0636cb07870533"
+  },
+  {
+    "file": "exif-samples/jpg/long_description.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/long_description.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 7585,
+    "sha256": "1a6e4a1b7fab604027cbb52b6cde75f6966c8b9a2eb3ea0fba5e1bf59605a339"
+  },
+  {
+    "file": "exif-samples/jpg/mobile/HMD_Nokia_8.3_5G.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/mobile/HMD_Nokia_8.3_5G.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 2190194,
+    "sha256": "9be023624ccd5846beeb5b02d9b571251ef5bd8ed820389a430d114029f58eda"
+  },
+  {
+    "file": "exif-samples/jpg/mobile/jolla.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/mobile/jolla.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 811904,
+    "sha256": "ee6bc1200cf8b1b26f5b60d8294d9617e8099f6dfdd7a4757a424f332360f5e3"
+  },
+  {
+    "file": "exif-samples/jpg/orientation/landscape_1.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/orientation/landscape_1.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 139435,
+    "sha256": "87ea27ba9f24cb133251850a7ebd11427ba5e4be0a3a8534a58b00041b2db06d"
+  },
+  {
+    "file": "exif-samples/jpg/orientation/landscape_2.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/orientation/landscape_2.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 137359,
+    "sha256": "47aa72c02bd24b17db58cd8e25a57dd97f54abc9461fc1fb8bf2d8889d8494a5"
+  },
+  {
+    "file": "exif-samples/jpg/orientation/landscape_3.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/orientation/landscape_3.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 140965,
+    "sha256": "533f2e6d35a62e9bc144dbb3921a9b2105cf2498eaafb10812f197e6108bd758"
+  },
+  {
+    "file": "exif-samples/jpg/orientation/landscape_4.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/orientation/landscape_4.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 140588,
+    "sha256": "552568f6965f76c94fced5cd3286775fcc7746fbc796f7a7ab8e7c8d533b666c"
+  },
+  {
+    "file": "exif-samples/jpg/orientation/landscape_5.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/orientation/landscape_5.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 137611,
+    "sha256": "592f903706fe4b215a08adbd0ed8b62d28aad4e6532ee13777f4aa12787f54a7"
+  },
+  {
+    "file": "exif-samples/jpg/orientation/landscape_6.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/orientation/landscape_6.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 137628,
+    "sha256": "a05082c57819232106a0612f57268efab011f7a2a477483b878a2b4509cd8e59"
+  },
+  {
+    "file": "exif-samples/jpg/orientation/landscape_7.jpg",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/jpg/orientation/landscape_7.jpg",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 140645,
+    "sha256": "e5273d4ea5fddcaf27fefc7ea4162c2b3c77ad056e2d8d65a5d61787b5b15db4"
+  },
+  {
+    "file": "exif-samples/heic/IMG_5195.HEIC",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/heic/IMG_5195.HEIC",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 833284,
+    "sha256": "d9b9ebe21c4127080414f2b86f6ecb900dc2ca902be82b39be93b61ccb622680"
+  },
+  {
+    "file": "exif-samples/heic/mobile/HMD_Nokia_8.3_5G.heif",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/heic/mobile/HMD_Nokia_8.3_5G.heif",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 3019841,
+    "sha256": "c2820b3e4e0368c6f031b28b62945658a97446895cb446dfc37acdcf7109e0f5"
+  },
+  {
+    "file": "exif-samples/heic/mobile/HMD_Nokia_8.3_5G_hdr.heif",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/heic/mobile/HMD_Nokia_8.3_5G_hdr.heif",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 865787,
+    "sha256": "17fccf795b0e2b749b9f5667ffcea31e665cb6964fb104b001684c60a14acb4d"
+  },
+  {
+    "file": "exif-samples/heic/mobile/iphone_13_pro_max.HEIC",
+    "url": "https://raw.githubusercontent.com/ianare/exif-samples/5332a9cf0220e9c6c93f88a187daa90808051e10/heic/mobile/iphone_13_pro_max.HEIC",
+    "license": "CC-BY-SA-4.0; upstream contributors",
+    "size": 2182707,
+    "sha256": "e760c80eed310e4f27c092d5487693ca8e104e7cc01d25ba4828deb28f679676"
+  },
+  {
+    "file": "raw/nikon-d2h.NEF",
+    "url": "https://raw.pixls.us/getfile.php/5227/nice/Nikon - D2H - 12bit 12bit compressed (Lossy (type 1)) (3:2).NEF",
+    "license": "CC0-1.0 (raw.pixls.us sample Nikon D2H)",
+    "expectedSha256": "155edb938f884ea7372ce98d4ff5f965c3e413b43b95bc9923da6e92082cf914",
+    "sha256": "155edb938f884ea7372ce98d4ff5f965c3e413b43b95bc9923da6e92082cf914",
+    "size": 3236017
+  },
+  {
+    "file": "raw/canon-eos-40d.CR2",
+    "url": "https://raw.pixls.us/getfile.php/2101/nice/Canon - EOS 40D - RAW (3:2).CR2",
+    "license": "CC0-1.0 (raw.pixls.us sample Canon EOS 40D)",
+    "expectedSha256": "775c806358fedddec7622113a5e399a3330bd5a65e35e37ae1108d8bf58067be",
+    "sha256": "775c806358fedddec7622113a5e399a3330bd5a65e35e37ae1108d8bf58067be",
+    "size": 10931826
+  },
+  {
+    "file": "ffmpeg/canon_6d/mvi_9114.mov",
+    "url": "https://samples.ffmpeg.org/mov/canon_6d/mvi_9114.mov",
+    "license": "FFmpeg public compatibility sample; test locally only, not redistributed",
+    "sha256": "a2d509db112f78808e94b8be67e65759d02bd525144072d266cbdeff8a544b7a",
+    "size": 12645636
+  },
+  {
+    "file": "ffmpeg/P6040064a.MP4",
+    "url": "https://samples.ffmpeg.org/mov/P6040064a.MP4",
+    "license": "FFmpeg public compatibility sample; test locally only, not redistributed",
+    "sha256": "036465b35828d2048311cb6fd87e2014de906a20533475f4a638c1cd64508e83",
+    "size": 1114112
+  }
+]

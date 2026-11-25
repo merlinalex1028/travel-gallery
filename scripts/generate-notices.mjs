@@ -205,7 +205,7 @@ const inventory = {
     .filter((p) => p.supplementalReview?.status === 'needs-review' || p.nativeRuntimeReview?.status === 'needs-review')
     .map((p) => `${p.ecosystem}:${p.name}@${p.version}`),
 };
-writeFileSync('docs/dependency-licenses.json', JSON.stringify(inventory, null, 2) + '\n');
+writeFileSync('third-party/dependency-inventory.json', JSON.stringify(inventory, null, 2) + '\n');
 const header =
   'TRAVEL GALLERY — THIRD-PARTY NOTICES\n\nThis inventory includes development dependencies and platform alternatives, beyond the code distributed in any single build.\nFFmpeg/FFprobe 9.0.2 are separate bundled command-line programs under LGPL-2.1-or-later. Complete corresponding unmodified source, build configuration, verification record and license texts are in Contents/Resources/media-tools (macOS). FFmpeg is not owned by Travel Gallery. Test media are not bundled.\nMap geometry: Natural Earth, public domain. https://www.naturalearthdata.com/about/terms-of-use/\n\n';
 const table = components

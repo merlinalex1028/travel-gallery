@@ -79,7 +79,7 @@ def main():
     parser.add_argument('--self-test', action='store_true', help='Reject known bad in-memory inputs too')
     parser.add_argument('--report', type=Path)
     args = parser.parse_args()
-    paths = ['docs/dependency-licenses.json', 'public/third-party-notices.txt',
+    paths = ['third-party/dependency-inventory.json', 'public/third-party-notices.txt',
              'third-party/supplemental-notices.json', 'src-tauri/Cargo.lock', 'pnpm-lock.yaml']
     inputs = {name: (ROOT/name).read_bytes() for name in paths}
     inventory = json.loads(inputs[paths[0]])

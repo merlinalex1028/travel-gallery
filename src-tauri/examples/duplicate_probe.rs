@@ -71,7 +71,7 @@ fn main() {
     );
     fs::create_dir(&root).expect("fixture directory must be new; never overwrite samples");
     let manifest: Vec<Value> =
-        serde_json::from_str(include_str!("../../docs/media-samples-manifest.json")).unwrap();
+        serde_json::from_str(include_str!("../../tests/fixtures/media-samples-manifest.json")).unwrap();
     let originals: Vec<_> = manifest
         .iter()
         .filter(|r| r["file"].as_str().unwrap().to_lowercase().ends_with(".jpg"))

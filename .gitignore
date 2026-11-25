@@ -13,12 +13,28 @@ __pycache__/
 *.tmp
 *.bak
 
-# Keep release receipts, not the local package or QA outputs.
-/artifacts/*
-!/artifacts/build-info.json
-!/artifacts/SHA256SUMS.txt
-/docs/screenshots/
-/docs/*.ax.txt
+# Local deliveries and internal collaboration records.
+/artifacts/
+/AGENTS.md
+/HANDOFF*.md
+/DESIGN*.md
+/REDESIGN*.md
+/design-demos/
+/design-preview*.html
+/travel_gallery_prd_v1_1/
+/.planning/
+/.agent-notes/
+/.codex/
+/.claude/
+/CLAUDE.md
+/GEMINI.md
+/ANALYSIS*.md
+/RESEARCH*.md
+/PLAN*.md
+/SESSION*.md
+/docs/*
+!/docs/RELEASING.md
+!/docs/MEDIA-TOOLS.md
 *.app/
 *.dmg
 *.sqlite
