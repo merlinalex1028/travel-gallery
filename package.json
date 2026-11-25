@@ -13,6 +13,7 @@
     "test:cleanup": "python3 scripts/cleanup-test-artifacts.py",
     "test:rust": "node scripts/native.mjs cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "node scripts/native.mjs tauri",
+    "icons:generate": "node scripts/generate-app-icons.mjs",
     "desktop": "node scripts/native.mjs tauri dev --features desktop",
     "desktop:build": "node scripts/native.mjs tauri build --features desktop",
     "desktop:package:mac": "pnpm media:tools:build && pnpm notices && pnpm desktop:build && node scripts/package-macos.mjs",

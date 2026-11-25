@@ -15,7 +15,10 @@ const app = useApp();
       </div>
     </div>
     <div class="welcome-copy">
-      <div class="eyebrow">WELCOME TO TRAVEL GALLERY</div>
+      <div class="welcome-brand">
+        <img src="/logo.svg" alt="" width="48" height="48" />
+        <div class="eyebrow">WELCOME TO TRAVEL GALLERY</div>
+      </div>
       <h1>旅程结束，<br />回忆才刚刚开始。</h1>
       <p>照片、视频，还有每一次心动。<br />用一个安静的本地空间，收藏你的所有旅途。</p>
       <button class="btn primary large-btn" @click="app.importOpen = true">

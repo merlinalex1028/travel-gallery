@@ -317,7 +317,7 @@ onMounted(async () => {
         </button>
       </div>
       <div class="about-line">
-        <img src="/logo.svg" alt="" width="28" /><strong>旅图 Travel Gallery</strong
+        <img src="/logo.svg" alt="" width="36" height="36" /><strong>旅图 Travel Gallery</strong
         ><span>v{{ version }}</span
         ><span v-if="catalogVersion !== null">资料库格式 {{ catalogVersion }}</span
         ><span v-if="isDemo">浏览器演示资料库</span><ThirdPartyNotices />

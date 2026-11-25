@@ -2022,7 +2022,15 @@ kbd {
 .welcome-copy {
   max-width: 370px;
 }
-.welcome-copy > .eyebrow {
+.welcome-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.welcome-brand > img {
+  flex-shrink: 0;
+}
+.welcome-brand > .eyebrow {
   letter-spacing: 2px;
   font-size: 8px;
 }

@@ -40,7 +40,7 @@ function openSavedFilter(saved: SavedFilter) {
 <template>
   <aside class="sidebar" :class="{ collapsed: app.navCollapsed }">
     <RouterLink to="/library" class="brand"
-      ><img src="/logo.svg" :alt="t('app.name')" width="35" height="35" />
+      ><img src="/logo.svg" :alt="t('app.name')" width="40" height="40" />
       <div>
         <strong>{{ t('app.name') }}</strong
         ><span>TRAVEL GALLERY</span>
@@ -92,12 +92,7 @@ function openSavedFilter(saved: SavedFilter) {
         @click="library({ pickStates: ['unreviewed'] })"
       >
         <Icon name="circle" /><span>{{ t('nav.unreviewed') }}</span></button
-      ><button
-        v-for="saved in app.saved"
-        :key="saved.id"
-        class="nav-item"
-        @click="openSavedFilter(saved)"
-      >
+      ><button v-for="saved in app.saved" :key="saved.id" class="nav-item" @click="openSavedFilter(saved)">
         <Icon name="filter" /><span class="truncate">{{ saved.name }}</span></button
       ><RouterLink class="nav-item" to="/tags" :aria-label="t('nav.tags')" active-class="active"
         ><Icon name="tags" /><span>{{ t('nav.tags') }}</span></RouterLink

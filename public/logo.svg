@@ -1,19 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>旅图 · 星轨纸翼</title>
   <defs>
-    <linearGradient id="sky" x2="1" y2="1">
-      <stop stop-color="#a7bde3" />
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#5fa0d5" />
+      <stop offset=".48" stop-color="#a7a9e8" />
       <stop offset="1" stop-color="#c8b0e6" />
+    </linearGradient>
+    <linearGradient id="fold" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#7cb3e8" />
+      <stop offset="1" stop-color="#c5d8f4" />
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="116" fill="url(#sky)" />
-  <circle cx="358" cy="155" r="36" fill="#f0dca8" />
-  <path d="M72 352 220 156l100 139 59-75 69 132Z" fill="#fff" />
-  <path d="m220 156-42 56 42-12 39 11Z" fill="#e2edf8" />
+  <!-- Open album frame: the paper wing crosses its upper-right corner. -->
   <path
-    d="M73 380q130-40 211 0t155-2"
+    d="M88 366V170a70 70 0 0 1 70-70h139a62 62 0 0 1 59 43M420 274v102a40 40 0 0 1-40 40H105"
     fill="none"
-    stroke="#eee8fa"
-    stroke-width="19"
+    stroke="#fdf9f2"
+    stroke-width="18"
     stroke-linecap="round"
   />
+  <!-- Three broad folds keep the airplane readable in navigation and the Dock. -->
+  <path d="M139 210 397 147 285 290a8 8 0 0 1-11 1l-54-40-27 49 14-63Z" fill="#fdf9f2" />
+  <path d="m207 237 190-90-177 104-27 49Z" fill="url(#fold)" />
+  <!-- A tapered star trail and mountain ridge turn the frame into a photo album. -->
+  <path
+    d="M96 419C53 371 125 326 191 304c-44 27-78 49-94 75 62-40 147-49 212-68 61-18 103-50 126-83-26 53-77 86-135 105-79 26-167 29-204 86Z"
+    fill="#fdf9f2"
+  />
+  <path
+    d="m129 392 82-39q11-6 22 0l25 14 39-28q16-12 33-1l66 43c-43-24-72-27-112-13-54 19-103 20-155 24Z"
+    fill="#fdf9f2"
+  />
+  <path d="M96 440c90-31 209-3 286-18 20-4 33-12 43-26-6 27-23 42-49 44Z" fill="#fdf9f2" />
+  <path d="M438 188c3 16 9 23 25 27-16 4-22 11-25 27-4-16-10-23-26-27 16-4 22-11 26-27Z" fill="#f0d18b" />
 </svg>
