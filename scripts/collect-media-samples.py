@@ -17,7 +17,7 @@ root = args.destination.expanduser().resolve()
 project = Path(__file__).resolve().parent.parent
 if root == project or project in root.parents:
     raise SystemExit('Choose a temporary fixture directory outside the repository.')
-manifest = json.loads((project / 'docs/media-samples-manifest.json').read_text())
+manifest = json.loads((project / 'tests/fixtures/media-samples-manifest.json').read_text())
 root.mkdir(parents=True, exist_ok=True)
 
 def download(entry):
