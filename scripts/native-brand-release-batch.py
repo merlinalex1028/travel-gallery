@@ -118,6 +118,10 @@ def main():
     candidate = b.build(False, env)
     b.STATE['normalCandidate'] = str(candidate)
     shutil.copy2(ROOT / 'src-tauri/icons/icon.icns', candidate / 'Contents/Resources/icon.icns')
+    info_path = candidate / 'Contents/Info.plist'
+    info = plistlib.loads(info_path.read_bytes())
+    info['CFBundleIconFile'] = 'icon.icns'
+    info_path.write_bytes(plistlib.dumps(info))
     b.command('sealBrandCandidate', ['codesign', '--force', '--sign', '-',
                                     '--timestamp=none', str(candidate)], env)
     b.command('verifyBrandCandidate', ['codesign', '--verify', '--deep', '--strict', str(candidate)], env)

@@ -20,7 +20,9 @@ if (process.platform !== 'darwin') throw new Error('This packaging command requi
 if (process.env.APPLE_SIGNING_IDENTITY && process.env.APPLE_SIGNING_IDENTITY !== '-')
   throw new Error('This local-review command must not replace a Developer ID signature.');
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const bundle = process.env.TRAVEL_GALLERY_PACKAGE_APP ?? join(root, 'src-tauri/target/release/bundle/macos/Travel Gallery.app');
+const bundle =
+  process.env.TRAVEL_GALLERY_PACKAGE_APP ??
+  join(root, 'src-tauri/target/release/bundle/macos/Travel Gallery.app');
 if (!isAbsolute(bundle) || basename(bundle) !== 'Travel Gallery.app')
   throw new Error('The review bundle must be an absolute path named Travel Gallery.app.');
 if (!existsSync(bundle)) throw new Error('Build the release .app first with pnpm desktop:build.');
@@ -31,12 +33,29 @@ for (const worker of workers) {
     throw new Error('A bundled native helper is missing. Rebuild the complete application.');
 }
 const tauriConfig = JSON.parse(readFileSync(join(root, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+const bundleInfo = JSON.parse(
+  execFileSync('/usr/bin/plutil', ['-convert', 'json', '-o', '-', join(bundle, 'Contents/Info.plist')], {
+    encoding: 'utf8',
+  }),
+);
+const iconFile = bundleInfo.CFBundleIconFile;
+if (
+  typeof iconFile !== 'string' ||
+  basename(iconFile) !== iconFile ||
+  !existsSync(join(bundle, 'Contents/Resources', iconFile))
+)
+  throw new Error('The application must declare its bundled icon so Finder and the Dock use the same brand.');
+const applicationIconHash = createHash('sha256')
+  .update(readFileSync(join(bundle, 'Contents/Resources', iconFile)))
+  .digest('hex');
 const { minimumSystemVersion } = tauriConfig.bundle.macOS;
 const nativeMinimumSystemVersions = assertMacNativeTargets(bundle, process.arch, minimumSystemVersion);
 const mediaResources = join(bundle, 'Contents/Resources/media-tools');
 const mediaBuild = JSON.parse(readFileSync(join(mediaResources, 'build-info.json'), 'utf8'));
 const mediaProfile = JSON.parse(readFileSync(join(root, 'third-party/media-tools/profile.json'), 'utf8'));
-const sourceHash = createHash('sha256').update(readFileSync(join(mediaResources, mediaProfile.archive))).digest('hex');
+const sourceHash = createHash('sha256')
+  .update(readFileSync(join(mediaResources, mediaProfile.archive)))
+  .digest('hex');
 if (sourceHash !== mediaProfile.sha256 || mediaBuild.sourceSha256 !== sourceHash)
   throw new Error('Bundled media-tool corresponding source differs from the pinned release.');
 const signature = spawnSync('codesign', ['-dv', '--verbose=2', bundle], { encoding: 'utf8' });
@@ -110,6 +129,7 @@ try {
         extractedBundleVerification:
           'ditto extraction, codesign --verify --deep --strict, main executable and all four native helpers SHA-256 matches passed',
         executableSha256: executableHash,
+        applicationIconSha256: applicationIconHash,
         aiWorkerSha256: workerHashes['travel-gallery-ai'],
         qualityWorkerSha256: workerHashes['travel-gallery-quality'],
         ffmpegSha256: workerHashes.ffmpeg,
