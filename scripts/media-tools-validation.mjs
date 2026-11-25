@@ -1,4 +1,10 @@
 // Shared build checks. No source archive is executed before its pinned digest is checked.
+// PE private headers include large unwind tables, well beyond Node's 1 MiB default.
+export const mediaToolCaptureOptions = Object.freeze({
+  encoding: 'utf8',
+  maxBuffer: 32 * 1024 * 1024,
+});
+
 export function validateSourcePaths(listing, version) {
   const entries = listing.trim().split(/\r?\n/);
   if (

@@ -16,6 +16,7 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  mediaToolCaptureOptions,
   validateSourcePaths,
   validateLocalOnlyTool,
   windowsSystemImports,
@@ -89,7 +90,8 @@ function execute(command, args, options = {}) {
   );
 }
 const run = (command, args, options = {}) => execute(command, args, { stdio: 'inherit', ...options });
-const output = (command, args, options = {}) => execute(command, args, { encoding: 'utf8', ...options });
+const output = (command, args, options = {}) =>
+  execute(command, args, { ...mediaToolCaptureOptions, ...options });
 const binaryName = (name) => `${name}${windows ? '.exe' : ''}`;
 const infoPath = path.join(cache, 'build-info.json');
 let info = existsSync(infoPath) ? JSON.parse(readFileSync(infoPath, 'utf8')) : null;

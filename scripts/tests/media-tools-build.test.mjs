@@ -1,10 +1,29 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
 import {
+  mediaToolCaptureOptions,
   validateSourcePaths,
   windowsSystemImports,
   validateLocalOnlyTool,
 } from '../media-tools-validation.mjs';
+
+test('captures verbose PE headers beyond 1 MiB and still checks trailing DLL imports', () => {
+  const dump = (dll) =>
+    execFileSync(
+      process.execPath,
+      [
+        '-e',
+        'process.stdout.write("unwind table entry\\n".repeat(120000) + "\\n DLL Name: " + process.argv[1] + "\\n")',
+        dll,
+      ],
+      mediaToolCaptureOptions,
+    );
+  const valid = dump('KERNEL32.dll');
+  assert.ok(Buffer.byteLength(valid) > 1024 * 1024);
+  assert.deepEqual(windowsSystemImports(valid), ['KERNEL32.dll']);
+  assert.throws(() => windowsSystemImports(dump('libwinpthread-1.dll')), /Non-system Windows DLL/);
+});
 
 test('rejects archive traversal, Windows separators and unexpected roots before configure', () => {
   validateSourcePaths('ffmpeg-9.0.2/\nffmpeg-9.0.2/libavcodec/a.c\n', '9.0.2');
