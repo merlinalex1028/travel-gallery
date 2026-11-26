@@ -8,6 +8,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
+    "site:build": "node scripts/build-site.mjs",
+    "site:preview": "python3 -m http.server 4173 --bind 127.0.0.1 --directory dist",
     "test": "vitest run",
     "test:budget": "python3 scripts/check-test-artifact-budget.py",
     "test:cleanup": "python3 scripts/cleanup-test-artifacts.py",
