@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { usePreview } from '../composables/preview';
 import { api, errorMessage, resourceUrl } from '../services/api';
@@ -24,8 +24,16 @@ const app = useApp(),
   drag = shallowRef<{ x: number; y: number; startX: number; startY: number } | null>(null),
   videoUrl = shallowRef<string | null>(null),
   videoReason = shallowRef(''),
+  playbackAssetId = shallowRef<string | null>(null),
   resolvingVideo = shallowRef(false);
 let playbackAttempt = 0;
+let liveHovering = false;
+const isLivePhoto = computed(
+  () =>
+    props.asset.mediaKind === 'image' &&
+    props.asset.linkedMediaType === 'live_photo' &&
+    (props.asset.linkedMediaCount ?? 0) > 0,
+);
 const originalUrl = shallowRef<string | null>(null),
   originalReason = shallowRef('');
 const url = computed(() => screen.url.value || small.url.value),
@@ -36,6 +44,7 @@ const needsAuthorization = computed(
   () => app.sources.find((source) => source.id === props.asset.sourceId)?.requiresAuthorization ?? false,
 );
 const stage = useTemplateRef<HTMLElement>('stage'),
+  player = useTemplateRef<HTMLVideoElement>('player'),
   bounds = shallowRef({ width: 1, height: 1 });
 const observer = new ResizeObserver(([entry]) => {
   if (entry) bounds.value = { width: entry.contentRect.width, height: entry.contentRect.height };
@@ -43,10 +52,8 @@ const observer = new ResizeObserver(([entry]) => {
 onMounted(() => {
   if (stage.value) observer.observe(stage.value);
 });
-onUnmounted(() => {
-  playbackAttempt++;
-  observer.disconnect();
-});
+onBeforeUnmount(stopPlayback);
+onUnmounted(() => observer.disconnect());
 watch(
   [() => props.asset.id, () => props.actualPixels],
   async ([id, pixels], _, cleanup) => {
@@ -78,13 +85,11 @@ const geometry = computed(() =>
   ),
 );
 watch(
-  () => props.asset.id,
+  [() => props.asset.id, isLivePhoto, () => props.asset.linkedMediaCount],
   () => {
-    playbackAttempt++;
+    liveHovering = false;
+    stopPlayback();
     pan.value = { x: 0, y: 0 };
-    videoUrl.value = null;
-    videoReason.value = '';
-    resolvingVideo.value = false;
   },
   { flush: 'sync' },
 );
@@ -115,9 +120,20 @@ async function play() {
   const attempt = ++playbackAttempt;
   videoReason.value = '';
   videoUrl.value = null;
+  playbackAssetId.value = isLivePhoto.value ? null : id;
   resolvingVideo.value = true;
   try {
-    const r = await api('resolve_playback', { assetId: id });
+    if (isLivePhoto.value) {
+      const links = await api('get_media_links', { assetId: id });
+      if (attempt !== playbackAttempt) return;
+      const confirmed = links.filter(
+        (link) => link.confirmed && link.linkType === 'live_photo' && link.primaryAssetId === id,
+      );
+      if (confirmed.length !== 1)
+        throw new Error('配对已变化或存在多个动态片段，请在详情的「配套素材」中检查并选择。');
+      playbackAssetId.value = confirmed[0]!.secondaryAssetId;
+    }
+    const r = await api('resolve_playback', { assetId: playbackAssetId.value! });
     if (attempt === playbackAttempt) videoUrl.value = resourceUrl(r.resourceUrl);
   } catch (e) {
     if (attempt === playbackAttempt) videoReason.value = errorMessage(e);
@@ -125,7 +141,39 @@ async function play() {
     if (attempt === playbackAttempt) resolvingVideo.value = false;
   }
 }
+function releaseVideo() {
+  if (!player.value) return;
+  player.value.pause();
+  player.value.removeAttribute('src');
+  player.value.load();
+}
+function stopPlayback() {
+  playbackAttempt++;
+  releaseVideo();
+  videoUrl.value = null;
+  videoReason.value = '';
+  playbackAssetId.value = null;
+  resolvingVideo.value = false;
+}
+function enterLivePhoto(event: PointerEvent) {
+  if (event.pointerType === 'touch' || liveHovering) return;
+  liveHovering = true;
+  void play();
+}
+function leaveLivePhoto() {
+  liveHovering = false;
+  // Keep an actual decode/source error actionable after moving toward its retry controls.
+  if (!videoReason.value) stopPlayback();
+}
+function activateLivePhoto(event: MouseEvent) {
+  // Mouse entry already starts this visit. A click must not replay or interrupt it.
+  // Native keyboard clicks (detail 0) and touch taps remain available.
+  if (event.detail > 0 && liveHovering) return;
+  if (videoUrl.value || resolvingVideo.value) stopPlayback();
+  else void play();
+}
 function videoFailed() {
+  releaseVideo();
   videoUrl.value = null;
   videoReason.value = '内嵌播放失败，可能是本机不支持此格式，或原文件暂时无法读取。';
 }
@@ -154,16 +202,19 @@ function reloadPreviews() {
   >
     <video
       v-if="videoUrl"
+      ref="player"
       :key="asset.id"
       :src="videoUrl"
       :poster="url ?? undefined"
-      controls
+      :controls="!isLivePhoto"
+      :muted="isLivePhoto"
       autoplay
       playsinline
       tabindex="0"
-      :aria-label="`播放 ${asset.filename}`"
+      :aria-label="isLivePhoto ? `${asset.filename} 的 Live Photo 动态片段` : `播放 ${asset.filename}`"
       class="stage-video"
       @error="videoFailed"
+      @ended="isLivePhoto && stopPlayback()"
     /><img
       v-else-if="url"
       :key="asset.id"
@@ -198,9 +249,32 @@ function reloadPreviews() {
         </button>
       </div>
     </div>
-    <p v-if="usingSmall" class="stage-preview-status">
+    <p v-if="usingSmall" class="stage-preview-status" :class="{ 'with-live-photo': isLivePhoto }">
       {{ screen.loading.value ? '正在加载清晰预览…' : '正在显示缩略预览' }}
     </p>
+    <button
+      v-if="isLivePhoto"
+      type="button"
+      class="live-photo-badge"
+      :class="{ playing: !!videoUrl }"
+      aria-label="Live Photo：悬停播放动态片段"
+      :aria-pressed="!!videoUrl"
+      :aria-busy="resolvingVideo"
+      title="移入播放一次，移开停止；也可按 Enter 或轻点播放"
+      @pointerdown.stop
+      @pointerenter="enterLivePhoto"
+      @pointerleave="leaveLivePhoto"
+      @pointercancel="leaveLivePhoto"
+      @blur="leaveLivePhoto"
+      @click="activateLivePhoto"
+    >
+      <svg class="live-photo-symbol" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-dasharray="1 2" />
+        <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" />
+        <path d="m10 8 6 4-6 4Z" fill="currentColor" />
+      </svg>
+      <span>LIVE</span>
+    </button>
     <button
       v-if="asset.mediaKind === 'video' && !videoUrl && !videoReason"
       class="video-play"
@@ -216,12 +290,24 @@ function reloadPreviews() {
         v-if="needsAuthorization || asset.fileState === 'missing' || asset.fileState === 'offline'"
         class="video-fallback notice"
       >
-        {{ needsAuthorization ? '来源需要重新授权' : asset.fileState === 'offline' ? '原文件来源离线' : '原文件缺失' }}，已有预览和整理记录保留。
-        <RouterLink class="text-btn" to="/sources">{{ needsAuthorization ? '重新授权来源' : '重新定位来源' }}</RouterLink>
+        {{
+          needsAuthorization
+            ? '来源需要重新授权'
+            : asset.fileState === 'offline'
+              ? '原文件来源离线'
+              : '原文件缺失'
+        }}，已有预览和整理记录保留。
+        <RouterLink class="text-btn" to="/sources">{{
+          needsAuthorization ? '重新授权来源' : '重新定位来源'
+        }}</RouterLink>
       </div>
       <div v-if="videoReason" class="video-fallback notice" role="status">
         <Icon name="warning" />{{ videoReason }}<button class="text-btn" @click="play">重试播放</button
-        ><button class="text-btn" @click="app.perform(() => api('open_asset', { assetId: asset.id }))">
+        ><button
+          v-if="playbackAssetId"
+          class="text-btn"
+          @click="app.perform(() => api('open_asset', { assetId: playbackAssetId! }))"
+        >
           使用系统应用打开
         </button>
       </div>
@@ -229,6 +315,37 @@ function reloadPreviews() {
   </div>
 </template>
 <style scoped>
+.live-photo-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 9px 4px 6px;
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 999px;
+  color: #343941;
+  background: rgb(255 255 255 / 82%);
+  backdrop-filter: blur(12px);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+.live-photo-badge.playing {
+  color: #172b42;
+  background: #d8e8f8;
+}
+.live-photo-symbol {
+  width: 20px;
+  height: 20px;
+}
+.stage-preview-status.with-live-photo {
+  top: 52px;
+}
 .stage-notices {
   position: absolute;
   bottom: 10px;
