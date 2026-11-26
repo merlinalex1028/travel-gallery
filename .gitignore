@@ -15,7 +15,6 @@ __pycache__/
 
 # Local deliveries and internal collaboration records.
 /artifacts/
-/AGENTS.md
 /HANDOFF*.md
 /DESIGN*.md
 /REDESIGN*.md
