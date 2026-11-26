@@ -29,7 +29,7 @@ export default {
   'nav.jobs': '任务中心',
   'nav.settings': '设置',
   'nav.deviceOnly': '只在你的设备上',
-  'nav.offlinePromise': '纯离线 · 原图始终安全',
+  'nav.offlinePromise': '本地整理 · 原图始终安全',
   'source.online': '在线',
   'source.offline': '离线',
   'review.unreviewed': '未处理',

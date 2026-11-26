@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { verifyUpdateSignature } from '../update-signature.mjs';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,10 +16,28 @@ import {
   signingConfig,
   synchronizeVersion,
   verifyReleaseArtifacts,
+  updateAssetName,
 } from '../release.mjs';
 
 const commit = 'a'.repeat(40);
 const tag = 'v1.2.3-beta.1';
+const keys = generateKeyPairSync('ed25519');
+const id = Buffer.alloc(8, 42);
+const rawPublic = keys.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32);
+const publicKey = Buffer.from(
+  `untrusted comment: test key\n${Buffer.concat([Buffer.from('Ed'), id, rawPublic]).toString('base64')}\n`,
+).toString('base64');
+function signature(bytes, version = releaseVersion(tag), prehashed = true) {
+  const sig = sign(
+    null,
+    prehashed ? createHash('blake2b512').update(bytes).digest() : bytes,
+    keys.privateKey,
+  );
+  const trusted = `timestamp:1\tfile:fixture\tversion:${version}`;
+  return Buffer.from(
+    `untrusted comment: fixture\n${Buffer.concat([Buffer.from(prehashed ? 'ED' : 'Ed'), id, sig]).toString('base64')}\ntrusted comment: ${trusted}\n${sign(null, Buffer.concat([sig, Buffer.from(trusted)]), keys.privateKey).toString('base64')}\n`,
+  ).toString('base64');
+}
 
 function fixture(t) {
   const directory = mkdtempSync(path.join(tmpdir(), 'travel-gallery-release-test-'));
@@ -38,7 +58,14 @@ function installers(directory) {
       `src-tauri/target/${spec.target}/release/bundle/${spec.folder}/installer${spec.extension}`,
       `fixture:${platform}`,
     );
-    collectArtifact(directory, tag, commit, platform);
+    const updatePath =
+      platform === 'macos-arm64'
+        ? `src-tauri/target/${spec.target}/release/bundle/macos/fixture.app.tar.gz`
+        : `src-tauri/target/${spec.target}/release/bundle/${spec.folder}/installer${spec.extension}`;
+    const bytes = Buffer.from(`fixture:${platform}`);
+    write(directory, updatePath, bytes);
+    write(directory, `${updatePath}.sig`, signature(bytes));
+    collectArtifact(directory, tag, commit, platform, publicKey);
   }
   return path.join(directory, 'release-dist');
 }
@@ -133,13 +160,13 @@ test('unsigned mode requires no external signing identity and labels each platfo
 test('requires both platform artifacts from the same tag/commit and checks file contents', (t) => {
   const directory = fixture(t);
   const output = installers(directory);
-  assert.equal(verifyReleaseArtifacts(output, tag, commit).length, 5);
+  assert.equal(verifyReleaseArtifacts(output, tag, commit, publicKey).length, 9);
   const sums = readFileSync(path.join(output, 'SHA256SUMS.txt'), 'utf8');
-  assert.equal(sums.trim().split('\n').length, 4);
+  assert.equal(sums.trim().split('\n').length, 8);
   assert.ok(sums.includes(assetName(tag, 'macos-arm64')));
-  assert.throws(() => verifyReleaseArtifacts(output, tag, 'b'.repeat(40)), /provenance/);
+  assert.throws(() => verifyReleaseArtifacts(output, tag, 'b'.repeat(40), publicKey), /provenance/);
   writeFileSync(path.join(output, assetName(tag, 'windows-x64')), 'tampered installer');
-  assert.throws(() => verifyReleaseArtifacts(output, tag, commit), /provenance/);
+  assert.throws(() => verifyReleaseArtifacts(output, tag, commit, publicKey), /provenance/);
 });
 
 test('rejects a missing platform, mixed receipt target, ambiguous or empty installers', (t) => {
@@ -149,9 +176,9 @@ test('rejects a missing platform, mixed receipt target, ambiguous or empty insta
   const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
   receipt.target = 'aarch64-pc-windows-msvc';
   writeFileSync(receiptPath, JSON.stringify(receipt));
-  assert.throws(() => verifyReleaseArtifacts(output, tag, commit), /provenance/);
+  assert.throws(() => verifyReleaseArtifacts(output, tag, commit, publicKey), /provenance/);
   rmSync(receiptPath);
-  assert.throws(() => verifyReleaseArtifacts(output, tag, commit), /ENOENT/);
+  assert.throws(() => verifyReleaseArtifacts(output, tag, commit, publicKey), /ENOENT/);
   const spec = platforms['macos-arm64'];
   const folder = `src-tauri/target/${spec.target}/release/bundle/dmg/`;
   write(directory, `${folder}stale.dmg`, 'stale');
@@ -159,6 +186,69 @@ test('rejects a missing platform, mixed receipt target, ambiguous or empty insta
   rmSync(path.join(directory, folder, 'stale.dmg'));
   write(directory, `${folder}installer.dmg`, '');
   assert.throws(() => collectArtifact(directory, tag, commit, 'macos-arm64'), /empty/);
+});
+
+test('manifest includes both official targets and rejects tampered or missing update artifacts', (t) => {
+  const directory = fixture(t),
+    output = installers(directory);
+  verifyReleaseArtifacts(output, tag, commit, publicKey);
+  const manifest = JSON.parse(readFileSync(path.join(output, 'latest.json'), 'utf8'));
+  assert.equal(manifest.version, releaseVersion(tag));
+  assert.deepEqual(Object.keys(manifest.platforms), ['darwin-aarch64', 'windows-x86_64']);
+  for (const [target, entry] of Object.entries(manifest.platforms)) {
+    const platform = target === 'darwin-aarch64' ? 'macos-arm64' : 'windows-x64';
+    assert.equal(
+      entry.url,
+      `https://github.com/merlinalex1028/travel-gallery/releases/download/${tag}/${updateAssetName(tag, platform)}`,
+    );
+    verifyUpdateSignature(
+      readFileSync(path.join(output, updateAssetName(tag, platform))),
+      entry.signature,
+      publicKey,
+      manifest.version,
+    );
+  }
+  const sigPath = path.join(output, `${updateAssetName(tag, 'macos-arm64')}.sig`);
+  writeFileSync(sigPath, 'corrupted');
+  assert.throws(() => verifyReleaseArtifacts(output, tag, commit, publicKey), /signature/);
+  rmSync(sigPath);
+  assert.throws(() => verifyReleaseArtifacts(output, tag, commit, publicKey), /ENOENT/);
+});
+
+test('update signatures bind the payload, public key, trusted comment and release version', () => {
+  const bytes = Buffer.from('payload');
+  for (const prehashed of [true, false]) {
+    const sig = signature(bytes, '1.0.0', prehashed);
+    verifyUpdateSignature(bytes, sig, publicKey, '1.0.0');
+    assert.throws(() => verifyUpdateSignature(Buffer.from('changed'), sig, publicKey, '1.0.0'), /signature/);
+    assert.throws(() => verifyUpdateSignature(bytes, sig, publicKey, '1.0.1'), /signature/);
+    assert.throws(() => verifyUpdateSignature(bytes, sig, 'bad key', '1.0.0'), /signature/);
+    const changed = Buffer.from(
+      Buffer.from(sig, 'base64').toString().replace('version:1.0.0', 'version:1.0.1'),
+    ).toString('base64');
+    assert.throws(() => verifyUpdateSignature(bytes, changed, publicKey, '1.0.1'), /signature/);
+  }
+});
+
+test('signature verifier accepts a version-bound signature produced by the installed Tauri CLI', (t) => {
+  const directory = fixture(t),
+    key = path.join(directory, 'test.key'),
+    payload = path.join(directory, 'payload');
+  // All key material stays in the temporary fixture and is removed by t.after.
+  const cli = path.resolve('node_modules/@tauri-apps/cli/tauri.js');
+  execFileSync(process.execPath, [cli, 'signer', 'generate', '--ci', '-p', '', '-w', key], { stdio: 'pipe' });
+  writeFileSync(payload, 'interoperability fixture');
+  execFileSync(
+    process.execPath,
+    [cli, 'signer', 'sign', '-f', key, '-p', '', '--app-version', '1.0.0', payload],
+    { stdio: 'pipe' },
+  );
+  verifyUpdateSignature(
+    readFileSync(payload),
+    readFileSync(`${payload}.sig`, 'utf8'),
+    readFileSync(`${key}.pub`, 'utf8'),
+    '1.0.0',
+  );
 });
 
 test('CLI preparation refuses to modify a local checkout', () => {

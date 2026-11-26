@@ -76,6 +76,7 @@ jobs:
       - name: Prepare release version and signing mode
         run: node scripts/release.mjs prepare macos-arm64
         env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -99,10 +100,15 @@ jobs:
       - name: Bundle ad-hoc App and unsigned DMG
         if: env.RELEASE_SIGNING == 'unsigned'
         run: node scripts/native.mjs tauri bundle --features desktop --target aarch64-apple-darwin --bundles app,dmg --ci --config "$RUNNER_TEMP/travel-gallery-signing.json"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Sign, notarize and bundle App and DMG
         if: env.RELEASE_SIGNING == 'signed'
         run: node scripts/native.mjs tauri bundle --features desktop --target aarch64-apple-darwin --bundles app,dmg --ci --config "$RUNNER_TEMP/travel-gallery-signing.json"
         env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -156,6 +162,7 @@ jobs:
       - name: Prepare release version and signing mode
         run: node scripts/release.mjs prepare windows-x64
         env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -201,6 +208,9 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Bundle NSIS installer with the selected signing mode
         run: node scripts/native.mjs tauri bundle --features desktop --target x86_64-pc-windows-msvc --bundles nsis --ci --config "$env:RUNNER_TEMP/travel-gallery-signing.json"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - name: Verify final installer and sidecar signatures and timestamps
         if: env.RELEASE_SIGNING == 'signed'
         shell: pwsh

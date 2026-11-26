@@ -2,16 +2,41 @@
 
 [GitHub Actions 工作流](../.github/workflows/release.yml)在推送 `vMAJOR.MINOR.PATCH` 标签时构建 macOS arm64 DMG 和 Windows x64 NSIS 安装程序，也支持 GitHub Release 的 `published` 事件和手动输入已有标签。
 
-## 默认无需签名凭据
+## 默认无需系统签名凭据
 
 当前默认 `RELEASE_SIGNING=unsigned`：
 
 - macOS App 使用 ad-hoc 完整性签名，不包含 Developer ID 身份，不提交 Apple 公证。
 - Windows 安装程序不做 Authenticode 签名，继续包含离线 WebView2 安装器。
 - 两端安装包验证完成后一起上传，并附构建版本、源码 commit 和 `SHA256SUMS.txt`。Release 说明与 JSON 构建记录明确标注签名状态。
-- macOS Gatekeeper 和 Windows SmartScreen 可能要求手动确认，详见 [README 安装说明](../README.md#安装)。
+- macOS Gatekeeper 和 Windows SmartScreen 可能要求手动确认，详见 [README 安装说明](../README.md#安装与首次启动)。
 
-无需配置 Secrets。仓库变量 `RELEASE_SIGNING` 未设置或设置为 `unsigned` 即可运行。签名 job 使用 `release-signing` Environment；可在 Settings → Environments 管理标签权限。无需人工审批时不要为该 Environment 添加 required reviewers。
+无需 Apple Developer 或 Windows 代码签名身份，但**必须配置下文的免费更新签名 Secret**。仓库变量 `RELEASE_SIGNING` 未设置或设置为 `unsigned` 即为上述系统签名模式。签名 job 使用 `release-signing` Environment；可在 Settings → Environments 管理标签权限。无需人工审批时不要为该 Environment 添加 required reviewers。
+
+## 应用内更新签名（必需，免费）
+
+应用使用 [Tauri 官方更新插件](https://v2.tauri.app/plugin/updater/)，内置公钥位于 `src-tauri/tauri.conf.json` 的 `plugins.updater.pubkey`。更新包签名完全免费，不需要 Apple Developer；它只证明附件完整性和来源，不替代系统代码签名或公证。
+
+在 `release-signing` Environment 或仓库 Actions Secrets 中配置：
+
+| Secret                               | 内容                                                                        |
+| ------------------------------------ | --------------------------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`          | 与仓库内置公钥匹配的 Tauri 私钥文件内容（不要填 runner 无法访问的本机路径） |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 私钥密码；无密码时留空                                                      |
+
+私钥保存在仓库外，切勿提交到 Git、日志或 Release。维护者必须离线备份同一私钥；丢失后无法向信任旧公钥的已安装客户端继续签发更新。不要为重试重新生成密钥。首次发布前配置 Secret，缺失时工作流会在构建前失败；密钥不匹配或签名、版本校验失败时不发布。
+
+为独立维护的 fork 初始化**自己的**密钥时，在仓库外选择安全路径执行（不要覆盖已有生产密钥）：
+
+```sh
+pnpm tauri signer generate --ci -w /secure/location/travel-gallery.key
+```
+
+将 `.pub` 文件内容写入 `plugins.updater.pubkey`，同时修改该配置的 GitHub 更新端点、`scripts/release.mjs` 中的仓库下载 URL 以及 `src-tauri/src/updater.rs` 中的来源限制。将私钥内容及密码存入 Secrets。发布 CI 的临时 bundle 配置启用 `createUpdaterArtifacts`；日常本地打包不强制生成更新附件，不要求私钥。
+
+macOS 更新附件是 `.app.tar.gz`（DMG 继续用于首次安装）；Windows 直接复用 NSIS `.exe`。两平台同时生成 `.sig`，发布脚本在收集与发布前分别验证 Minisign 的附件签名、可信注释及签名绑定的版本，并生成 `latest.json` 和校验值。客户端再次验证签名和绑定版本后才允许安装，前端不接受任意下载 URL、安装路径或公钥。
+
+客户端通过 `releases/latest/download/latest.json` 跟随**正式版本**，不自动获取 prerelease。尚无正式更新清单时会提示检查失败；预发布包可以手动下载，不要将旧版缺少清单误报为「已是最新版」。包含此功能之前的客户端需先手动升级一次。更新安装在独占资料库维护锁内进行，若仍有运行、排队、暂停任务或资料库操作则拒绝安装；不会重置正式资料库。macOS 需从可写的已安装 App 启动；Windows 使用插件默认的 passive 安装模式并重新打开应用，系统可能要求授权。
 
 ## 发布和重试
 
@@ -29,6 +54,10 @@ git push origin v0.1.0-rc.2
 ```text
 Travel-Gallery-0.1.0-rc.2-macOS-arm64.dmg
 Travel-Gallery-0.1.0-rc.2-Windows-x64-setup.exe
+Travel-Gallery-0.1.0-rc.2-macOS-arm64.app.tar.gz
+Travel-Gallery-0.1.0-rc.2-macOS-arm64.app.tar.gz.sig
+Travel-Gallery-0.1.0-rc.2-Windows-x64-setup.exe.sig
+latest.json
 macos-arm64.json
 windows-x64.json
 SHA256SUMS.txt

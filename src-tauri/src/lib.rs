@@ -4,6 +4,10 @@ pub mod catalog;
 pub mod db;
 #[cfg(feature = "desktop")]
 pub mod desktop;
+#[cfg(feature = "desktop")]
+mod updater;
+#[cfg(any(feature = "desktop", test))]
+mod update_safety;
 #[cfg(any(feature = "desktop", test))]
 mod exit_guard;
 #[cfg(feature = "performance-probe")]

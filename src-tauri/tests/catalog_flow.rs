@@ -4202,7 +4202,8 @@ fn settings_reads_supply_defaults_without_rewriting_legacy_preferences() {
     assert_eq!(defaults["autoAdvance"], true);
     assert_eq!(defaults["density"], 220);
     assert_eq!(defaults["theme"], "system");
-    assert_eq!(defaults.as_object().unwrap().len(), 10);
+    assert_eq!(defaults["autoCheckUpdates"], false);
+    assert_eq!(defaults.as_object().unwrap().len(), 11);
     let c = f.cat.connection().unwrap();
     assert!(db::setting(&c, "preferences").unwrap().is_none());
     let partial = json!({"theme":"dark","fontSize":17});
@@ -4212,8 +4213,19 @@ fn settings_reads_supply_defaults_without_rewriting_legacy_preferences() {
     assert_eq!(loaded["fontSize"], 17);
     assert_eq!(loaded["autoAdvance"], true);
     assert_eq!(loaded["cacheLimitGb"], 5);
-    assert_eq!(loaded.as_object().unwrap().len(), 10);
+    assert_eq!(loaded["autoCheckUpdates"], false);
+    assert_eq!(loaded.as_object().unwrap().len(), 11);
     assert_eq!(serde_json::from_str::<Value>(&db::setting(&c, "preferences").unwrap().unwrap()).unwrap(), partial);
+}
+
+#[test]
+fn automatic_update_preference_is_boolean_and_persisted() {
+    let f = Fixture::new();
+    assert!(f.cat.call("save_settings", json!({"autoCheckUpdates":"true"})).is_err());
+    f.cat.call("save_settings", json!({"autoCheckUpdates":true})).unwrap();
+    assert_eq!(f.cat.call("get_settings", json!({})).unwrap()["autoCheckUpdates"], true);
+    f.cat.call("save_settings", json!({"autoCheckUpdates":false})).unwrap();
+    assert_eq!(f.cat.call("get_settings", json!({})).unwrap()["autoCheckUpdates"], false);
 }
 
 #[test]

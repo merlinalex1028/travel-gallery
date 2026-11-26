@@ -32,7 +32,7 @@ export default {
   'nav.jobs': 'Jobs',
   'nav.settings': 'Settings',
   'nav.deviceOnly': 'On your device',
-  'nav.offlinePromise': 'Offline · Originals stay safe',
+  'nav.offlinePromise': 'Local library · Originals stay safe',
   'source.online': 'Online',
   'source.offline': 'Offline',
   'review.unreviewed': 'Unreviewed',

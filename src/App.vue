@@ -12,6 +12,7 @@ import { native } from './services/api';
 import MainNav from './components/MainNav.vue';
 import TopBar from './components/TopBar.vue';
 import GlobalDialogs from './components/GlobalDialogs.vue';
+import AppUpdates from './components/AppUpdates.vue';
 import EmptyState from './components/EmptyState.vue';
 import Icon from './components/Icon.vue';
 const app = useApp(),
@@ -117,6 +118,6 @@ onUnmounted(() => {
             ><span v-else><Icon name="shield" :size="12" />{{ t('app.localRecords') }}</span>
           </footer>
         </div></template
-      ><RouterView v-else /><GlobalDialogs /></div
+      ><RouterView v-else /><GlobalDialogs /><AppUpdates /></div
   ></ElConfigProvider>
 </template>

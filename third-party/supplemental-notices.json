@@ -1441,6 +1441,126 @@
           "file": "third-party/licenses/4dbda04344456f09.txt"
         }
       ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "jni",
+      "version": "0.22.4",
+      "license": "MIT OR Apache-2.0",
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "crates/jni"
+      },
+      "review": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "files": [
+        {
+          "repository": "jni-rs/jni-rs",
+          "commit": "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+          "pathInRepository": "LICENSE-APACHE",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "file": "third-party/licenses/a60eea8175145316.txt"
+        },
+        {
+          "repository": "jni-rs/jni-rs",
+          "commit": "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+          "pathInRepository": "LICENSE-MIT",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-MIT",
+          "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+          "file": "third-party/licenses/fea1d5bf3dd71605.txt"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "jni-macros",
+      "version": "0.22.4",
+      "license": "MIT OR Apache-2.0",
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "crates/jni-macros"
+      },
+      "review": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "files": [
+        {
+          "repository": "jni-rs/jni-rs",
+          "commit": "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+          "pathInRepository": "LICENSE-APACHE",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "file": "third-party/licenses/a60eea8175145316.txt"
+        },
+        {
+          "repository": "jni-rs/jni-rs",
+          "commit": "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+          "pathInRepository": "LICENSE-MIT",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-MIT",
+          "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+          "file": "third-party/licenses/fea1d5bf3dd71605.txt"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "objc2-osa-kit",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "framework-crates/objc2-osa-kit"
+      },
+      "review": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "files": [
+        {
+          "repository": "madsmtm/objc2",
+          "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+          "pathInRepository": "LICENSE.md",
+          "sourceUrl": "https://github.com/madsmtm/objc2/blob/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+          "file": "third-party/licenses/7f976f7e9cb2d87d.txt"
+        }
+      ]
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-platform-verifier-android",
+      "version": "0.2.0",
+      "license": "MIT OR Apache-2.0",
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "android-release-support"
+      },
+      "review": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "files": [
+        {
+          "repository": "rustls/rustls-platform-verifier",
+          "commit": "252e25161a91af476cbea620e29d277592d27ec7",
+          "pathInRepository": "LICENSE-APACHE",
+          "sourceUrl": "https://github.com/rustls/rustls-platform-verifier/blob/252e25161a91af476cbea620e29d277592d27ec7/LICENSE-APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "file": "third-party/licenses/c71d239df91726fc.txt"
+        },
+        {
+          "repository": "rustls/rustls-platform-verifier",
+          "commit": "252e25161a91af476cbea620e29d277592d27ec7",
+          "pathInRepository": "LICENSE-MIT",
+          "sourceUrl": "https://github.com/rustls/rustls-platform-verifier/blob/252e25161a91af476cbea620e29d277592d27ec7/LICENSE-MIT",
+          "sha256": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c",
+          "file": "third-party/licenses/1c7cf76689c837a6.txt"
+        }
+      ]
     }
   ]
 }

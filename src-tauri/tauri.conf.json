@@ -58,7 +58,21 @@
       "binaries/ffmpeg",
       "binaries/ffprobe"
     ],
-    "resources": { "resources/media-tools/": "media-tools/" }
+    "resources": {
+      "resources/media-tools/": "media-tools/"
+    }
   },
-  "mainBinaryName": "travel-gallery"
+  "mainBinaryName": "travel-gallery",
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg2MkNCNzg1QjJDNUY0REYKUldUZjlNV3loYmNzaGpQZ281dkRJTzdFdkcvc2xLdGgyYnlTdXRiU3JGenVoVnpJeGx1ejlYUUUK",
+      "endpoints": [
+        "https://github.com/merlinalex1028/travel-gallery/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      },
+      "requireSignedVersion": true
+    }
+  }
 }

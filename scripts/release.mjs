@@ -11,12 +11,20 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyUpdateSignature } from './update-signature.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 export const platforms = {
   'macos-arm64': { target: 'aarch64-apple-darwin', folder: 'dmg', extension: '.dmg' },
   'windows-x64': { target: 'x86_64-pc-windows-msvc', folder: 'nsis', extension: '.exe' },
 };
+const updaterPublicKey = () =>
+  JSON.parse(readFileSync(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8')).plugins.updater.pubkey;
+export function updateAssetName(tag, platform) {
+  return platform === 'macos-arm64'
+    ? `Travel-Gallery-${releaseVersion(tag)}-macOS-arm64.app.tar.gz`
+    : assetName(tag, platform);
+}
 
 export function releaseVersion(tag) {
   const match = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(
@@ -126,7 +134,7 @@ function sha256(file) {
   return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
 
-export function collectArtifact(directory, tag, commit, platform) {
+export function collectArtifact(directory, tag, commit, platform, publicKey = updaterPublicKey()) {
   validateCommit(commit);
   const filename = assetName(tag, platform);
   const spec = platforms[platform];
@@ -141,6 +149,18 @@ export function collectArtifact(directory, tag, commit, platform) {
   mkdirSync(output, { recursive: true });
   const destination = path.join(output, filename);
   copyFileSync(source, destination);
+  const updateFolder = platform === 'macos-arm64' ? path.join(bundle, '..', 'macos') : bundle;
+  const updates =
+    platform === 'macos-arm64'
+      ? readdirSync(updateFolder).filter((name) => name.endsWith('.app.tar.gz'))
+      : candidates;
+  if (updates.length !== 1) throw new Error(`Expected one ${platform} updater artifact`);
+  const updateSource = path.join(updateFolder, updates[0]);
+  const signature = readFileSync(`${updateSource}.sig`, 'utf8').trim();
+  verifyUpdateSignature(readFileSync(updateSource), signature, publicKey, releaseVersion(tag));
+  const updateFile = updateAssetName(tag, platform);
+  if (platform === 'macos-arm64') copyFileSync(updateSource, path.join(output, updateFile));
+  writeFileSync(path.join(output, `${updateFile}.sig`), `${signature}\n`);
   const receipt = {
     tag,
     version: releaseVersion(tag),
@@ -151,15 +171,21 @@ export function collectArtifact(directory, tag, commit, platform) {
     file: filename,
     bytes: statSync(destination).size,
     sha256: sha256(destination),
+    updater: { file: updateFile, bytes: statSync(updateSource).size, sha256: sha256(updateSource) },
   };
   writeFileSync(path.join(output, `${platform}.json`), `${JSON.stringify(receipt, null, 2)}\n`);
   return receipt;
 }
 
-export function verifyReleaseArtifacts(directory, tag, commit) {
+export function verifyReleaseArtifacts(directory, tag, commit, publicKey = updaterPublicKey()) {
   validateCommit(commit);
   const files = [];
   const sums = [];
+  const manifest = {
+    version: releaseVersion(tag),
+    notes: `Travel Gallery ${tag}。安装前请完成或取消后台任务，更新保留本地资料库。`,
+    platforms: {},
+  };
   for (const platform of Object.keys(platforms)) {
     const file = assetName(tag, platform);
     const receiptName = `${platform}.json`;
@@ -181,7 +207,32 @@ export function verifyReleaseArtifacts(directory, tag, commit) {
     sums.push(`${receipt.sha256}  ${file}`);
     sums.push(`${sha256(path.join(directory, receiptName))}  ${receiptName}`);
     files.push(installer, path.join(directory, receiptName));
+    const updateFile = updateAssetName(tag, platform);
+    const updatePath = path.join(directory, updateFile);
+    if (
+      receipt.updater?.file !== updateFile ||
+      receipt.updater.bytes !== statSync(updatePath).size ||
+      receipt.updater.sha256 !== sha256(updatePath)
+    )
+      throw new Error(`Updater artifact provenance/checksum mismatch: ${platform}`);
+    const signaturePath = `${updatePath}.sig`;
+    const signature = readFileSync(signaturePath, 'utf8').trim();
+    verifyUpdateSignature(readFileSync(updatePath), signature, publicKey, releaseVersion(tag));
+    manifest.platforms[platform === 'macos-arm64' ? 'darwin-aarch64' : 'windows-x86_64'] = {
+      url: `https://github.com/merlinalex1028/travel-gallery/releases/download/${tag}/${updateFile}`,
+      signature,
+    };
+    if (updateFile !== file) {
+      files.push(updatePath);
+      sums.push(`${sha256(updatePath)}  ${updateFile}`);
+    }
+    files.push(signaturePath);
+    sums.push(`${sha256(signaturePath)}  ${updateFile}.sig`);
   }
+  const manifestPath = path.join(directory, 'latest.json');
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  files.push(manifestPath);
+  sums.push(`${sha256(manifestPath)}  latest.json`);
   const checksum = path.join(directory, 'SHA256SUMS.txt');
   writeFileSync(checksum, `${sums.join('\n')}\n`);
   return [...files, checksum];
@@ -230,6 +281,7 @@ async function main() {
       throw new Error(`Wrong native release runner for ${platform}: ${process.platform}/${process.arch}`);
     }
     const mode = releaseSigningMode();
+    requireEnvironment(['TAURI_SIGNING_PRIVATE_KEY']);
     if (mode === 'signed' && platform === 'macos-arm64') {
       requireEnvironment([
         'APPLE_CERTIFICATE',
@@ -267,9 +319,11 @@ async function main() {
     }
     console.log(`Release mode: ${signingDescription(platform, mode)}`);
     synchronizeVersion(root, tag);
+    const config = signingConfig(root, platform);
+    config.bundle.createUpdaterArtifacts = true;
     writeFileSync(
       path.join(process.env.RUNNER_TEMP, 'travel-gallery-signing.json'),
-      `${JSON.stringify(signingConfig(root, platform), null, 2)}\n`,
+      `${JSON.stringify(config, null, 2)}\n`,
     );
   } else if (command === 'collect') {
     console.log(JSON.stringify(collectArtifact(root, tag, process.env.RELEASE_COMMIT, platform), null, 2));
@@ -294,7 +348,7 @@ async function main() {
       const notes = path.join(root, 'release-dist/RELEASE-NOTES.md');
       writeFileSync(
         notes,
-        `Travel Gallery ${tag}\n\nmacOS arm64 DMG: ${signingDescription('macos-arm64')}.\nWindows x64 installer: ${signingDescription('windows-x64')}.\n\n${releaseSigningMode() === 'unsigned' ? 'These builds have no trusted publisher signature. macOS Gatekeeper or Windows SmartScreen may require manual approval. See the repository README for installation instructions.\n\n' : ''}Verify downloads with SHA256SUMS.txt.\nSource commit: ${commit}\n`,
+        `Travel Gallery ${tag}\n\nmacOS arm64 DMG: ${signingDescription('macos-arm64')}.\nWindows x64 installer: ${signingDescription('windows-x64')}.\n\n${releaseSigningMode() === 'unsigned' ? 'These builds have no trusted publisher signature. macOS Gatekeeper or Windows SmartScreen may require manual approval. See the repository README for installation instructions.\n\n' : ''}In-app updates: signed updater artifacts and latest.json are included. The updater follows stable releases only; prereleases require manual installation. Updater signatures do not replace OS publisher signing.\n\nVerify downloads with SHA256SUMS.txt.\nSource commit: ${commit}\n`,
       );
       run('gh', [
         'release',

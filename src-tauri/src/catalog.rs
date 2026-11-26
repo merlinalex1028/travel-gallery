@@ -388,6 +388,9 @@ impl Catalog {
         }
     }
     fn validate_settings(&self, r: &Value) -> Result<()> {
+        if r.get("autoCheckUpdates").is_some_and(|v| !v.is_boolean()) {
+            return Err(AppError::new("INVALID_FILTER", "自动检查更新选项须为布尔值"));
+        }
         if r.get("pauseOnBattery").is_some_and(|v| !v.is_boolean()) {
             return Err(AppError::new("INVALID_FILTER", "电池暂停选项须为布尔值"));
         }

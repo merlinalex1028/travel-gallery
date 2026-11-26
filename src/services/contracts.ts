@@ -386,6 +386,7 @@ export interface RelinkPreview {
 }
 
 export interface AppSettings {
+  autoCheckUpdates: boolean;
   pauseOnBattery: boolean;
   theme: 'system' | 'light' | 'dark';
   density: number;

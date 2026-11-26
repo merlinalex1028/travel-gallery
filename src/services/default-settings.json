@@ -3,6 +3,7 @@
   "density": 220,
   "autoAdvance": true,
   "pauseOnBattery": false,
+  "autoCheckUpdates": false,
   "scanConcurrency": 2,
   "cacheLimitGb": 5,
   "showInspector": true,

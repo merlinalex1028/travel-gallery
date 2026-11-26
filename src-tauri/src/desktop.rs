@@ -322,6 +322,11 @@ fn trace_exit(_stage: &str, _details: Value) {
 }
 
 fn guard_exit(app: &tauri::AppHandle, origin: &str, prevent_exit: impl FnOnce()) {
+    let update = app.state::<crate::updater::UpdateState>();
+    if update.installing.load(std::sync::atomic::Ordering::SeqCst) {
+        if !update.restarting.load(std::sync::atomic::Ordering::SeqCst) { prevent_exit(); }
+        return;
+    }
     trace_exit("exitGuardRequested", json!({"origin":origin}));
     let pending = app.state::<Catalog>().connection().ok().and_then(|c| {
         c.query_row("SELECT count(*) FROM jobs WHERE status IN ('queued','running','paused')", [], |r| r.get::<_, i64>(0)).ok()
@@ -378,6 +383,8 @@ fn application_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<t
 pub fn run() {
     let media = MediaProtocol::new();
     tauri::Builder::default().plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .manage(crate::updater::UpdateState::default())
     .menu(application_menu)
     .on_menu_event(|app,event| { if event.id() == QUIT_MENU_ID {
         trace_exit("quitMenuSelected", json!({}));
@@ -398,7 +405,7 @@ pub fn run() {
             guard_exit(window.app_handle(), "windowClose", || api.prevent_close());
         }
     })
-    .invoke_handler(tauri::generate_handler![#[cfg(feature = "performance-probe")] crate::performance_probe::performance_probe,get_app_status,list_sources,add_source,rescan_source,set_source_enabled,remove_source,query_assets,query_burst_groups,create_burst_snapshot,get_cull_progress,get_asset,save_capture_time,get_asset_neighbors,resolve_preview,resolve_original,create_selection_snapshot,apply_review_batch,undo_review_batch,list_tags,upsert_tag,merge_tags,delete_tag,apply_tags_batch,start_duplicate_scan,query_duplicate_groups,query_group_members,set_group_representative,exclude_group_member,list_export_presets,save_export_preset,delete_export_preset,preview_rename,get_rename_preview,get_trip_story,get_quality_status,set_detail_enabled,set_eyes_enabled,import_eyes_model,remove_eyes_model,get_eyes_model_info,start_quality_analysis,get_quality_results,get_asset_quality,set_quality_dismissed,get_ai_status,get_ai_model_info,set_ai_enabled,import_ai_model,remove_ai_model,start_ai_index,start_ai_cluster,semantic_search,get_ai_clusters,preview_story_export,start_story_export,preview_export,start_export,get_export_report,list_jobs,get_job,get_job_errors,cancel_job,pause_job,resume_job,retry_job,backup_catalog,export_diagnostics,prepare_restore,restore_catalog,get_settings,save_settings,get_session,save_session,clear_cache,cache_stats,preview_relink_source,commit_relink_source,list_trips,save_trip,delete_trip,add_to_trip,remove_from_trip,set_trip_cover,list_saved_filters,save_filter,delete_filter,timeline_stats,map_assets,map_trails,get_media_links,link_media,unlink_media,pick_directory,pick_backup,open_asset,open_asset_location,resolve_playback])
+    .invoke_handler(tauri::generate_handler![crate::updater::update_support,crate::updater::check_app_update,crate::updater::download_app_update,crate::updater::install_app_update,#[cfg(feature = "performance-probe")] crate::performance_probe::performance_probe,get_app_status,list_sources,add_source,rescan_source,set_source_enabled,remove_source,query_assets,query_burst_groups,create_burst_snapshot,get_cull_progress,get_asset,save_capture_time,get_asset_neighbors,resolve_preview,resolve_original,create_selection_snapshot,apply_review_batch,undo_review_batch,list_tags,upsert_tag,merge_tags,delete_tag,apply_tags_batch,start_duplicate_scan,query_duplicate_groups,query_group_members,set_group_representative,exclude_group_member,list_export_presets,save_export_preset,delete_export_preset,preview_rename,get_rename_preview,get_trip_story,get_quality_status,set_detail_enabled,set_eyes_enabled,import_eyes_model,remove_eyes_model,get_eyes_model_info,start_quality_analysis,get_quality_results,get_asset_quality,set_quality_dismissed,get_ai_status,get_ai_model_info,set_ai_enabled,import_ai_model,remove_ai_model,start_ai_index,start_ai_cluster,semantic_search,get_ai_clusters,preview_story_export,start_story_export,preview_export,start_export,get_export_report,list_jobs,get_job,get_job_errors,cancel_job,pause_job,resume_job,retry_job,backup_catalog,export_diagnostics,prepare_restore,restore_catalog,get_settings,save_settings,get_session,save_session,clear_cache,cache_stats,preview_relink_source,commit_relink_source,list_trips,save_trip,delete_trip,add_to_trip,remove_from_trip,set_trip_cover,list_saved_filters,save_filter,delete_filter,timeline_stats,map_assets,map_trails,get_media_links,link_media,unlink_media,pick_directory,pick_backup,open_asset,open_asset_location,resolve_playback])
     .build(tauri::generate_context!()).expect("Travel Gallery could not start")
     .run(|app,event| {
         match event {

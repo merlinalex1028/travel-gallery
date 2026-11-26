@@ -57,7 +57,7 @@ it('refreshes a scan completed between polls, then refreshes metadata changes wi
   const wrapper = mount(App, {
     global: {
       plugins: [router],
-      stubs: { MainNav: true, TopBar: true, GlobalDialogs: true, RouterView: true },
+      stubs: { MainNav: true, TopBar: true, GlobalDialogs: true, RouterView: true, AppUpdates: true },
     },
   });
   await vi.advanceTimersByTimeAsync(0);

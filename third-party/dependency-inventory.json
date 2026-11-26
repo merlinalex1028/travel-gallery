@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-22T10:08:10.330Z",
+  "generatedAt": "2026-11-26T08:31:17.211Z",
   "scope": "Installed npm package versions, Cargo metadata dependencies across platform alternatives and bundled native media tools; includes build tools",
   "components": [
     {
@@ -2957,6 +2957,35 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "constant_time_eq",
+      "version": "0.6.2",
+      "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
+      "noticeTextIds": [
+        "85ad950cce8752f7",
+        "6d489af6292662d9",
+        "ee3c852dd133c6ca"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "85ad950cce8752f7"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-CC0",
+          "noticeTextId": "6d489af6292662d9"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT0",
+          "noticeTextId": "ee3c852dd133c6ca"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "cookie",
       "version": "0.18.2",
       "license": "MIT OR Apache-2.0",
@@ -2999,6 +3028,29 @@
       "ecosystem": "cargo",
       "name": "core-foundation",
       "version": "0.10.1",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "3bfacc197ff245b6"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "3bfacc197ff245b6"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "core-foundation",
+      "version": "0.9.4",
       "license": "MIT OR Apache-2.0",
       "noticeTextIds": [
         "954f335b8baf5e1a",
@@ -4717,6 +4769,29 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "filetime",
+      "version": "0.2.30",
+      "license": "MIT/Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "84e1bbfebd74e419"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "84e1bbfebd74e419"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "find-msvc-tools",
       "version": "0.1.14",
       "license": "MIT OR Apache-2.0",
@@ -5510,6 +5585,29 @@
     {
       "ecosystem": "cargo",
       "name": "getrandom",
+      "version": "0.2.17",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "e7330bf53074b4a9",
+        "478d530cbce79fc1"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "e7330bf53074b4a9"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "478d530cbce79fc1"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "getrandom",
       "version": "0.3.4",
       "license": "MIT OR Apache-2.0",
       "noticeTextIds": [
@@ -6219,6 +6317,35 @@
           "kind": "packageFile",
           "file": "LICENSE",
           "noticeTextId": "05f344491a7d18e1"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "hyper-rustls",
+      "version": "0.27.10",
+      "license": "Apache-2.0 OR ISC OR MIT",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "af6da3f3f6b4929e",
+        "a3320aa8d192a02c"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-ISC",
+          "noticeTextId": "af6da3f3f6b4929e"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "a3320aa8d192a02c"
         }
       ],
       "hasRootNotice": true
@@ -7035,6 +7162,88 @@
         }
       ],
       "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "jni",
+      "version": "0.22.4",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "6c1dcd86d8ae78f2"
+      ],
+      "noticeSources": [
+        {
+          "kind": "upstream",
+          "repository": "jni-rs/jni-rs",
+          "commit": "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+          "pathInRepository": "LICENSE-APACHE",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "file": "third-party/licenses/a60eea8175145316.txt",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "upstream",
+          "repository": "jni-rs/jni-rs",
+          "commit": "5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7",
+          "pathInRepository": "LICENSE-MIT",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/5ae9458a4ec44c5318f37ddc7569c1d4ae8a69e7/LICENSE-MIT",
+          "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+          "file": "third-party/licenses/fea1d5bf3dd71605.txt",
+          "noticeTextId": "6c1dcd86d8ae78f2"
+        }
+      ],
+      "hasRootNotice": false,
+      "supplementalReview": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "crates/jni"
+      }
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "jni-macros",
+      "version": "0.22.4",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "6c1dcd86d8ae78f2"
+      ],
+      "noticeSources": [
+        {
+          "kind": "upstream",
+          "repository": "jni-rs/jni-rs",
+          "commit": "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+          "pathInRepository": "LICENSE-APACHE",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+          "file": "third-party/licenses/a60eea8175145316.txt",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "upstream",
+          "repository": "jni-rs/jni-rs",
+          "commit": "33045a124105c939d1e2cbdcb5a39e5d868ffa03",
+          "pathInRepository": "LICENSE-MIT",
+          "sourceUrl": "https://github.com/jni-rs/jni-rs/blob/33045a124105c939d1e2cbdcb5a39e5d868ffa03/LICENSE-MIT",
+          "sha256": "fea1d5bf3dd71605ce5d7d2ff695c1837e914c77195e523a86b5391716477960",
+          "file": "third-party/licenses/fea1d5bf3dd71605.txt",
+          "noticeTextId": "6c1dcd86d8ae78f2"
+        }
+      ],
+      "hasRootNotice": false,
+      "supplementalReview": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "crates/jni-macros"
+      }
     },
     {
       "ecosystem": "cargo",
@@ -8202,6 +8411,23 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "minisign-verify",
+      "version": "0.3.0",
+      "license": "MIT",
+      "noticeTextIds": [
+        "58f66933c7bba2f4"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "58f66933c7bba2f4"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "miniz_oxide",
       "version": "0.8.9",
       "license": "MIT OR Zlib OR Apache-2.0",
@@ -8647,6 +8873,23 @@
           "kind": "packageFile",
           "file": "LICENSE-MIT",
           "noticeTextId": "42d8a095dbffdf17"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "nix",
+      "version": "0.32.0",
+      "license": "MIT",
+      "noticeTextIds": [
+        "b9b039b5058cfe96"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "b9b039b5058cfe96"
         }
       ],
       "hasRootNotice": true
@@ -9498,6 +9741,36 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "objc2-osa-kit",
+      "version": "0.3.2",
+      "license": "Zlib OR Apache-2.0 OR MIT",
+      "noticeTextIds": [
+        "1aa0a34224480ff9"
+      ],
+      "noticeSources": [
+        {
+          "kind": "upstream",
+          "repository": "madsmtm/objc2",
+          "commit": "7b1abfd750a2cacaea71d6a56ecfb83cb7de560b",
+          "pathInRepository": "LICENSE.md",
+          "sourceUrl": "https://github.com/madsmtm/objc2/blob/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md",
+          "sha256": "7f976f7e9cb2d87df7230606feb932c3f21ac0e664045a775b600046ff850c54",
+          "file": "third-party/licenses/7f976f7e9cb2d87d.txt",
+          "noticeTextId": "1aa0a34224480ff9"
+        }
+      ],
+      "hasRootNotice": false,
+      "supplementalReview": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "framework-crates/objc2-osa-kit"
+      }
+    },
+    {
+      "ecosystem": "cargo",
       "name": "objc2-quartz-core",
       "version": "0.3.2",
       "license": "Zlib OR Apache-2.0 OR MIT",
@@ -9736,6 +10009,29 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "openssl-probe",
+      "version": "0.2.2",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "84e1bbfebd74e419"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "84e1bbfebd74e419"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "option-ext",
       "version": "0.2.0",
       "license": "MPL-2.0",
@@ -9747,6 +10043,29 @@
           "kind": "packageFile",
           "file": "LICENSE.txt",
           "noticeTextId": "fb72181dd02473b6"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "osakit",
+      "version": "0.3.1",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "85ad950cce8752f7",
+        "6ca34f7d0a421357"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "85ad950cce8752f7"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "6ca34f7d0a421357"
         }
       ],
       "hasRootNotice": true
@@ -11347,6 +11666,35 @@
       "hasRootNotice": true
     },
     {
+      "ecosystem": "cargo",
+      "name": "ring",
+      "version": "0.17.14",
+      "license": "Apache-2.0 AND ISC",
+      "noticeTextIds": [
+        "edb9c6dbff4676b9",
+        "473867fcf89f7595",
+        "07414b6c33f30acf"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "edb9c6dbff4676b9"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-BoringSSL",
+          "noticeTextId": "473867fcf89f7595"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-other-bits",
+          "noticeTextId": "07414b6c33f30acf"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
       "ecosystem": "npm",
       "name": "rollup",
       "version": "4.64.7",
@@ -11521,6 +11869,174 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "rustls",
+      "version": "0.23.46",
+      "license": "Apache-2.0 OR ISC OR MIT",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "af6da3f3f6b4929e",
+        "a3320aa8d192a02c"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-ISC",
+          "noticeTextId": "af6da3f3f6b4929e"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "a3320aa8d192a02c"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-native-certs",
+      "version": "0.8.5",
+      "license": "Apache-2.0 OR ISC OR MIT",
+      "noticeTextIds": [
+        "29fbc81a3f88db20",
+        "954f335b8baf5e1a",
+        "af6da3f3f6b4929e",
+        "a3320aa8d192a02c"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "29fbc81a3f88db20"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-ISC",
+          "noticeTextId": "af6da3f3f6b4929e"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "a3320aa8d192a02c"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-pki-types",
+      "version": "1.16.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "430e912c26cec30c",
+        "c5e7f780f961f850"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "430e912c26cec30c"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "c5e7f780f961f850"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-platform-verifier",
+      "version": "0.7.1",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "283ea6cc2997a1a7",
+        "6205904d553962d4"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "283ea6cc2997a1a7"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "6205904d553962d4"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-platform-verifier-android",
+      "version": "0.2.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "283ea6cc2997a1a7",
+        "6205904d553962d4"
+      ],
+      "noticeSources": [
+        {
+          "kind": "upstream",
+          "repository": "rustls/rustls-platform-verifier",
+          "commit": "252e25161a91af476cbea620e29d277592d27ec7",
+          "pathInRepository": "LICENSE-APACHE",
+          "sourceUrl": "https://github.com/rustls/rustls-platform-verifier/blob/252e25161a91af476cbea620e29d277592d27ec7/LICENSE-APACHE",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "file": "third-party/licenses/c71d239df91726fc.txt",
+          "noticeTextId": "283ea6cc2997a1a7"
+        },
+        {
+          "kind": "upstream",
+          "repository": "rustls/rustls-platform-verifier",
+          "commit": "252e25161a91af476cbea620e29d277592d27ec7",
+          "pathInRepository": "LICENSE-MIT",
+          "sourceUrl": "https://github.com/rustls/rustls-platform-verifier/blob/252e25161a91af476cbea620e29d277592d27ec7/LICENSE-MIT",
+          "sha256": "1c7cf76689c837a68ed8d704994e52a0f2940c087958f860d17f3186afbdcc0c",
+          "file": "third-party/licenses/1c7cf76689c837a6.txt",
+          "noticeTextId": "6205904d553962d4"
+        }
+      ],
+      "hasRootNotice": false,
+      "supplementalReview": {
+        "status": "source-notices-collected",
+        "reason": "Project license/notice documents captured from the published version commit; not a legal clearance."
+      },
+      "versionEvidence": {
+        "kind": "published-crate-vcs",
+        "pathInVcs": "android-release-support"
+      }
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "rustls-webpki",
+      "version": "0.103.17",
+      "license": "ISC",
+      "noticeTextIds": [
+        "3ac27594ed56fd07"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "3ac27594ed56fd07"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "rustversion",
       "version": "1.0.23",
       "license": "MIT OR Apache-2.0",
@@ -11601,6 +12117,23 @@
           "kind": "packageFile",
           "file": "LICENSE-MIT",
           "noticeTextId": "739620ea44ad8f99"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "schannel",
+      "version": "0.1.30",
+      "license": "MIT",
+      "noticeTextIds": [
+        "1ecbb241444ad7fe"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE.md",
+          "noticeTextId": "1ecbb241444ad7fe"
         }
       ],
       "hasRootNotice": true
@@ -11692,6 +12225,52 @@
           "kind": "packageFile",
           "file": "LICENSE-MIT",
           "noticeTextId": "1a6aa2616e740569"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "security-framework",
+      "version": "3.7.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "37412fff76e3ad06"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "37412fff76e3ad06"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "security-framework-sys",
+      "version": "2.17.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "37412fff76e3ad06"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "37412fff76e3ad06"
         }
       ],
       "hasRootNotice": true
@@ -12204,6 +12783,29 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "simd_cesu8",
+      "version": "1.2.0",
+      "license": "Apache-2.0 OR MIT",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "30fefc3a7d6a0041"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "30fefc3a7d6a0041"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "simd-adler32",
       "version": "0.3.10",
       "license": "MIT",
@@ -12215,6 +12817,29 @@
           "kind": "packageFile",
           "file": "LICENSE.md",
           "noticeTextId": "627eff66d6c4b984"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "simdutf8",
+      "version": "0.1.5",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "4bf96504d6e83ce5",
+        "1847e0e0698142ed"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-Apache",
+          "noticeTextId": "4bf96504d6e83ce5"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "1847e0e0698142ed"
         }
       ],
       "hasRootNotice": true
@@ -12691,6 +13316,23 @@
       "hasRootNotice": true
     },
     {
+      "ecosystem": "cargo",
+      "name": "subtle",
+      "version": "2.6.1",
+      "license": "BSD-3-Clause",
+      "noticeTextIds": [
+        "24fa06d8eae3c3ba"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "24fa06d8eae3c3ba"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
       "ecosystem": "npm",
       "name": "superjson",
       "version": "2.2.6",
@@ -12852,6 +13494,52 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "system-configuration",
+      "version": "0.7.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "eefdbe714980ed70"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "eefdbe714980ed70"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "system-configuration-sys",
+      "version": "0.6.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "eefdbe714980ed70"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "eefdbe714980ed70"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "system-deps",
       "version": "6.2.2",
       "license": "MIT OR Apache-2.0",
@@ -12921,6 +13609,29 @@
           "kind": "packageFile",
           "file": "LICENSE.spdx",
           "noticeTextId": "1d5680a70055e433"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tar",
+      "version": "0.4.46",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "e6e853531994cb47"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "e6e853531994cb47"
         }
       ],
       "hasRootNotice": true
@@ -13119,6 +13830,35 @@
       "ecosystem": "cargo",
       "name": "tauri-plugin-fs",
       "version": "2.7.1",
+      "license": "Apache-2.0 OR MIT",
+      "noticeTextIds": [
+        "eb8a6c84630461b3",
+        "4bf96504d6e83ce5",
+        "89ff9689dcf9dd53"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE.spdx",
+          "noticeTextId": "eb8a6c84630461b3"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE_APACHE-2.0",
+          "noticeTextId": "4bf96504d6e83ce5"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE_MIT",
+          "noticeTextId": "89ff9689dcf9dd53"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tauri-plugin-updater",
+      "version": "2.14.1",
       "license": "Apache-2.0 OR MIT",
       "noticeTextIds": [
         "eb8a6c84630461b3",
@@ -13649,6 +14389,29 @@
           "kind": "packageFile",
           "file": "LICENSE",
           "noticeTextId": "3e1bef82aa0dfee4"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "tokio-rustls",
+      "version": "0.26.6",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "acddfb05f07ab004",
+        "1b0258c48739a24e"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "acddfb05f07ab004"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "1b0258c48739a24e"
         }
       ],
       "hasRootNotice": true
@@ -14206,6 +14969,29 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "typed-path",
+      "version": "0.13.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "85ad950cce8752f7",
+        "30fefc3a7d6a0041"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "85ad950cce8752f7"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "30fefc3a7d6a0041"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "typeid",
       "version": "1.0.3",
       "license": "MIT OR Apache-2.0",
@@ -14396,6 +15182,23 @@
           "kind": "packageFile",
           "file": "LICENSE-MIT",
           "noticeTextId": "033a9383ff21d1e4"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "untrusted",
+      "version": "0.9.0",
+      "license": "ISC",
+      "noticeTextIds": [
+        "a1fff344297822d3"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE.txt",
+          "noticeTextId": "a1fff344297822d3"
         }
       ],
       "hasRootNotice": true
@@ -15060,6 +15863,23 @@
           "kind": "packageFile",
           "file": "LICENSE",
           "noticeTextId": "2d964b2478763057"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "webpki-root-certs",
+      "version": "1.0.12",
+      "license": "CDLA-Permissive-2.0",
+      "noticeTextIds": [
+        "d30183ec6610abca"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "d30183ec6610abca"
         }
       ],
       "hasRootNotice": true
@@ -16131,6 +16951,29 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "windows-registry",
+      "version": "0.6.1",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "783829b43aacb86c",
+        "ff82c90f84945c60"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "license-apache-2.0",
+          "noticeTextId": "783829b43aacb86c"
+        },
+        {
+          "kind": "packageFile",
+          "file": "license-mit",
+          "noticeTextId": "ff82c90f84945c60"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "windows-result",
       "version": "0.4.1",
       "license": "MIT OR Apache-2.0",
@@ -16179,6 +17022,29 @@
       "ecosystem": "cargo",
       "name": "windows-sys",
       "version": "0.45.0",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "783829b43aacb86c",
+        "ff82c90f84945c60"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "license-apache-2.0",
+          "noticeTextId": "783829b43aacb86c"
+        },
+        {
+          "kind": "packageFile",
+          "file": "license-mit",
+          "noticeTextId": "ff82c90f84945c60"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "windows-sys",
+      "version": "0.52.0",
       "license": "MIT OR Apache-2.0",
       "noticeTextIds": [
         "783829b43aacb86c",
@@ -16578,6 +17444,29 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "xattr",
+      "version": "1.6.1",
+      "license": "MIT OR Apache-2.0",
+      "noticeTextIds": [
+        "954f335b8baf5e1a",
+        "7bdd5c5e8ad0c973"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "954f335b8baf5e1a"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "7bdd5c5e8ad0c973"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "yoke",
       "version": "0.8.3",
       "license": "Unicode-3.0",
@@ -16704,6 +17593,52 @@
     },
     {
       "ecosystem": "cargo",
+      "name": "zeroize",
+      "version": "1.9.2",
+      "license": "Apache-2.0 OR MIT",
+      "noticeTextIds": [
+        "283ea6cc2997a1a7",
+        "836ed921bbad486c"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "283ea6cc2997a1a7"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "836ed921bbad486c"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zeroize_derive",
+      "version": "1.5.0",
+      "license": "Apache-2.0 OR MIT",
+      "noticeTextIds": [
+        "283ea6cc2997a1a7",
+        "1038b7737a0a04bd"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-APACHE",
+          "noticeTextId": "283ea6cc2997a1a7"
+        },
+        {
+          "kind": "packageFile",
+          "file": "LICENSE-MIT",
+          "noticeTextId": "1038b7737a0a04bd"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
       "name": "zerotrie",
       "version": "0.2.5",
       "license": "Unicode-3.0",
@@ -16774,6 +17709,23 @@
       "ecosystem": "cargo",
       "name": "zip",
       "version": "8.6.0",
+      "license": "MIT",
+      "noticeTextIds": [
+        "6ac8711fb340c62c"
+      ],
+      "noticeSources": [
+        {
+          "kind": "packageFile",
+          "file": "LICENSE",
+          "noticeTextId": "6ac8711fb340c62c"
+        }
+      ],
+      "hasRootNotice": true
+    },
+    {
+      "ecosystem": "cargo",
+      "name": "zip",
+      "version": "9.8.2",
       "license": "MIT",
       "noticeTextIds": [
         "6ac8711fb340c62c"
@@ -16910,6 +17862,8 @@
     "dlopen2@0.8.2",
     "dlopen2_derive@0.4.3",
     "flatbuffers@25.12.19",
+    "jni@0.22.4",
+    "jni-macros@0.22.4",
     "jni-sys-macros@0.4.1",
     "libappindicator-sys@0.9.0",
     "lodash-unified@1.0.3",
@@ -16931,6 +17885,7 @@
     "objc2-exception-helper@0.1.1",
     "objc2-foundation@0.3.2",
     "objc2-io-surface@0.3.2",
+    "objc2-osa-kit@0.3.2",
     "objc2-quartz-core@0.3.2",
     "objc2-ui-kit@0.3.2",
     "objc2-user-notifications@0.3.2",
@@ -16938,6 +17893,7 @@
     "pulp-wasm-simd-flag@0.1.1",
     "r-efi@5.3.0",
     "r-efi@6.0.0",
+    "rustls-platform-verifier-android@0.2.0",
     "selectors@0.38.0",
     "stackback@0.0.2",
     "tauri-plugin@2.7.2",

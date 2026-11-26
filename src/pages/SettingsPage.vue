@@ -9,6 +9,7 @@ import { clearPreviewCache } from '../composables/preview';
 import { bytes } from '../services/format';
 import Icon from '../components/Icon.vue';
 import ThirdPartyNotices from '../components/ThirdPartyNotices.vue';
+import AppUpdatePanel from '../components/AppUpdatePanel.vue';
 import { version } from '../../package.json';
 const app = useApp(),
   lib = useLibrary(),
@@ -302,10 +303,11 @@ onMounted(async () => {
         <button class="btn small-btn" @click="restore">选择备份恢复…</button>
       </div>
     </div>
+    <AppUpdatePanel />
     <div class="settings-card privacy-card">
       <h3><Icon name="shield" />隐私与原图保护</h3>
       <p>
-        旅图无需账户，不上传照片，不收集遥测。图片、字体、地图和整理算法均在本机运行。淘汰仅改变资料库状态，只有你授权的复制导出会写入目标目录。
+        旅图无需账户，不上传照片，不收集遥测。图片、字体、地图和整理算法均在本机运行。检查和下载应用更新时会连接 GitHub，不发送媒体或资料库。淘汰仅改变资料库状态，只有你授权的复制导出会写入目标目录。
       </p>
       <div class="setting-row">
         <div>
