@@ -19,8 +19,6 @@ await copyFile(
 );
 await copyFile(path.join(root, 'public/logo.svg'), path.join(output, 'assets/logo.svg'));
 await copyFile(path.join(root, 'public/demo/landscape-0.svg'), path.join(output, 'assets/journey.svg'));
-await copyFile(path.join(root, 'src/assets/fonts/Nunito.ttf'), path.join(output, 'assets/Nunito.ttf'));
-await copyFile(path.join(root, 'src/assets/fonts/OFL.txt'), path.join(output, 'assets/OFL.txt'));
 
 const releases = args.length ? JSON.parse(await readFile(path.resolve(args[1]), 'utf8')) : [];
 if (!Array.isArray(releases)) throw new Error('Expected the GitHub releases API array.');
@@ -57,7 +55,7 @@ await writeFile(path.join(output, '.nojekyll'), '');
 const expected = ['.nojekyll', 'assets', 'downloads.json', 'index.html', 'main.js', 'styles.css'];
 if (JSON.stringify((await readdir(output)).sort()) !== JSON.stringify(expected))
   throw new Error('Unexpected files in dist/site; remove the previous site output and rebuild.');
-const assets = ['Nunito.ttf', 'OFL.txt', 'journey.svg', 'library-preview.jpg', 'logo.svg'];
+const assets = ['journey.svg', 'library-preview.jpg', 'logo.svg'];
 if (JSON.stringify((await readdir(path.join(output, 'assets'))).sort()) !== JSON.stringify(assets))
   throw new Error('Unexpected website assets; refusing to publish files outside the allowlist.');
 console.log(`Built GitHub Pages site: dist/site (${downloads.tag ?? 'release-page download links'}).`);

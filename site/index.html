@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f5f8fd" />
+    <meta name="theme-color" content="#f8fafc" />
     <meta
       name="description"
       content="旅图 Travel Gallery，一款纯离线的旅行照片与视频管理桌面应用。浏览、挑片、查重，把沿途的心动整理成值得珍藏的回忆。"
@@ -20,6 +20,17 @@
     />
     <link rel="canonical" href="https://merlinalex1028.github.io/travel-gallery/" />
     <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" />
+    <script>
+      try {
+        const saved = localStorage.getItem('travel-gallery-site-theme');
+        document.documentElement.dataset.theme =
+          saved === 'light' || saved === 'dark'
+            ? saved
+            : matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+      } catch {}
+    </script>
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./main.js"></script>
     <title>旅图 Travel Gallery · 把旅途的心动，好好收藏。</title>
@@ -27,7 +38,6 @@
   <body>
     <a class="skip-link" href="#main">跳至主要内容</a>
     <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6" /></symbol>
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" /></symbol>
       <symbol id="i-github" viewBox="0 0 24 24">
         <path
@@ -39,7 +49,6 @@
         <circle cx="8.5" cy="8.5" r="1.5" />
         <path d="m21 15-5-5L5 21" />
       </symbol>
-      <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 22V3m0 0c5-4 9 4 14 0v11c-5 4-9-4-14 0" /></symbol>
       <symbol id="i-stack" viewBox="0 0 24 24">
         <path d="m12 2 10 5-10 5L2 7Zm-10 10 10 5 10-5M2 17l10 5 10-5" />
       </symbol>
@@ -58,7 +67,7 @@
         <path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z" />
       </symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
-      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
       <symbol id="i-sun" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="4" />
         <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" />
@@ -68,376 +77,325 @@
       </symbol>
     </svg>
     <header class="site-header">
-      <div class="header-inner">
-        <a class="brand" href="#" aria-label="旅图，返回首页">
-          <img src="./assets/logo.svg" alt="" width="30" height="30" />
+      <div class="header-inner container">
+        <a class="brand" href="#main" aria-label="旅图，返回首页">
+          <img src="./assets/logo.svg" alt="" width="32" height="32" />
           <span>旅图 <small>Travel Gallery</small></span>
         </a>
         <nav aria-label="主要导航">
-          <a href="#how">工作方式</a><a href="#cull">挑片</a><a href="#features">功能</a
-          ><a href="#privacy">隐私</a
-          ><a href="https://github.com/merlinalex1028/travel-gallery#快速开始">文档</a>
+          <a href="#features">功能</a><a href="#cull">挑片体验</a><a href="#privacy">隐私</a>
+          <a href="https://github.com/merlinalex1028/travel-gallery#快速开始">文档</a>
         </nav>
         <div class="header-actions">
           <a
-            class="icon-button"
+            class="icon-button github-link"
             href="https://github.com/merlinalex1028/travel-gallery"
             aria-label="在 GitHub 查看源码"
-            ><svg aria-hidden="true" class="icon"><use href="#i-github" /></svg
-          ></a>
+          >
+            <svg aria-hidden="true" class="icon"><use href="#i-github" /></svg>
+          </a>
           <button
             class="theme-toggle icon-button"
             type="button"
             aria-label="切换为深色主题"
             aria-pressed="false"
           >
-            <svg aria-hidden="true" class="icon light-icon"><use href="#i-moon" /></svg
-            ><svg aria-hidden="true" class="icon dark-icon"><use href="#i-sun" /></svg>
+            <svg aria-hidden="true" class="icon light-icon"><use href="#i-moon" /></svg>
+            <svg aria-hidden="true" class="icon dark-icon"><use href="#i-sun" /></svg>
           </button>
-          <a class="button button-small" href="#download">下载</a>
+          <a class="button button-small" href="#download">下载旅图</a>
         </div>
       </div>
     </header>
     <main id="main">
-      <section class="hero section-wrap" aria-labelledby="hero-title">
+      <section class="hero container" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">TRAVEL GALLERY / 纯离线影像资料库</p>
-          <h1 id="hero-title">你的旅行影像。<br /><span>一处，好好整理。</span></h1>
-          <p class="hero-description">
-            照片、视频、连拍和那些舍不得删的片段。旅图把它们整理进一个本地资料库，让你浏览、挑片、查重，再慢慢重温。原图留在硬盘，整理记录留在本机。
+          <p class="eyebrow hero-label">
+            <svg aria-hidden="true" class="icon"><use href="#i-shield" /></svg>离线整理，自在珍藏
           </p>
-          <div class="hero-tags">
-            <span
-              ><svg aria-hidden="true" class="icon"><use href="#i-image" /></svg>照片与视频
-              <b>→</b> 同一图库</span
-            ><span
-              ><svg aria-hidden="true" class="icon"><use href="#i-shield" /></svg>你的回忆
-              <b>→</b> 你的设备</span
-            >
-          </div>
+          <h1 id="hero-title">把旅途的心动，<br /><span>好好收藏。</span></h1>
+          <p class="hero-description">
+            照片、视频，还有路上舍不得删的片段。<br
+              class="desktop-break"
+            />在自己的电脑上，整理成随时想重温的回忆。
+          </p>
           <div class="hero-actions">
             <a
               class="button"
               data-download="macos"
               href="https://github.com/merlinalex1028/travel-gallery/releases"
-              ><svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>下载 macOS 版</a
-            ><a class="button button-secondary" href="#download">Windows 与更多信息</a>
+            >
+              <svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>下载 macOS 版
+            </a>
+            <a
+              class="button button-outline"
+              data-download="windows"
+              href="https://github.com/merlinalex1028/travel-gallery/releases"
+            >
+              下载 Windows 版
+            </a>
           </div>
           <p class="hero-meta">
-            <span data-release-status>查看公开版本</span><span>·</span> macOS 13+ / Windows 10+<br /><a
-              href="https://github.com/merlinalex1028/travel-gallery#安装与首次启动"
-              >首次启动说明</a
-            ><span>·</span><a href="https://github.com/merlinalex1028/travel-gallery">查看源码</a>
+            <span data-release-status>查看公开版本</span><span aria-hidden="true">·</span>macOS 13+ / Windows
+            10+
           </p>
         </div>
-        <figure class="hero-preview" id="preview">
-          <div class="window-bar">
-            <span class="window-title"><img src="./assets/logo.svg" alt="" width="16" height="16" />旅图</span
-            ><span class="window-local"><span class="status-dot"></span> 本地资料库</span>
-          </div>
-          <img
-            class="product-image"
-            src="./assets/library-preview.jpg"
-            alt="旅图图库的实际浏览器演示界面：照片与视频、筛选、评分和整理导航，使用内置示例素材。"
-            width="1440"
-            height="900"
-            fetchpriority="high"
-          />
-          <div class="preview-tools">
-            <span
-              ><svg aria-hidden="true" class="icon"><use href="#i-image" /></svg>浏览</span
-            ><span
-              ><svg aria-hidden="true" class="icon"><use href="#i-flag" /></svg>挑片</span
-            ><span
-              ><svg aria-hidden="true" class="icon"><use href="#i-stack" /></svg>查重</span
-            ><span
-              ><svg aria-hidden="true" class="icon"><use href="#i-map" /></svg>重温</span
-            >
-          </div>
-          <figcaption>实际应用界面 · 内置演示素材</figcaption>
-        </figure>
-      </section>
-      <div class="promise-strip section-wrap" aria-label="旅图的本地工作方式">
-        <span
-          ><svg aria-hidden="true" class="icon"><use href="#i-check" /></svg>原图留在原处</span
-        ><span
-          ><svg aria-hidden="true" class="icon"><use href="#i-check" /></svg>无需云端账号</span
-        ><span
-          ><svg aria-hidden="true" class="icon"><use href="#i-check" /></svg>照片与视频一起管理</span
-        ><span
-          ><svg aria-hidden="true" class="icon"><use href="#i-check" /></svg>支持浅色与深色</span
-        >
-      </div>
-      <section class="how-section section-wrap section-block" id="how" aria-labelledby="how-title">
-        <div class="section-heading">
-          <p class="eyebrow">HOW IT WORKS</p>
-          <h2 id="how-title">文件留在原处。<br class="mobile-break" /><span>回忆，自有秩序。</span></h2>
-          <p>
-            相机、手机、外接硬盘，不必改变你的存放习惯。添加已有目录，旅图建立本地索引，把浏览、整理和导出接在一起。
-          </p>
-        </div>
-        <div class="workflow" aria-label="从原始目录建立本地资料库，再整理和复制导出">
-          <div class="workflow-panel">
-            <p class="panel-label">你的原始目录</p>
-            <ul class="source-list">
-              <li>
-                <svg aria-hidden="true" class="icon"><use href="#i-image" /></svg
-                ><span>相机照片<small>JPG / RAW</small></span>
-              </li>
-              <li>
-                <svg aria-hidden="true" class="icon"><use href="#i-image" /></svg
-                ><span>手机随拍<small>照片 / 视频</small></span>
-              </li>
-              <li>
-                <svg aria-hidden="true" class="icon"><use href="#i-stack" /></svg
-                ><span>外接硬盘<small>已有文件夹</small></span>
-              </li>
-            </ul>
-          </div>
-          <svg aria-hidden="true" class="icon flow-arrow"><use href="#i-arrow" /></svg>
-          <div class="workflow-panel catalog-panel">
-            <img src="./assets/logo.svg" alt="" width="44" height="44" /><strong>旅图 · 本地资料库</strong
-            ><span class="catalog-caption">YOUR MEMORIES, INDEXED.</span>
-            <div class="catalog-tags">
-              <span>索引与缩略图</span><span>评分与标签</span><span>相册与整理记录</span>
-            </div>
-          </div>
-          <svg aria-hidden="true" class="icon flow-arrow"><use href="#i-arrow" /></svg>
-          <div class="workflow-panel">
-            <p class="panel-label">你的整理方式</p>
-            <ul class="source-list">
-              <li>
-                <svg aria-hidden="true" class="icon"><use href="#i-flag" /></svg
-                ><span>挑片与查重<small>自己做决定</small></span>
-              </li>
-              <li>
-                <svg aria-hidden="true" class="icon"><use href="#i-map" /></svg
-                ><span>相册与足迹<small>重温旅行</small></span>
-              </li>
-              <li>
-                <svg aria-hidden="true" class="icon"><use href="#i-download" /></svg
-                ><span>复制导出<small>先预演，再确认</small></span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </section>
-      <section class="cull-section section-wrap section-block" id="cull" aria-labelledby="cull-title">
-        <figure class="memory-card" data-state="unreviewed">
-          <div class="window-bar"><span>DSC_1024.JPG</span><span>挑片示例</span></div>
-          <div class="memory-image">
+        <figure class="product-preview" id="preview">
+          <div class="preview-surface">
             <img
-              src="./assets/journey.svg"
-              alt="示例插画：群山、湖泊与远处的日光"
-              width="1200"
-              height="800"
-              loading="lazy"
-            /><span class="review-badge" role="status" aria-live="polite">待你发现</span>
+              class="product-image"
+              src="./assets/library-preview.jpg"
+              alt="旅图图库的实际界面，展示照片与视频浏览、筛选、评分和整理导航；画面使用内置演示素材。"
+              width="1440"
+              height="900"
+              fetchpriority="high"
+            />
           </div>
           <figcaption>
-            <div><strong>风从川西来</strong><span>每一张，都有自己的故事。</span></div>
-            <svg aria-hidden="true" class="icon"><use href="#i-heart" /></svg>
+            <span>让散落的片段，慢慢有了秩序。</span><small>实际应用界面 · 内置演示素材</small>
           </figcaption>
         </figure>
-        <div class="cull-copy">
-          <p class="eyebrow">THE CULLING WORKSPACE</p>
-          <h2 id="cull-title">把注意力，<br /><span>留在照片上。</span></h2>
-          <p>沉浸式挑片，让选择更直接。几个按键就能完成标记，多图对比帮你找出最喜欢的瞬间。</p>
-          <ul class="detail-list">
-            <li><strong>保留与淘汰</strong><span>按 P 留下，按 X 标记淘汰。标记只改变整理记录。</span></li>
-            <li>
-              <strong>评分与收藏</strong><span>0–5 设置星级，F 收藏；照片和视频用同一套整理方式。</span>
-            </li>
-            <li><strong>可以再想想</strong><span>整理修改支持撤销，最后的选择始终由你决定。</span></li>
-          </ul>
-          <div class="review-controls" aria-label="挑片交互示例">
-            <button type="button" data-review="keep" aria-pressed="false"><kbd>P</kbd> 保留</button
-            ><button type="button" data-review="reject" aria-pressed="false"><kbd>X</kbd> 淘汰</button
-            ><button type="button" data-review="favorite" aria-pressed="false"><kbd>F</kbd> 收藏</button>
-          </div>
-          <small>点击试试，或聚焦按钮后按 P / X / F。此网页示例仅使用插画，不读取你的照片。</small>
+        <div class="product-principles" aria-label="旅图的本地工作方式">
+          <span
+            ><svg aria-hidden="true" class="icon"><use href="#i-image" /></svg>照片与视频，一起管理</span
+          >
+          <span
+            ><svg aria-hidden="true" class="icon"><use href="#i-shield" /></svg>原图留在原处</span
+          >
+          <span
+            ><svg aria-hidden="true" class="icon"><use href="#i-check" /></svg>无需云端账号</span
+          >
         </div>
       </section>
-      <section class="features section-wrap section-block" id="features" aria-labelledby="features-title">
+      <section class="features container section" id="features" aria-labelledby="features-title">
         <div class="section-heading">
-          <p class="eyebrow">THE DETAILS</p>
-          <h2 id="features-title">一趟旅行，<span>从整理到重温。</span></h2>
-          <p>把常用的事做好。让散落在文件夹里的片段，变成随时找得到的回忆。</p>
+          <p class="eyebrow">日常整理，刚刚好</p>
+          <h2 id="features-title">从整理，到重温。</h2>
+          <p>把常用的事做好，让每一趟旅行都有迹可循。</p>
         </div>
         <div class="feature-grid">
           <article class="feature-item">
             <div class="feature-icon blue">
               <svg aria-hidden="true" class="icon"><use href="#i-image" /></svg>
             </div>
-            <h3>找到你想找的那一张</h3>
-            <p>按拍摄时间、格式、评分、标签组合筛选，保存常用规则；照片与视频在同一图库浏览。</p>
-            <div class="feature-tags"><span>组合筛选</span><span>智能筛选</span></div>
+            <h3>找到想找的那一张</h3>
+            <p>照片与视频在同一图库浏览。按时间、格式、评分和标签筛选，保存你常用的规则。</p>
+            <span class="feature-note">组合筛选 · 智能筛选</span>
           </article>
           <article class="feature-item">
             <div class="feature-icon lavender">
               <svg aria-hidden="true" class="icon"><use href="#i-stack" /></svg>
             </div>
-            <h3>看清重复，也看清不同</h3>
-            <p>SHA-256 精确重复、视觉相似与连拍分别分组。逐张对照，挑出相似画面里真正喜欢的。</p>
-            <div class="feature-tags"><span>精确重复</span><span>相似 / 连拍</span></div>
+            <h3>相似的画面，仔细挑</h3>
+            <p>精确重复、视觉相似和连拍分别分组。逐张对照，把真正喜欢的瞬间留下来。</p>
+            <span class="feature-note">SHA-256 查重 · 相似与连拍</span>
           </article>
           <article class="feature-item">
-            <div class="feature-icon mint">
+            <div class="feature-icon lavender">
               <svg aria-hidden="true" class="icon"><use href="#i-map" /></svg>
             </div>
             <h3>沿着时间和地点重温</h3>
-            <p>旅行相册、时间轴、旅行故事和离线足迹地图，重新串起旅途中的人、风景与日常。</p>
-            <div class="feature-tags"><span>旅行相册</span><span>离线地图</span></div>
+            <p>旅行相册、时间轴、旅行故事和离线足迹地图，重新串起风景与日常。</p>
+            <span class="feature-note">旅行相册 · 离线地图</span>
           </article>
           <article class="feature-item">
             <div class="feature-icon pink">
               <svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>
             </div>
             <h3>整理好，再分享出去</h3>
-            <p>复制导出前预演数量、空间与文件冲突；按需附带评分、标签和备注 XMP，原文件保留原处。</p>
-            <div class="feature-tags"><span>导出预演</span><span>XMP</span></div>
+            <p>复制导出前先预演数量、空间和文件冲突。按需附带评分、标签和备注 XMP。</p>
+            <span class="feature-note">导出预演 · 原文件保留</span>
           </article>
         </div>
       </section>
-      <section
-        class="privacy-section section-wrap section-block"
-        id="privacy"
-        aria-labelledby="privacy-title"
-      >
-        <div class="section-heading">
-          <p class="eyebrow">LOCAL BY DESIGN</p>
-          <h2 id="privacy-title">你的回忆。<span>你的设备。</span></h2>
-          <p>应用无需登录云端账号。核心浏览与整理在本地完成，媒体索引、评分、标签和相册存入本地资料库。</p>
+      <section class="cull-section container section" id="cull" aria-labelledby="cull-title">
+        <div class="cull-copy">
+          <p class="eyebrow">专注于眼前这一张</p>
+          <h2 id="cull-title">把注意力，<br />留在照片上。</h2>
+          <p class="section-description">不用反复打开文件夹。沉浸式挑片与多图对比，让每一次选择更直接。</p>
+          <ul class="detail-list">
+            <li>
+              <svg aria-hidden="true" class="icon"><use href="#i-check" /></svg
+              ><span
+                ><strong>几个按键，就能完成标记</strong>保留、淘汰、评分和收藏，照片与视频用同一套方式。</span
+              >
+            </li>
+            <li>
+              <svg aria-hidden="true" class="icon"><use href="#i-check" /></svg
+              ><span
+                ><strong>可以再想想，也可以撤销</strong>标记只改变整理记录，最后的选择始终由你决定。</span
+              >
+            </li>
+          </ul>
+          <a class="text-link" href="https://github.com/merlinalex1028/travel-gallery#功能">了解完整功能</a>
         </div>
-        <div class="privacy-facts">
-          <div>
-            <svg aria-hidden="true" class="icon"><use href="#i-shield" /></svg>
-            <h3>不上传照片</h3>
-            <p>原始媒体保留在你的硬盘。离线地图使用随包概览底图，不请求在线地图。</p>
+        <div class="review-demo">
+          <figure class="memory-card" data-state="unreviewed">
+            <div class="memory-image">
+              <img
+                src="./assets/journey.svg"
+                alt="挑片示例插画：群山、湖泊与远处的日光"
+                width="1200"
+                height="800"
+                loading="lazy"
+              />
+              <span class="review-badge" role="status" aria-live="polite">待你发现</span>
+              <span class="demo-caption">交互示例</span>
+            </div>
+            <figcaption>
+              <div><strong>风从川西来</strong><span>每一张，都有自己的故事。</span></div>
+              <svg aria-hidden="true" class="icon"><use href="#i-heart" /></svg>
+            </figcaption>
+          </figure>
+          <div class="review-controls" aria-label="挑片交互示例">
+            <button type="button" data-review="keep" aria-pressed="false"><kbd>P</kbd>保留</button>
+            <button type="button" data-review="reject" aria-pressed="false"><kbd>X</kbd>淘汰</button>
+            <button type="button" data-review="favorite" aria-pressed="false"><kbd>F</kbd>收藏</button>
           </div>
-          <div>
-            <svg aria-hidden="true" class="icon"><use href="#i-heart" /></svg>
-            <h3>决定由你来做</h3>
-            <p>查重提供分组与对照，不自动删除原图，也不按 AI 结果自动淘汰。</p>
+          <p class="demo-help">点击试试，或聚焦按钮后按 P / X / F。仅使用示例插画。</p>
+        </div>
+      </section>
+      <section class="privacy-section container section" id="privacy" aria-labelledby="privacy-title">
+        <div class="privacy-panel">
+          <div class="privacy-intro">
+            <p class="eyebrow">回忆属于你</p>
+            <h2 id="privacy-title">在本地，<br class="desktop-break" />也很自在。</h2>
+            <p>无需登录云端账号。索引与整理记录存入本地资料库，原始照片和视频留在你的硬盘。</p>
           </div>
-          <div>
-            <svg aria-hidden="true" class="icon"><use href="#i-spark" /></svg>
-            <h3>AI，按需开启</h3>
-            <p>本地 AI、闭眼与细节提示默认关闭；需要时，自行导入独立模型包。</p>
+          <div class="privacy-facts">
+            <article>
+              <svg aria-hidden="true" class="icon"><use href="#i-shield" /></svg>
+              <div>
+                <h3>不上传照片</h3>
+                <p>核心浏览与整理离线工作，足迹地图不请求在线地图。</p>
+              </div>
+            </article>
+            <article>
+              <svg aria-hidden="true" class="icon"><use href="#i-heart" /></svg>
+              <div>
+                <h3>决定由你来做</h3>
+                <p>查重提供分组与对照，不自动删除原图或按 AI 结果淘汰。</p>
+              </div>
+            </article>
+            <article>
+              <svg aria-hidden="true" class="icon"><use href="#i-spark" /></svg>
+              <div>
+                <h3>本地 AI，按需开启</h3>
+                <p>相关提示默认关闭，需要时自行导入独立模型包。</p>
+              </div>
+            </article>
           </div>
         </div>
       </section>
-      <section class="start-section section-wrap section-block" id="start" aria-labelledby="start-title">
+      <section class="start-section container section" id="how" aria-labelledby="start-title">
         <div class="section-heading">
-          <p class="eyebrow">GET STARTED</p>
-          <h2 id="start-title">准备好，<span>重逢那些瞬间。</span></h2>
+          <p class="eyebrow">从一个文件夹开始</p>
+          <h2 id="start-title">不必改变你的存放习惯。</h2>
+          <p>相机、手机或外接硬盘，添加已有目录就能开始。</p>
         </div>
-        <ol class="steps">
+        <ol class="steps" id="start">
           <li>
-            <span class="step-number">01</span>
-            <div>
-              <h3>添加照片目录</h3>
-              <p>选择电脑或外接硬盘上的文件夹。旅图建立索引，原文件留在原处。</p>
-            </div>
+            <span class="step-number">1</span>
+            <h3>添加照片目录</h3>
+            <p>旅图建立本地索引，原文件留在原来的位置。</p>
           </li>
           <li>
-            <span class="step-number">02</span>
-            <div>
-              <h3>挑选那些喜欢的</h3>
-              <p>浏览、评分、打标签。用挑片工作台与查重分组，理清一趟旅行。</p>
-            </div>
+            <span class="step-number">2</span>
+            <h3>挑选那些喜欢的</h3>
+            <p>浏览、评分和标签，慢慢理清一趟旅行。</p>
           </li>
           <li>
-            <span class="step-number">03</span>
-            <div>
-              <h3>收藏，然后重温</h3>
-              <p>创建旅行相册，看看时间轴与足迹。需要分享时，预演后再复制导出。</p>
-            </div>
+            <span class="step-number">3</span>
+            <h3>收藏，然后重温</h3>
+            <p>创建相册与足迹；需要分享时，预演后再复制导出。</p>
           </li>
         </ol>
       </section>
-      <section
-        class="download-section section-wrap section-block"
-        id="download"
-        aria-labelledby="download-title"
-      >
-        <div class="download-heading">
-          <img src="./assets/logo.svg" alt="" width="48" height="48" loading="lazy" />
-          <p class="eyebrow">DOWNLOAD TRAVEL GALLERY</p>
-          <h2 id="download-title">把旅途的心动，<span>好好收藏。</span></h2>
-          <p>为 macOS 和 Windows 打造的本地旅行影像资料库。</p>
-          <p class="release-status" data-release-status aria-live="polite">
-            选择你的平台，在 Releases 获取可用版本
+      <section class="download-section section" id="download" aria-labelledby="download-title">
+        <div class="container">
+          <div class="section-heading download-heading">
+            <img src="./assets/logo.svg" alt="" width="52" height="52" loading="lazy" />
+            <h2 id="download-title">下一段回忆，从这里开始。</h2>
+            <p>旅图 Travel Gallery · 你的本地旅行影像资料库</p>
+            <span class="release-status" data-release-status aria-live="polite"
+              >选择你的平台，在 Releases 获取可用版本</span
+            >
+          </div>
+          <div class="download-options">
+            <article class="platform-download">
+              <h3>macOS</h3>
+              <p>Apple Silicon · macOS 13+</p>
+              <a
+                class="button"
+                data-download="macos"
+                href="https://github.com/merlinalex1028/travel-gallery/releases"
+                ><svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>下载 DMG 安装包</a
+              >
+            </article>
+            <article class="platform-download">
+              <h3>Windows</h3>
+              <p>x64 · Windows 10 / 11</p>
+              <a
+                class="button button-outline"
+                data-download="windows"
+                href="https://github.com/merlinalex1028/travel-gallery/releases"
+                ><svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>下载 EXE 安装包</a
+              >
+            </article>
+          </div>
+          <p class="download-notice">
+            当前为未获系统信任签名的公开体验包。首次启动请参照<a
+              href="https://github.com/merlinalex1028/travel-gallery#安装与首次启动"
+              >安装说明</a
+            >，并核对随包 SHA256SUMS.txt。
           </p>
         </div>
-        <div class="download-options">
-          <article class="platform-download">
-            <div>
-              <h3>macOS</h3>
-              <p>macOS 13 或更新版本</p>
-            </div>
-            <a
-              class="button"
-              data-download="macos"
-              href="https://github.com/merlinalex1028/travel-gallery/releases"
-              ><svg aria-hidden="true" class="icon"><use href="#i-download" /></svg
-              ><span>Apple Silicon<small>DMG 安装包</small></span></a
-            >
-          </article>
-          <article class="platform-download">
-            <div>
-              <h3>Windows</h3>
-              <p>Windows 10 / 11</p>
-            </div>
-            <a
-              class="button button-secondary"
-              data-download="windows"
-              href="https://github.com/merlinalex1028/travel-gallery/releases"
-              ><svg aria-hidden="true" class="icon"><use href="#i-download" /></svg
-              ><span>x64<small>含离线 WebView2</small></span></a
-            >
-          </article>
-        </div>
-        <p class="download-notice">
-          当前公开包未获系统信任签名，首次启动可能需要手动放行。请核对版本说明和 SHA256SUMS.txt。<a
-            href="https://github.com/merlinalex1028/travel-gallery#安装与首次启动"
-            >安装与首次启动 <span aria-hidden="true">↗</span></a
-          >
-        </p>
       </section>
-      <section class="faq-section section-wrap section-block" aria-labelledby="faq-title">
+      <section class="faq-section container section" aria-labelledby="faq-title">
         <div class="section-heading">
-          <p class="eyebrow">QUESTIONS & ANSWERS</p>
-          <h2 id="faq-title">还有什么，<br /><span>想先了解？</span></h2>
+          <p class="eyebrow">出发前，你可能想知道</p>
+          <h2 id="faq-title">常见问题</h2>
           <a class="text-link" href="https://github.com/merlinalex1028/travel-gallery/issues"
-            >在 GitHub 反馈 <svg aria-hidden="true" class="icon"><use href="#i-arrow" /></svg
-          ></a>
+            >在 GitHub 反馈</a
+          >
         </div>
         <div class="faq-list">
           <details>
-            <summary>旅图会移动或删除我的原图吗？</summary>
+            <summary>
+              旅图会移动或删除我的原图吗？<svg aria-hidden="true" class="icon"><use href="#i-plus" /></svg>
+            </summary>
             <p>
-              添加来源会建立索引，原文件保留在原来的位置。挑片标记只更新本地记录，复制导出会先提供预演；应用不会自动按查重或
+              添加来源会建立索引，原文件保留在原来的位置。挑片标记只更新本地记录；复制导出先提供预演，不自动按查重或
               AI 结果删除原图。
             </p>
           </details>
           <details>
-            <summary>没有网络时也可以使用吗？</summary>
+            <summary>
+              没有网络时也可以使用吗？<svg aria-hidden="true" class="icon"><use href="#i-plus" /></svg>
+            </summary>
             <p>
-              桌面应用的核心功能在本地运行，无需云端账号。下载应用和可选模型需要提前准备；这个介绍网站本身通过
+              桌面应用的核心功能在本地运行，无需云端账号。应用和可选模型需要提前下载；这个介绍网站本身通过
               GitHub Pages 提供，需要网络访问。
             </p>
           </details>
           <details>
-            <summary>为什么第一次打开会看到系统安全提示？</summary>
+            <summary>
+              为什么第一次打开会看到系统安全提示？<svg aria-hidden="true" class="icon">
+                <use href="#i-plus" />
+              </svg>
+            </summary>
             <p>
               当前 macOS 包使用 ad-hoc 完整性签名，未经过 Apple 公证；Windows 包未做 Authenticode
               签名。请确认来自本仓库的 Releases，并核对
-              SHA-256。受组织策略管理的设备可能无法手动放行，具体步骤见 README。
+              SHA-256。受组织策略管理的设备可能无法手动放行，具体步骤见安装说明。
             </p>
           </details>
           <details>
-            <summary>备份资料库，就等于备份了照片吗？</summary>
+            <summary>
+              备份资料库，就等于备份了照片吗？<svg aria-hidden="true" class="icon">
+                <use href="#i-plus" />
+              </svg>
+            </summary>
             <p>
               不等于。资料库备份保存索引与整理记录，不包含原始照片、视频和独立模型包。请为原始媒体另行备份。
             </p>
@@ -445,9 +403,9 @@
         </div>
       </section>
     </main>
-    <footer class="site-footer section-wrap">
-      <a class="brand" href="#"
-        ><img src="./assets/logo.svg" alt="" width="24" height="24" /><span
+    <footer class="site-footer container">
+      <a class="brand" href="#main"
+        ><img src="./assets/logo.svg" alt="" width="28" height="28" /><span
           >旅图 <small>Travel Gallery</small></span
         ></a
       >

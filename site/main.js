@@ -9,6 +9,9 @@ try {
 }
 function setTheme(theme) {
   root.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]').content = getComputedStyle(root)
+    .getPropertyValue('--background')
+    .trim();
   themeButton.setAttribute('aria-pressed', String(theme === 'dark'));
   themeButton.setAttribute('aria-label', theme === 'dark' ? '切换为浅色主题' : '切换为深色主题');
 }
