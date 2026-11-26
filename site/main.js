@@ -65,20 +65,22 @@ try {
   if (!response.ok) throw new Error('Download metadata unavailable');
   const release = await response.json();
   if (release.tag) {
-    document.querySelector('[data-release-status]').textContent =
-      `${release.tag} · ${release.prerelease ? '预发布体验版' : '正式发布'}`;
+    for (const status of document.querySelectorAll('[data-release-status]'))
+      status.textContent = `${release.tag} · ${release.prerelease ? '预发布体验版' : '正式发布'}`;
     for (const platform of ['macos', 'windows']) {
-      const button = document.querySelector(`[data-download="${platform}"]`);
       const file = release.assets[platform];
-      if (file) {
-        button.href = file.url;
-        button.setAttribute(
-          'aria-label',
-          `下载 ${release.tag} ${platform === 'macos' ? 'macOS Apple Silicon DMG' : 'Windows x64 安装包'}`,
-        );
-      } else {
-        button.href = release.url;
-        button.querySelector('small').textContent = '查看该版本可用附件';
+      for (const button of document.querySelectorAll(`[data-download="${platform}"]`)) {
+        if (file) {
+          button.href = file.url;
+          button.setAttribute(
+            'aria-label',
+            `下载 ${release.tag} ${platform === 'macos' ? 'macOS Apple Silicon DMG' : 'Windows x64 安装包'}`,
+          );
+        } else {
+          button.href = release.url;
+          const caption = button.querySelector('small');
+          if (caption) caption.textContent = '查看该版本可用附件';
+        }
       }
     }
   }
