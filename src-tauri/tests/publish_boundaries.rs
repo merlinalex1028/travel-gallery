@@ -74,9 +74,24 @@ fn concurrent_destination_file_is_never_replaced() {
     let f = Fixture::new();
     fs::write(f.0.join(".part"), b"verified").unwrap();
     fs::write(f.0.join("final.bin"), b"existing").unwrap();
-    assert!(publish::no_replace(&f.dir(), Path::new(".part"), Path::new("final.bin")).is_err());
+    let error = publish::no_replace(&f.dir(), Path::new(".part"), Path::new("final.bin")).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists, "{error:?}");
     assert_eq!(fs::read(f.0.join("final.bin")).unwrap(), b"existing");
     assert_eq!(fs::read(f.0.join(".part")).unwrap(), b"verified");
+}
+
+#[test]
+fn short_unicode_leaf_names_and_directories_can_be_published() {
+    let f = Fixture::new();
+    fs::write(f.0.join(".part"), b"verified").unwrap();
+    publish::no_replace(&f.dir(), Path::new(".part"), Path::new("图")).unwrap();
+    assert_eq!(fs::read(f.0.join("图")).unwrap(), b"verified");
+    fs::create_dir(f.0.join(".stage")).unwrap();
+    fs::write(f.0.join(".stage/keep"), b"complete model").unwrap();
+    publish::no_replace(&f.dir(), Path::new(".stage"), Path::new("m")).unwrap();
+    assert_eq!(fs::read(f.0.join("m/keep")).unwrap(), b"complete model");
+    assert!(!f.0.join(".part").exists());
+    assert!(!f.0.join(".stage").exists());
 }
 
 #[test]
@@ -189,6 +204,7 @@ fn staged_nested_copy_still_publishes_verified_bytes() {
     assert!(!f.0.join("year/album/.part").exists());
 }
 
+#[cfg(unix)]
 #[test]
 fn staged_copy_rejects_swapped_parent_and_cleans_only_the_original_part() {
     let f = Fixture::new();
@@ -208,6 +224,29 @@ fn staged_copy_rejects_swapped_parent_and_cleans_only_the_original_part() {
     assert!(!f.0.join("album/final.bin").exists());
     assert!(!f.0.join("held/.part").exists());
     assert_eq!(fs::read(f.0.join("album/.part")).unwrap(), b"injected");
+}
+
+#[cfg(windows)]
+#[test]
+fn staged_copy_locks_parent_against_substitution_and_releases_it_on_drop() {
+    let f = Fixture::new();
+    fs::create_dir(f.0.join("album")).unwrap();
+    let mut stage = publish::StagedFile::create(
+        &f.dir(),
+        Path::new("album/.part"),
+        Path::new("album/final.bin"),
+    )
+    .unwrap();
+    stage.writer().unwrap().write_all(b"verified").unwrap();
+    let error = fs::rename(f.0.join("album"), f.0.join("held")).unwrap_err();
+    assert_eq!(error.raw_os_error(), Some(32));
+    assert!(!f.0.join("held").exists());
+    stage.commit().unwrap();
+    drop(stage);
+    assert_eq!(fs::read(f.0.join("album/final.bin")).unwrap(), b"verified");
+    assert!(!f.0.join("album/.part").exists());
+    fs::rename(f.0.join("album"), f.0.join("held")).unwrap();
+    assert_eq!(fs::read(f.0.join("held/final.bin")).unwrap(), b"verified");
 }
 
 #[test]

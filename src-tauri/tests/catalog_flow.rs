@@ -2351,7 +2351,7 @@ fn relink_rechecks_same_stamp_candidate_versions_without_cached_hashes() {
     })).unwrap_err();
     assert_eq!(error.code, "DB_CONFLICT");
     assert!(error.message.contains("新目录在预演后发生变化"), "{error:?}");
-    assert_eq!(c.query_row("SELECT absolute_path FROM source_roots WHERE id=?", [&source_id], |r| r.get::<_, String>(0)).unwrap(), f.source.to_string_lossy());
+    assert_eq!(c.query_row("SELECT absolute_path FROM source_roots WHERE id=?", [&source_id], |r| r.get::<_, String>(0)).unwrap(), f.source.canonicalize().unwrap().to_string_lossy());
     assert_eq!(f.cat.call("get_asset", json!({"assetId":asset_id})).unwrap()["review"]["rating"], 5);
     assert_eq!(fs::read(&source).unwrap(), original);
     fs::write(&target, &original).unwrap();

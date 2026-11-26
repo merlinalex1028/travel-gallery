@@ -168,10 +168,12 @@ pub fn no_replace(dir: &Dir, part: &Path, destination: &Path) -> io::Result<()> 
     {
         use cap_std::fs::{OpenOptions, OpenOptionsExt};
         use std::os::windows::{ffi::OsStrExt, io::AsRawHandle};
-        use windows_sys::Win32::Storage::FileSystem::{
-            FileRenameInfo, SetFileInformationByHandle, DELETE, FILE_FLAG_BACKUP_SEMANTICS,
-            FILE_RENAME_INFO,
+        use windows_sys::Wdk::Storage::FileSystem::{
+            FileRenameInformation, NtSetInformationFile, FILE_RENAME_INFORMATION,
         };
+        use windows_sys::Win32::Foundation::RtlNtStatusToDosError;
+        use windows_sys::Win32::Storage::FileSystem::{DELETE, FILE_FLAG_BACKUP_SEMANTICS};
+        use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
         let mut options = OpenOptions::new();
         options.access_mode(DELETE);
         if parent.symlink_metadata(old)?.is_dir() {
@@ -179,11 +181,15 @@ pub fn no_replace(dir: &Dir, part: &Path, destination: &Path) -> io::Result<()> 
         }
         let source = parent.open_with(old, &options)?;
         let name: Vec<u16> = new.encode_wide().collect();
-        let size = std::mem::offset_of!(FILE_RENAME_INFO, FileName) + name.len() * 2;
+        let size = (std::mem::offset_of!(FILE_RENAME_INFORMATION, FileName) + name.len() * 2)
+            .max(std::mem::size_of::<FILE_RENAME_INFORMATION>());
         let mut buffer = vec![0u64; size.div_ceil(8)];
-        let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFO>();
+        let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+        let mut status_block = IO_STATUS_BLOCK::default();
         // The zeroed, u64-aligned allocation is large enough for the flexible UTF-16 name.
         // The handles outlive this synchronous call. ReplaceIfExists=false is mandatory.
+        // Use the NT API so the leaf name resolves against the pinned directory handle,
+        // without Win32 DOS-path translation or dependence on the process working directory.
         unsafe {
             (*info).Anonymous.ReplaceIfExists = false;
             (*info).RootDirectory = parent.as_raw_handle();
@@ -193,14 +199,17 @@ pub fn no_replace(dir: &Dir, part: &Path, destination: &Path) -> io::Result<()> 
                 std::ptr::addr_of_mut!((*info).FileName).cast::<u16>(),
                 name.len(),
             );
-            if SetFileInformationByHandle(
+            let status = NtSetInformationFile(
                 source.as_raw_handle(),
-                FileRenameInfo,
+                &mut status_block,
                 info.cast(),
                 size as u32,
-            ) == 0
-            {
-                return Err(io::Error::last_os_error());
+                FileRenameInformation,
+            );
+            if status < 0 {
+                return Err(io::Error::from_raw_os_error(
+                    RtlNtStatusToDosError(status) as i32,
+                ));
             }
         }
         Ok(())

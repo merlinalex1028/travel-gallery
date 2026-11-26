@@ -1428,6 +1428,7 @@ mod sidecar_tests {
         assert_eq!(fs::read(target).unwrap(), b"concurrent file");
         assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 1);
     }
+    #[cfg(unix)]
     #[test]
     fn sidecar_parent_swap_after_verification_preserves_the_foreign_part() {
         let temp = tempfile::tempdir().unwrap();
@@ -1453,6 +1454,41 @@ mod sidecar_tests {
         assert_eq!(fs::read(foreign.unwrap()).unwrap(), b"foreign metadata");
         assert!(!album.join("metadata.xmp").exists());
         assert_eq!(fs::read_dir(held).unwrap().count(), 0);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn sidecar_parent_is_locked_against_substitution_until_publication() {
+        let temp = tempfile::tempdir().unwrap();
+        let album = temp.path().join("album");
+        let held = temp.path().join("held");
+        fs::create_dir(&album).unwrap();
+        let dir = Dir::open_ambient_dir(temp.path(), ambient_authority()).unwrap();
+        let mut calls = 0;
+        write_generated(
+            &dir,
+            Path::new("album/metadata.xmp"),
+            b"verified metadata",
+            || {
+                calls += 1;
+                if calls == 6 {
+                    // cap-std intentionally denies FILE_SHARE_DELETE on open directories.
+                    let error = fs::rename(&album, &held).unwrap_err();
+                    assert_eq!(error.raw_os_error(), Some(32));
+                    assert!(!held.exists());
+                    assert!(!album.join("metadata.xmp").exists());
+                }
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(calls, 6);
+        assert_eq!(
+            fs::read(album.join("metadata.xmp")).unwrap(),
+            b"verified metadata"
+        );
+        assert_eq!(fs::read_dir(&album).unwrap().count(), 1);
+        // Publication releases its directory lock; no staging handle is leaked.
+        fs::rename(&album, &held).unwrap();
     }
     #[test]
     fn sidecar_part_swap_after_verification_is_neither_published_nor_deleted() {
