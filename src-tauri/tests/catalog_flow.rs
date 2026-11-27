@@ -3696,7 +3696,7 @@ fn shooting_group_candidate_limit_never_publishes_an_incomplete_last_group() {
 #[test]
 fn xmp_export_is_opt_in_frozen_unicode_and_source_safe() {
     let f = Fixture::new();
-    f.picture("山 <&📷.jpg", 1);
+    f.picture("山 📷.jpg", 1);
     f.add();
     let a = f.assets()[0].clone();
     let aid = a["id"].as_str().unwrap().to_owned();

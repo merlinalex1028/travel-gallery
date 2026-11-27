@@ -172,6 +172,12 @@ pub fn safe_relative(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+fn portable_relative(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
 pub fn assert_not_app_path(cat: &Catalog, path: &Path) -> Result<()> {
     for app in [&cat.inner.data, &cat.inner.cache] {
         let app = app.canonicalize()?;
@@ -447,10 +453,11 @@ pub fn preview_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Va
             let packet = crate::xmp::packet(&tx, &a)?;
             total += packet.content.len() as i64;
             replaced_characters += packet.replaced_characters;
-            Some(json!({"relative":path,"content":packet.content}))
+            Some(json!({"relative":portable_relative(&path),"content":packet.content}))
         } else {
             None
         };
+        let output_relative = portable_relative(&output);
         let current = source_path(&tx, aid)
             .and_then(|path| FileVersion::read(&path))
             .ok();
@@ -469,13 +476,13 @@ pub fn preview_export(cat: &Catalog, c: &mut Connection, r: &Value) -> Result<Va
             .as_deref()
             .or_else(|| current.as_ref().map(|v| v.token.as_str()));
         if examples.len() < 100 {
-            examples.push(json!({"assetId":aid,"sourceRelativePath":relative,"destinationRelativePath":output,"skipped":conflict&&policy=="skip"}));
+            examples.push(json!({"assetId":aid,"sourceRelativePath":relative,"destinationRelativePath":output_relative,"skipped":conflict&&policy=="skip"}));
         }
         if !available {
             offline += 1;
         }
         total += a["byteSize"].as_i64().unwrap_or(0);
-        items.push(json!({"assetId":aid,"relative":output,"skip":conflict&&policy=="skip","unavailable":!available,
+        items.push(json!({"assetId":aid,"relative":output_relative,"skip":conflict&&policy=="skip","unavailable":!available,
             "size":a["byteSize"],"mtime":a["mtimeMs"],"sourceVersion":source_version,"xmp":sidecar}));
     }
     let token = id();
