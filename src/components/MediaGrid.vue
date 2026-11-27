@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { useVirtualizer } from '@tanstack/vue-virtual';
 import type { AssetSummary } from '../services/contracts';
@@ -36,7 +38,7 @@ const gridRows = computed(() => {
     const key =
       props.groupBy === 'none'
         ? ''
-        : (asset.captureLocal?.slice(0, props.groupBy === 'month' ? 7 : 10) ?? '未知日期');
+        : (asset.captureLocal?.slice(0, props.groupBy === 'month' ? 7 : 10) ?? tr('未知日期'));
     if (key !== group || !row) {
       group = key;
       if (key) result.push({ key: `date-${asset.id}`, label: key, items: [] });
@@ -119,6 +121,6 @@ onUnmounted(() => observer?.disconnect());
         />
       </div>
     </div>
-    <div v-if="loadingMore" class="load-more">正在载入更多媒体…</div>
+    <div v-if="loadingMore" class="load-more">{{ tr('正在载入更多媒体…') }}</div>
   </div>
 </template>

@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
@@ -185,21 +186,21 @@ export function useQuality() {
       const result = await api('pick_directory', { purpose: 'model' });
       if (!alive || !result.path) return;
       await api('import_eyes_model', { selectedPath: result.path, clientMutationId: crypto.randomUUID() });
-    }, '模型导入任务已提交，校验成功后请手动启用。');
+    }, tr('模型导入任务已提交，校验成功后请手动启用。'));
   }
   async function removeModel() {
     if (busy.value) return;
     const confirmed = await ElMessageBox.confirm(
-      '移除此闭眼模型和可重建的闭眼分析记录？源照片及人工评分、挑片决定均保留。',
-      '移除闭眼模型',
-      { confirmButtonText: '移除模型和闭眼记录', cancelButtonText: '取消', type: 'warning' },
+      tr('移除此闭眼模型和可重建的闭眼分析记录？源照片及人工评分、挑片决定均保留。'),
+      tr('移除闭眼模型'),
+      { confirmButtonText: tr('移除模型和闭眼记录'), cancelButtonText: tr('取消'), type: 'warning' },
     )
       .then(() => true)
       .catch(() => false);
     if (confirmed && alive)
       await action(
         () => api('remove_eyes_model', { confirmed: true, clientMutationId: crypto.randomUUID() }),
-        '移除任务已提交。',
+        tr('移除任务已提交。'),
       );
   }
   async function start() {
@@ -212,7 +213,7 @@ export function useQuality() {
     };
     await action(
       () => api('start_quality_analysis', request),
-      '照片检查已加入后台，可在任务中心暂停、继续或取消。',
+      tr('照片检查已加入后台，可在任务中心暂停、继续或取消。'),
     );
   }
   async function dismiss(assetId: string, observation: QualityObservation) {
@@ -253,7 +254,7 @@ export function useQuality() {
         target: { kind: 'explicit', assetIds: ids },
       });
       if (!alive || request !== navigationRequest || current !== generation) return;
-      if (snapshot.count !== ids.length) throw new Error('部分结果已变化，请刷新后再打开。');
+      if (snapshot.count !== ids.length) throw new Error(tr('部分结果已变化，请刷新后再打开。'));
       lib.setFilter({ selectionSnapshotId: snapshot.id, combineLinked: false });
       await router.push(`/viewer/${id}`);
     } catch (e) {

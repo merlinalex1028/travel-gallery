@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { locale, tr } from '../i18n';
+
 import CustomSelect from '../components/CustomSelect.vue';
 import { computed, onMounted, onUnmounted, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
@@ -54,59 +56,65 @@ onUnmounted(() => generation++);
     <div class="page-heading">
       <div>
         <div class="eyebrow">THE DAYS THAT STAY WITH YOU</div>
-        <h1>时间轴</h1>
-        <p>沿着时间，重走那些走过的路。</p>
+        <h1>{{ tr('时间轴') }}</h1>
+        <p>{{ tr('沿着时间，重走那些走过的路。') }}</p>
       </div>
-      <button class="btn" :disabled="loading" @click="load"><Icon name="refresh" :size="15" />刷新</button>
+      <button class="btn" :disabled="loading" @click="load">
+        <Icon name="refresh" :size="15" />{{ tr('刷新') }}
+      </button>
     </div>
     <label class="timeline-range"
-      >旅行范围
+      >{{ tr('旅行范围') }}
       <CustomSelect
         v-model="tripId"
-        aria-label="时间轴旅行范围"
+        :aria-label="tr('时间轴旅行范围')"
         @change="load"
         :options="[
-          { value: '', label: '全部媒体' },
+          { value: '', label: tr('全部媒体') },
           ...app.trips.map((trip) => ({ value: trip.id, label: trip.name })),
         ]"
     /></label>
-    <p v-if="error" class="notice" role="alert">{{ error }} · 请点击刷新重试。</p>
+    <p v-if="error" class="notice" role="alert">{{ error }} {{ tr('· 请点击刷新重试。') }}</p>
     <div v-else class="timeline-summary" :aria-busy="loading">
       <div>
         <strong>{{ knownDays }}</strong
-        ><span>有媒体的拍摄日</span>
+        ><span>{{ tr('有媒体的拍摄日') }}</span>
       </div>
       <div>
-        <strong>{{ days.reduce((n, d) => n + d.count, 0).toLocaleString() }}</strong
-        ><span>旅途中的片段</span>
+        <strong>{{ days.reduce((n, d) => n + d.count, 0).toLocaleString(locale) }}</strong
+        ><span>{{ tr('旅途中的片段') }}</span>
       </div>
       <div>
-        <strong>{{ days.reduce((n, d) => n + d.reviewed, 0).toLocaleString() }}</strong
-        ><span>已完成整理</span>
+        <strong>{{ days.reduce((n, d) => n + d.reviewed, 0).toLocaleString(locale) }}</strong
+        ><span>{{ tr('已完成整理') }}</span>
       </div>
       <div>
-        <strong>{{ unknownCount.toLocaleString() }}</strong
-        ><span>拍摄日期未知</span>
+        <strong>{{ unknownCount.toLocaleString(locale) }}</strong
+        ><span>{{ tr('拍摄日期未知') }}</span>
       </div>
     </div>
     <p class="muted small">
-      按照片或视频的当地拍摄日期分组，包含手动修正。仅有文件修改时间的素材归入未知日期，可在照片详情修正拍摄时间和时区。
+      {{
+        tr(
+          '按照片或视频的当地拍摄日期分组，包含手动修正。仅有文件修改时间的素材归入未知日期，可在照片详情修正拍摄时间和时区。',
+        )
+      }}
     </p>
     <div v-if="days.length" class="timeline-list">
       <button v-for="day in days" :key="day.date ?? 'unknown'" class="timeline-day" @click="open(day)">
         <span class="timeline-dot" />
         <div class="timeline-date">
-          <strong>{{ day.date ?? '未知日期' }}</strong
-          ><small v-if="day.date === null">缺少可靠拍摄时间</small
-          ><small v-else-if="day.unknownTimezone">{{ day.unknownTimezone }} 项时区未知</small
-          ><small v-else>时区已知</small>
+          <strong>{{ day.date ?? tr('未知日期') }}</strong
+          ><small v-if="day.date === null">{{ tr('缺少可靠拍摄时间') }}</small
+          ><small v-else-if="day.unknownTimezone">{{ day.unknownTimezone }} {{ tr('项时区未知') }}</small
+          ><small v-else>{{ tr('时区已知') }}</small>
         </div>
         <div class="timeline-meter">
           <div :style="{ width: `${Math.max(3, (day.count / max) * 100)}%` }" />
         </div>
         <div class="timeline-numbers">
-          <strong>{{ day.photos }} 照片 · {{ day.videos }} 视频</strong
-          ><span>{{ day.reviewed }} 项已整理</span>
+          <strong>{{ day.photos }} {{ tr('照片 ·') }} {{ day.videos }} {{ tr('视频') }}</strong
+          ><span>{{ day.reviewed }} {{ tr('项已整理') }}</span>
         </div>
         <Icon name="arrowUpRight" :size="18" />
       </button>
@@ -114,8 +122,8 @@ onUnmounted(() => generation++);
     <EmptyState
       v-else-if="!error"
       icon="calendar"
-      :title="loading ? '正在整理时间轴…' : '等待一段旅程'"
-      description="导入照片后，按拍摄日期串起你的回忆。时区未知不会被当成精确 UTC 时间。"
+      :title="loading ? tr('正在整理时间轴…') : tr('等待一段旅程')"
+      :description="tr('导入照片后，按拍摄日期串起你的回忆。时区未知不会被当成精确 UTC 时间。')"
     />
   </section>
 </template>

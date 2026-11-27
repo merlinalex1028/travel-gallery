@@ -3,6 +3,8 @@
   lang="ts"
   generic="T extends string | number | boolean | (string | number | boolean)[] | null | undefined"
 >
+import { tr } from '../i18n';
+
 import { computed, nextTick, useTemplateRef, watchPostEffect } from 'vue';
 import Icon from './Icon.vue';
 
@@ -19,7 +21,7 @@ const props = withDefaults(
     ariaInvalid?: boolean;
     ariaDescribedby?: string;
   }>(),
-  { options: () => [], placeholder: '请选择' },
+  { options: () => [], placeholder: undefined },
 );
 const emit = defineEmits<{ change: [value: T] }>();
 const select = useTemplateRef<{ $el: HTMLElement }>('select');
@@ -89,7 +91,7 @@ async function describeListbox(open: boolean) {
     class="custom-select"
     :multiple="multiple"
     :disabled="disabled"
-    :placeholder="placeholder"
+    :placeholder="placeholder || tr('请选择')"
     :filterable="filterable || allowCreate"
     :allow-create="allowCreate"
     :default-first-option="allowCreate"
@@ -100,16 +102,16 @@ async function describeListbox(open: boolean) {
     :aria-invalid="ariaInvalid || undefined"
     :aria-describedby="ariaDescribedby"
     popper-class="custom-select-dropdown"
-    no-data-text="暂无选项"
-    no-match-text="没有匹配的选项"
+    :no-data-text="tr('暂无选项')"
+    :no-match-text="tr('没有匹配的选项')"
     @keydown.capture="handleSpace"
     @visible-change="describeListbox"
     @change="emit('change', decode($event))"
   >
     <template #header>
       <div class="custom-select-heading" aria-hidden="true">
-        <span>{{ ariaLabel || placeholder }}</span>
-        <span class="custom-select-mode">{{ multiple ? '可多选' : '选择一项' }}</span>
+        <span>{{ ariaLabel || placeholder || tr('请选择') }}</span>
+        <span class="custom-select-mode">{{ multiple ? tr('可多选') : tr('选择一项') }}</span>
       </div>
     </template>
     <template v-if="multiple" #tag>
@@ -120,7 +122,7 @@ async function describeListbox(open: boolean) {
         role="status"
         aria-live="polite"
       >
-        已选 {{ selected.length }} 项
+        {{ tr('已选') }} {{ selected.length }} {{ tr('项') }}
       </span>
     </template>
     <ElOption

@@ -1,6 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { Commands } from './contracts';
-import { errorText } from '../i18n';
+import { errorText, locale, tr } from '../i18n';
 
 export const native = isTauri();
 export const isDemo = !native;
@@ -40,10 +40,21 @@ export async function api<K extends keyof Commands>(
 }
 export function errorMessage(error: unknown): string {
   if (error && typeof error === 'object') {
-    if ('message' in error && typeof error.message === 'string' && error.message.trim()) return error.message;
+    if ('message' in error && typeof error.message === 'string' && error.message.trim()) {
+      const message = tr(error.message);
+      // Keep unknown native diagnostics intact; a translated code supplies context without hiding detail.
+      if (
+        locale.value === 'en-US' &&
+        message === error.message &&
+        /\p{Script=Han}/u.test(message) &&
+        'code' in error
+      )
+        return `${errorText(error.code)} · ${message}`;
+      return message;
+    }
     if ('code' in error) return errorText(error.code);
   }
-  return typeof error === 'string' ? error : errorText('INTERNAL');
+  return typeof error === 'string' ? tr(error) : errorText('INTERNAL');
 }
 export function resourceUrl(url: string | null) {
   if (url?.startsWith('media:') && navigator.userAgent.includes('Windows'))

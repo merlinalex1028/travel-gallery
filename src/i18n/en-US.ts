@@ -1,6 +1,4 @@
 import type zhCN from './zh-CN';
-// Partial catalog for architecture checks; untranslated product copy falls back
-// to Simplified Chinese. English is not advertised as a complete UI language.
 export default {
   'nav.quality': 'Photo checks',
   'nav.ai': 'Local AI',
@@ -61,4 +59,26 @@ export default {
   'error.INTERNAL': 'The operation did not finish. Please try again.',
   'error.DB_CONFLICT': 'The record changed. Refresh and try again.',
   'error.SNAPSHOT_EXPIRED': 'This selection expired. Please select again.',
-} satisfies Partial<Record<keyof typeof zhCN, string>>;
+  'error.SOURCE_EXISTS': 'This source has already been added.',
+  'error.SOURCE_OVERLAP': 'The selected folder overlaps an existing source.',
+  'error.SOURCE_OFFLINE': 'Source offline. Reconnect it and try again.',
+  'error.SOURCE_ACCESS_DENIED': 'Cannot read the source. Check access permissions.',
+  'error.SOURCE_PATH_INVALID': 'Invalid source path. Choose the folder again.',
+  'error.ASSET_NOT_FOUND': 'Media not found.',
+  'error.ASSET_UNSUPPORTED': 'Preview is not supported for this format.',
+  'error.ASSET_CORRUPT': 'The media cannot be decoded and may be damaged.',
+  'error.DB_MIGRATION_FAILED': 'Catalog migration or integrity check failed.',
+  'error.INVALID_FILTER': 'Invalid filter or input.',
+  'error.INVALID_SELECTION': 'Selected items are unavailable. Select again.',
+  'error.JOB_NOT_CANCELLABLE': 'This task does not support that action right now.',
+  'error.EXPORT_CONFLICT': 'Destination conflict. Preview the export again.',
+  'error.EXPORT_NO_SPACE': 'Insufficient disk space at the destination.',
+  'error.EXPORT_TARGET_UNSAFE': 'The destination cannot be accessed safely. Choose it again and preview.',
+  'error.PERMISSION_DENIED': 'Authorize folder access again.',
+  'error.CANCELLED': 'Operation cancelled.',
+  'error.AI_DISABLED': 'Enable local AI first.',
+  'error.AI_MODEL_MISSING': 'Import a complete offline model package first.',
+  'error.AI_MODEL_INVALID': 'Offline model verification failed. Import it again.',
+  'error.AI_RUNTIME_FAILED': 'Local inference did not finish. Retry or check the app installation.',
+  'error.AI_INFERENCE_FAILED': 'Content inference did not finish. Check the input and retry.',
+} satisfies Record<keyof typeof zhCN, string>;

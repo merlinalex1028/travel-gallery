@@ -1,5 +1,7 @@
 <div align="center">
 
+**简体中文** · [English](README.en.md)
+
 <a href="https://merlinalex1028.github.io/travel-gallery/"><img src="public/logo.svg" width="104" height="104" alt="旅图 · 星轨纸翼"></a>
 
 # 旅图 · Travel Gallery
@@ -41,6 +43,14 @@
 
 如果你想整理本地硬盘上的旅行影像，喜欢自己挑选，也希望不联网就能继续工作，旅图适合你。云端同步、在线协作和专业修图不属于当前功能。
 
+## 语言与使用指南
+
+官网页眉可切换中文与 English，首页、安装步骤和完整使用指南都有对应语言。常规说明在官网内阅读；源码、GitHub 反馈与发布附件入口仍明确指向 GitHub。
+
+应用顶部和 **设置 → 界面语言** 可立即切换中文 / English，并在本设备保存选择。菜单、页面、弹窗、日期和组件文案随之切换；用户自己的标签、备注、旅行名和文件名不翻译。语言资源随应用保存，无需联网。原生工具诊断、系统授权窗口和发布说明可能保留来源语言。
+
+**[中文使用指南](https://merlinalex1028.github.io/travel-gallery/guide.html)** · **[English guide](https://merlinalex1028.github.io/travel-gallery/en/guide.html)**
+
 ## 快速开始
 
 **1 · 安装应用。** 从 **[官网](https://merlinalex1028.github.io/travel-gallery/#download)** 或 **[GitHub Releases](https://github.com/merlinalex1028/travel-gallery/releases)** 下载对应平台的安装包。
@@ -50,7 +60,7 @@
 | macOS Apple Silicon | `.dmg`，打开后拖入“应用程序” | macOS 13 或更新版本；Apple 芯片           |
 | Windows x64         | `setup.exe`，按向导安装      | Windows 10 / 11；包含离线 WebView2 安装器 |
 
-当前公开版本为 rc 预发布体验包。首次安装前请阅读下方的[安装与首次启动](#安装与首次启动)。
+正式版与预发布体验版以下载入口的版本标记为准。首次安装前请阅读下方的[安装与首次启动](#安装与首次启动)。
 
 **2 · 添加照片目录。** 打开应用，点击 **添加照片目录**，选择电脑或外接硬盘上的文件夹。旅图在后台建立索引和缩略图，原文件留在原处。
 

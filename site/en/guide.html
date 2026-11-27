@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8fafc" />
+    <meta
+      name="description"
+      content="Travel Gallery guide: installation, importing photos, languages, culling, Live Photos, export, app updates and catalog maintenance."
+    />
+    <link rel="canonical" href="https://merlinalex1028.github.io/travel-gallery/en/guide.html" />
+    <link rel="icon" type="image/svg+xml" href="../assets/logo.svg" />
+    <script src="../language.js"></script>
+    <link rel="stylesheet" href="../styles.css" />
+    <script type="module" src="../main.js"></script>
+    <title>User guide · Travel Gallery</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="site-header">
+      <div class="header-inner container">
+        <a class="brand" href="./"
+          ><img src="../assets/logo.svg" alt="" width="32" height="32" /><span>Travel Gallery</span></a
+        >
+        <nav aria-label="Main navigation">
+          <a href="./#features">Features</a><a href="./guide.html#start" aria-current="page">User guide</a
+          ><a href="#install">Install</a>
+        </nav>
+        <div class="header-actions">
+          <a
+            class="language-toggle"
+            href="../guide.html"
+            lang="zh-CN"
+            data-language="zh-CN"
+            aria-label="切换为中文"
+            >中文</a
+          ><button
+            class="theme-toggle icon-button"
+            type="button"
+            aria-label="Switch to dark theme"
+            aria-pressed="false"
+          >
+            ◐</button
+          ><a class="button button-small" href="./#download">Download</a>
+        </div>
+      </div>
+    </header>
+    <main id="main" class="guide-layout container">
+      <aside class="guide-nav" aria-label="Guide contents">
+        <p class="eyebrow">TRAVEL GALLERY GUIDE</p>
+        <a href="#start">Quick start</a><a href="#install">Installation and first launch</a
+        ><a href="#language">Chinese and English</a><a href="#features">Features and shortcuts</a
+        ><a href="#live">Live Photo</a><a href="#export">Copy and story exports</a
+        ><a href="#updates">In-app updates</a><a href="#catalog">Catalog and privacy</a
+        ><a href="#models">Optional local analysis</a><a href="#versions">Release history</a
+        ><a href="#development">Development and builds</a>
+      </aside>
+      <article class="guide-content">
+        <div class="guide-intro">
+          <p class="eyebrow">Keep the moments along the way</p>
+          <h1>The Travel Gallery guide</h1>
+          <p>
+            From adding your first photo folder to organizing and sharing a journey. Find everyday
+            instructions right here.
+          </p>
+        </div>
+        <section id="start">
+          <h2>Quick start</h2>
+          <ol>
+            <li>Choose the installer for your computer, install it and open Travel Gallery.</li>
+            <li>
+              Click Add photo folder and authorize a local or external-drive folder using the system picker.
+              Choose subfolders, hidden-file handling and exclusion patterns.
+            </li>
+            <li>
+              Let the background index and thumbnails build, then filter the library or flag photos in the
+              Culling desk.
+            </li>
+            <li>
+              Create a trip album and select photos in the library to Add to trip. Preview before copying
+              exports to share.
+            </li>
+          </ol>
+          <p>
+            The app references original photos and videos without moving them. Browser interactions use
+            built-in demo media only.
+          </p>
+          <a class="text-link" href="./#download">Go to downloads</a>
+        </section>
+        <section id="install">
+          <h2>Installation and first launch</h2>
+          <div class="guide-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Platform</th>
+                  <th>Installation</th>
+                  <th>Requirements</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS Apple Silicon</td>
+                  <td>Open the DMG, drag Travel Gallery into Applications, then launch it from there.</td>
+                  <td>macOS 13+, Apple Silicon</td>
+                </tr>
+                <tr>
+                  <td>Windows x64</td>
+                  <td>Run the EXE and follow the installer. An offline WebView2 installer is included.</td>
+                  <td>Windows 10 / 11, 64-bit</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Current macOS builds use ad-hoc integrity signing without Apple notarization. Windows builds have
+            no Authenticode signature. Update archives have separate integrity signatures; neither is a
+            system-trusted publisher signature.
+          </p>
+          <ol>
+            <li>
+              Use the GitHub Release installers linked from this website and verify the matching
+              SHA256SUMS.txt.
+            </li>
+            <li>If macOS blocks launch, check System Settings → Privacy &amp; Security for Open Anyway.</li>
+            <li>
+              If Windows shows SmartScreen, look for More info → Run anyway. Organization policies may prevent
+              manual approval.
+            </li>
+          </ol>
+          <p>You do not need to disable global system security. Verify checksums with:</p>
+          <pre><code>shasum -a 256 Travel-Gallery-*-macOS-arm64.dmg
+Get-FileHash .\Travel-Gallery-*-Windows-x64-setup.exe -Algorithm SHA256</code></pre>
+          <p>
+            Back up originals and the catalog before installing over an older version. Upgrades keep the
+            production catalog.
+          </p>
+        </section>
+        <section id="language">
+          <h2>Chinese and English</h2>
+          <p>
+            Use EN / 中文 in the website header to switch between matching home and guide pages. Your choice
+            is saved in this browser. The app toolbar and Settings → Interface language offer 中文 / English,
+            switch immediately and remember this device's choice.
+          </p>
+          <p>
+            Dates and component labels follow the app language. Your own tags, notes, trip names and filenames
+            stay unchanged. No online translation is needed. Native tool diagnostics, system permission
+            dialogs and release notes may retain their original language. The README also links between
+            Chinese and English versions.
+          </p>
+        </section>
+        <section id="features">
+          <h2>Features and shortcuts</h2>
+          <ul>
+            <li>
+              Library: browse photos and videos together. Combine filename, folder, time, format, tag and
+              rating filters, then save a smart filter.
+            </li>
+            <li>
+              Culling: keep, maybe, reject, ratings, favorites and notes. Undo changes and compare 2–4 photos
+              with synced zoom. Rejection sets a flag only.
+            </li>
+            <li>
+              Duplicates and similarity: separate SHA-256 exact duplicates, visually similar groups and
+              time-based bursts for manual review.
+            </li>
+            <li>
+              Trips: albums across sources, timelines, offline GPS maps and travel stories. Unknown capture
+              dates and time zones are clearly marked.
+            </li>
+            <li>
+              Sources: manage offline, missing and limited formats. Rescan after reconnecting drives. Verified
+              relocation can restore source associations.
+            </li>
+          </ul>
+          <div class="guide-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>P / X / U</td>
+                  <td>Keep / Reject / Maybe</td>
+                </tr>
+                <tr>
+                  <td>0–5 / F</td>
+                  <td>Rating / Favorite</td>
+                </tr>
+                <tr>
+                  <td>← / →</td>
+                  <td>Previous / Next</td>
+                </tr>
+                <tr>
+                  <td>Space / Tab</td>
+                  <td>Open or zoom preview / Info panel</td>
+                </tr>
+                <tr>
+                  <td>⌘ / Ctrl + Z</td>
+                  <td>Undo organization changes</td>
+                </tr>
+                <tr>
+                  <td>Esc</td>
+                  <td>Close overlay or exit viewer</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Photo shortcuts pause in fields, menus and dialogs. HEIC, RAW and video previews depend on local
+            decoding; limited files remain indexed. RAW uses embedded JPEG previews, not full RAW development.
+          </p>
+        </section>
+        <section id="live">
+          <h2>Live Photo pairing and playback</h2>
+          <p>
+            Among unmodified originals exported by Apple Photos, JPG / JPEG / HEIC / HEIF and MOV pair
+            automatically when their Apple content identifiers match uniquely. Merge companions is on by
+            default and shows a single LIVE · 2 card.
+          </p>
+          <p>
+            Matching filenames in the same folder without valid content identifiers are candidates. Review
+            them in Photo details → Companion media → Confirm pairing. Hover over LIVE in the top-left corner
+            of the viewer to play silently once. Leaving stops playback; re-enter to play again. Enter / Space
+            or tapping also works.
+          </p>
+          <p>
+            This is a companion MOV preview subject to local decoding support, without Apple's native
+            press-and-transition effects. Changing photos or closing the viewer stops playback. Originals
+            remain separate.
+          </p>
+          <p>
+            Apple-exported XMP is not used for pairing; its IPTC content is not currently imported. Travel
+            Gallery can separately generate tags, ratings and notes as XMP when exporting.
+          </p>
+        </section>
+        <section id="export">
+          <h2>Copy and story exports</h2>
+          <p>
+            Select photos, choose Copy export, then choose a folder, layout, collision rule and optional XMP
+            or confirmed companion files. Preview counts, size, collisions and source status before
+            confirming. Preview paths use / consistently.
+          </p>
+          <p>
+            Media and XMP are written to temporary copies and SHA-256 verified before publication. Existing
+            files are never overwritten. Directories are protected against substitution. Failures clean only
+            this operation's temporary files with matching identities. Completed copies remain; see Jobs →
+            Export report for results.
+          </p>
+          <p>
+            Travel stories can export offline HTML, JPEG previews and a SHA-256 manifest for up to 5,000
+            items. Videos use still frames; originals are excluded. Notes are opt-in. Re-encoded previews omit
+            GPS fields and source folder paths. Share the entire story folder.
+          </p>
+        </section>
+        <section id="updates">
+          <h2>In-app updates</h2>
+          <ol>
+            <li>Open Settings → App updates → Check for updates.</li>
+            <li>
+              If an update is found, click Download update to see progress. Its signature is verified after
+              downloading.
+            </li>
+            <li>
+              Save edits and finish or cancel all background tasks, including paused ones, then confirm
+              Install and restart.
+            </li>
+          </ol>
+          <p>
+            Automatic checks are off by default. When enabled, they run at startup and every 4 hours, only
+            notifying you. Downloads and installation remain manual. Updates follow the latest stable release;
+            download prereleases manually.
+          </p>
+          <p>
+            Checks and downloads connect to GitHub and its asset services without sending photos, paths or
+            catalog contents. Offline use does not affect browsing and organization. Downloads last for this
+            process only. Missing manifests, network or installation failures show an error. Retry or install
+            manually.
+          </p>
+          <p>
+            Supports macOS Apple Silicon and Windows x64 release packages. Browser demos, development and
+            audit builds do not check or install. On macOS move the app into Applications first. Older
+            versions without the update setting need a manual installation first.
+          </p>
+        </section>
+        <section id="catalog">
+          <h2>Catalog, cache and privacy</h2>
+          <p>
+            Use Settings → Local catalog to back up or restore indexes, ratings, tags, albums and tasks.
+            Backups are verified and the current catalog is backed up before restoring. Originals and separate
+            model packages are not included; back them up separately.
+          </p>
+          <p>
+            Clearing cache removes only regenerable previews, preserving organization records. Offline sources
+            retain thumbnails and review results without the entire drive being misclassified as missing.
+          </p>
+          <p>
+            Core browsing and organization run locally, with no account, photo uploads or telemetry. The
+            offline map uses public-domain Natural Earth data and never requests coordinates online. The
+            website has no analytics scripts or third-party fonts.
+          </p>
+        </section>
+        <section id="models">
+          <h2>Optional local analysis</h2>
+          <p>
+            Local AI and closed-eye hints are off by default. Import a separate offline model package and
+            enable it yourself. Models are not downloaded automatically and photos are not uploaded. Pause or
+            cancel in Jobs; disabling analysis releases inference processes.
+          </p>
+          <p>
+            AI content search and grouping, eye hints and same-scene detail measurements are for human review
+            only. They never reject photos or change ratings automatically. Models and indexes can be removed
+            and rebuilt; manual organization is preserved.
+          </p>
+        </section>
+        <section id="versions">
+          <h2>Release history</h2>
+          <p>
+            Published public releases appear here. Downloads are hosted on GitHub. The explicitly labeled
+            GitHub links open original release records and checksum manifests.
+          </p>
+          <div data-release-history aria-live="polite">
+            <p>Release information is temporarily unavailable. Please refresh later.</p>
+          </div>
+          <a class="text-link" href="https://github.com/merlinalex1028/travel-gallery/releases"
+            >GitHub Releases and checksums</a
+          >
+        </section>
+        <section id="development">
+          <h2>Development and builds</h2>
+          <p>
+            The frontend uses Vue 3, TypeScript, Pinia and Element Plus; the native app uses Rust, Tauri 2 and
+            SQLite. The website is independent static HTML. Requires Node.js 22, pnpm 10, Rust stable and
+            Tauri platform prerequisites.
+          </p>
+          <pre><code>pnpm install --frozen-lockfile
+pnpm dev          # Browser demo
+pnpm desktop      # Isolated native development
+pnpm test
+pnpm build
+pnpm test:rust
+pnpm site:build</code></pre>
+          <p>
+            Native development uses com.travelgallery.development; production uses com.travelgallery.desktop.
+            Tests use owned temporary media and isolated catalogs to protect originals.
+          </p>
+          <p>
+            Both README versions contain equivalent instructions. The website is readable without consulting
+            the README. Source-level publishing, media-tool and collaboration guides are intended for
+            contributors:
+          </p>
+          <div class="guide-links">
+            <a href="https://github.com/merlinalex1028/travel-gallery">GitHub source repository</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/blob/main/docs/RELEASING.md"
+              >GitHub build and release guide</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/blob/main/docs/MEDIA-TOOLS.md"
+              >GitHub media tools guide</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/blob/main/AGENTS.md"
+              >GitHub contributor rules</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/issues">GitHub issue tracker</a>
+          </div>
+        </section>
+      </article>
+    </main>
+    <footer class="site-footer container">
+      <a class="brand" href="./"
+        ><img src="../assets/logo.svg" alt="" width="28" height="28" /><span>Travel Gallery</span></a
+      >
+      <nav aria-label="Footer navigation">
+        <a href="./">Home</a><a href="#start">User guide</a><a href="./#download">Download</a
+        ><a href="https://github.com/merlinalex1028/travel-gallery">GitHub</a>
+      </nav>
+    </footer>
+  </body>
+</html>

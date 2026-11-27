@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { tr, translatedRecord } from '../i18n';
+
 import { computed, onMounted, onUnmounted, shallowRef, watch, useTemplateRef, useId } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useApp } from '../stores/app';
 import { useLibrary } from '../stores/library';
 import { isDemo } from '../services/api';
 import Icon from './Icon.vue';
+import LanguageSwitch from './LanguageSwitch.vue';
 import { isMediaKeyboardBlocked } from '../composables/keyboard';
 const app = useApp(),
   lib = useLibrary(),
@@ -13,9 +16,9 @@ const app = useApp(),
   keyword = shallowRef(lib.filter.keyword ?? '');
 const searchErrorId = `${useId()}-search-error`;
 const searchError = computed(() =>
-  new TextEncoder().encode(keyword.value).byteLength > 2000 ? '搜索内容过长，请减少文字或表情。' : '',
+  new TextEncoder().encode(keyword.value).byteLength > 2000 ? tr('搜索内容过长，请减少文字或表情。') : '',
 );
-const labels: Record<string, string> = {
+const labels: Record<string, string> = translatedRecord({
   library: '全部媒体',
   filter: '筛选结果',
   sources: '来源管理',
@@ -31,8 +34,8 @@ const labels: Record<string, string> = {
   quality: '照片检查',
   ai: '本地 AI',
   welcome: '欢迎使用',
-};
-const title = computed(() => labels[route.path.split('/')[1] ?? 'library'] ?? '资料库');
+});
+const title = computed(() => labels[route.path.split('/')[1] ?? 'library'] ?? tr('资料库'));
 const searchInput = useTemplateRef<HTMLInputElement>('searchInput');
 function focusSearch(event: KeyboardEvent) {
   if (
@@ -73,19 +76,20 @@ onUnmounted(() => clearTimeout(timeout));
     <div class="breadcrumb">
       <button
         class="icon-btn collapse-btn"
-        aria-label="收起或展开导航"
+        :aria-label="tr('收起或展开导航')"
         @click="app.navCollapsed = !app.navCollapsed"
       >
         <Icon name="collapse" /></button
-      ><span>我的资料库</span><Icon name="right" :size="13" /><strong>{{ title }}</strong>
+      ><span>{{ tr('我的资料库') }}</span
+      ><Icon name="right" :size="13" /><strong>{{ title }}</strong>
     </div>
     <label class="global-search" :class="{ 'has-error': searchError }"
       ><Icon name="search" :size="17" /><input
         ref="searchInput"
         v-model="keyword"
         @input="search"
-        placeholder="搜索文件名、文件夹或标签…"
-        aria-label="搜索媒体"
+        :placeholder="tr('搜索文件名、文件夹或标签…')"
+        :aria-label="tr('搜索媒体')"
         :aria-invalid="searchError ? true : undefined"
         :aria-describedby="searchError ? searchErrorId : undefined"
       /><kbd>/</kbd
@@ -94,11 +98,12 @@ onUnmounted(() => clearTimeout(timeout));
       }}</small></label
     >
     <div class="topbar-actions">
-      <span v-if="isDemo" class="demo-pill">演示模式</span
-      ><button class="icon-btn" aria-label="快捷键帮助" @click="app.helpOpen = true">
+      <LanguageSwitch compact />
+      <span v-if="isDemo" class="demo-pill">{{ tr('演示模式') }}</span
+      ><button class="icon-btn" :aria-label="tr('快捷键帮助')" @click="app.helpOpen = true">
         <Icon name="help" /></button
       ><button class="btn primary small-btn" @click="app.importOpen = true">
-        <Icon name="plus" :size="16" />添加照片目录
+        <Icon name="plus" :size="16" />{{ tr('添加照片目录') }}
       </button>
     </div>
   </header>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import { computed, onBeforeUnmount, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { usePreview } from '../composables/preview';
@@ -130,7 +132,7 @@ async function play() {
         (link) => link.confirmed && link.linkType === 'live_photo' && link.primaryAssetId === id,
       );
       if (confirmed.length !== 1)
-        throw new Error('配对已变化或存在多个动态片段，请在详情的「配套素材」中检查并选择。');
+        throw new Error(tr('配对已变化或存在多个动态片段，请在详情的「配套素材」中检查并选择。'));
       playbackAssetId.value = confirmed[0]!.secondaryAssetId;
     }
     const r = await api('resolve_playback', { assetId: playbackAssetId.value! });
@@ -175,12 +177,12 @@ function activateLivePhoto(event: MouseEvent) {
 function videoFailed() {
   releaseVideo();
   videoUrl.value = null;
-  videoReason.value = '内嵌播放失败，可能是本机不支持此格式，或原文件暂时无法读取。';
+  videoReason.value = tr('内嵌播放失败，可能是本机不支持此格式，或原文件暂时无法读取。');
 }
 function imageFailed() {
   if (originalUrl.value) {
     originalUrl.value = null;
-    originalReason.value = '原图暂时无法读取，已退回屏幕预览。';
+    originalReason.value = tr('原图暂时无法读取，已退回屏幕预览。');
   } else if (screen.url.value) screen.retry();
   else small.retry();
 }
@@ -211,7 +213,11 @@ function reloadPreviews() {
       autoplay
       playsinline
       tabindex="0"
-      :aria-label="isLivePhoto ? `${asset.filename} 的 Live Photo 动态片段` : `播放 ${asset.filename}`"
+      :aria-label="
+        isLivePhoto
+          ? tr('{0} 的 Live Photo 动态片段', { 0: asset.filename })
+          : tr('播放 {0}', { 0: asset.filename })
+      "
       class="stage-video"
       @error="videoFailed"
       @ended="isLivePhoto && stopPlayback()"
@@ -231,36 +237,38 @@ function reloadPreviews() {
     />
     <div v-else class="stage-fallback">
       <Icon :name="loading ? 'loader' : 'imageOff'" :size="42" :class="{ spin: loading }" />
-      <h3>{{ loading ? '正在读取预览…' : '此媒体暂时无法预览' }}</h3>
+      <h3>{{ loading ? tr('正在读取预览…') : tr('此媒体暂时无法预览') }}</h3>
       <p>
         {{
           loading
-            ? '预览准备好后会自动显示。'
-            : reason || asset.preview.reason || '原文件可能离线或本机缺少此格式的解码器。'
+            ? tr('预览准备好后会自动显示。')
+            : reason || asset.preview.reason || tr('原文件可能离线或本机缺少此格式的解码器。')
         }}
       </p>
       <div v-if="!loading" class="stage-fallback-actions" @pointerdown.stop>
-        <button class="btn" @click="reloadPreviews"><Icon name="refresh" :size="15" />重试预览</button>
+        <button class="btn" @click="reloadPreviews">
+          <Icon name="refresh" :size="15" />{{ tr('重试预览') }}
+        </button>
         <button class="btn" @click="app.perform(() => api('open_asset_location', { assetId: asset.id }))">
-          <Icon name="folder" :size="15" />打开所在文件夹
+          <Icon name="folder" :size="15" />{{ tr('打开所在文件夹') }}
         </button>
         <button class="btn" @click="app.perform(() => api('open_asset', { assetId: asset.id }))">
-          <Icon name="external" :size="15" />使用系统应用打开
+          <Icon name="external" :size="15" />{{ tr('使用系统应用打开') }}
         </button>
       </div>
     </div>
     <p v-if="usingSmall" class="stage-preview-status" :class="{ 'with-live-photo': isLivePhoto }">
-      {{ screen.loading.value ? '正在加载清晰预览…' : '正在显示缩略预览' }}
+      {{ screen.loading.value ? tr('正在加载清晰预览…') : tr('正在显示缩略预览') }}
     </p>
     <button
       v-if="isLivePhoto"
       type="button"
       class="live-photo-badge"
       :class="{ playing: !!videoUrl }"
-      aria-label="Live Photo：悬停播放动态片段"
+      :aria-label="tr('Live Photo：悬停播放动态片段')"
       :aria-pressed="!!videoUrl"
       :aria-busy="resolvingVideo"
-      title="移入播放一次，移开停止；也可按 Enter 或轻点播放"
+      :title="tr('移入播放一次，移开停止；也可按 Enter 或轻点播放')"
       @pointerdown.stop
       @pointerenter="enterLivePhoto"
       @pointerleave="leaveLivePhoto"
@@ -278,7 +286,7 @@ function reloadPreviews() {
     <button
       v-if="asset.mediaKind === 'video' && !videoUrl && !videoReason"
       class="video-play"
-      :aria-label="resolvingVideo ? '正在准备播放' : '尝试内嵌播放'"
+      :aria-label="resolvingVideo ? tr('正在准备播放') : tr('尝试内嵌播放')"
       :disabled="resolvingVideo"
       @click="play"
     >
@@ -292,23 +300,24 @@ function reloadPreviews() {
       >
         {{
           needsAuthorization
-            ? '来源需要重新授权'
+            ? tr('来源需要重新授权')
             : asset.fileState === 'offline'
-              ? '原文件来源离线'
-              : '原文件缺失'
-        }}，已有预览和整理记录保留。
+              ? tr('原文件来源离线')
+              : tr('原文件缺失')
+        }}{{ tr('，已有预览和整理记录保留。') }}
         <RouterLink class="text-btn" to="/sources">{{
-          needsAuthorization ? '重新授权来源' : '重新定位来源'
+          needsAuthorization ? tr('重新授权来源') : tr('重新定位来源')
         }}</RouterLink>
       </div>
       <div v-if="videoReason" class="video-fallback notice" role="status">
-        <Icon name="warning" />{{ videoReason }}<button class="text-btn" @click="play">重试播放</button
+        <Icon name="warning" />{{ videoReason
+        }}<button class="text-btn" @click="play">{{ tr('重试播放') }}</button
         ><button
           v-if="playbackAssetId"
           class="text-btn"
           @click="app.perform(() => api('open_asset', { assetId: playbackAssetId! }))"
         >
-          使用系统应用打开
+          {{ tr('使用系统应用打开') }}
         </button>
       </div>
     </div>

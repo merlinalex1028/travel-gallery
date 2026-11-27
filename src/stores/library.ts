@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { defineStore } from 'pinia';
 import { computed, reactive, shallowRef, watch } from 'vue';
 import { api, errorMessage } from '../services/api';
@@ -77,12 +78,7 @@ export const useLibrary = defineStore('library', () => {
     snapshotMembers.value = new Set();
   }
   function isSnapshotExpired(error: unknown): error is Pick<AppError, 'code' | 'details'> {
-    return !!(
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === 'SNAPSHOT_EXPIRED'
-    );
+    return !!(error && typeof error === 'object' && 'code' in error && error.code === 'SNAPSHOT_EXPIRED');
   }
   function clearExpiredSnapshot(snapshotId: string | undefined) {
     if (snapshotId && snapshot.value?.id === snapshotId) clearSelection();
@@ -108,7 +104,7 @@ export const useLibrary = defineStore('library', () => {
       if (seq !== generation) return;
       if (selectionSnapshotId && selectionSnapshotId === snapshot.value?.id) {
         if (result.selectionMembership?.snapshotId !== selectionSnapshotId)
-          throw new Error('无法核对冻结选区，请刷新结果后重试。');
+          throw new Error(tr('无法核对冻结选区，请刷新结果后重试。'));
         snapshotMembers.value = new Set([
           ...(more ? snapshotMembers.value : []),
           ...result.selectionMembership.assetIds,
@@ -152,7 +148,7 @@ export const useLibrary = defineStore('library', () => {
     if (queryUnavailable.value) return;
     if (snapshot.value && (event?.ctrlKey || event?.metaKey) && !event.shiftKey) {
       if (!snapshotMembers.value.has(asset.id)) {
-        ElMessage.info('这张照片不在冻结范围中。请重新选择全部匹配，或单击建立新选区。');
+        ElMessage.info(tr('这张照片不在冻结范围中。请重新选择全部匹配，或单击建立新选区。'));
         return;
       }
       selectionGeneration++;
@@ -193,7 +189,7 @@ export const useLibrary = defineStore('library', () => {
     if (queryUnavailable.value) return;
     clearSelection();
     selected.value = new Set(items.value.map((i) => i.id));
-    ElMessage.info(`已选择当前已加载的 ${selected.value.size} 张，可升级为全部匹配`);
+    ElMessage.info(tr('已选择当前已加载的 {0} 张，可升级为全部匹配', { 0: selected.value.size }));
   }
   async function selectAllMatching() {
     if (queryUnavailable.value) return;
@@ -312,7 +308,10 @@ export const useLibrary = defineStore('library', () => {
         await search();
         if (focusId.value) await inspect(focusId.value);
         ElMessage.info(
-          `已撤销 ${res.restoredCount} 项${res.skippedCount ? `，${res.skippedCount} 项有后续修改，已跳过` : ''}`,
+          tr('已撤销 {0} 项{1}', {
+            0: res.restoredCount,
+            1: res.skippedCount ? tr('，{0} 项有后续修改，已跳过', { 0: res.skippedCount }) : '',
+          }),
         );
       });
     queue = task;

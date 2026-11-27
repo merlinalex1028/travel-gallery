@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import CustomSelect from '../components/CustomSelect.vue';
 import { isDemo } from '../services/api';
 import { useQuality } from '../composables/useQuality';
@@ -44,14 +46,14 @@ const {
     <div class="page-heading">
       <div>
         <div class="eyebrow">TAKE A CLOSER LOOK</div>
-        <h1>照片检查</h1>
-        <p>找出值得放大检查的瞬间，由你决定留下哪张。</p>
+        <h1>{{ tr('照片检查') }}</h1>
+        <p>{{ tr('找出值得放大检查的瞬间，由你决定留下哪张。') }}</p>
       </div>
-      <button class="btn" @click="refresh"><Icon name="refresh" :size="15" />刷新</button>
+      <button class="btn" @click="refresh"><Icon name="refresh" :size="15" />{{ tr('刷新') }}</button>
     </div>
     <p v-if="statusError || error" class="notice warning" role="alert">{{ statusError || error }}</p>
     <p v-if="message" class="notice" role="status">
-      {{ message }} <RouterLink to="/jobs">查看任务</RouterLink>
+      {{ message }} <RouterLink to="/jobs">{{ tr('查看任务') }}</RouterLink>
     </p>
     <AiModelPanel
       kind="eyes"
@@ -65,82 +67,90 @@ const {
     />
     <section class="settings-card detail-setting">
       <div>
-        <h2>相近照片的细节对照</h2>
-        <p>默认关闭，无需模型。对固定尺寸预览测量边缘细节，供同一场景的照片比较。</p>
+        <h2>{{ tr('相近照片的细节对照') }}</h2>
+        <p>{{ tr('默认关闭，无需模型。对固定尺寸预览测量边缘细节，供同一场景的照片比较。') }}</p>
         <p class="muted small">
-          纹理、噪点和构图都会影响数值；不同场景之间不能据此判断好坏，RAW 使用内嵌预览。
+          {{ tr('纹理、噪点和构图都会影响数值；不同场景之间不能据此判断好坏，RAW 使用内嵌预览。') }}
         </p>
       </div>
       <button class="btn" :disabled="isDemo || !status || busy" @click="toggleDetail">
-        {{ status?.detailEnabled ? '关闭细节测量' : '启用细节测量' }}
+        {{ status?.detailEnabled ? tr('关闭细节测量') : tr('启用细节测量') }}
       </button>
     </section>
     <section class="settings-card scope-card">
       <div class="quality-controls">
         <label
-          >来源范围<CustomSelect
+          >{{ tr('来源范围')
+          }}<CustomSelect
             v-model="source"
-            aria-label="检查来源范围"
+            :aria-label="tr('检查来源范围')"
             :options="[
-              { value: '', label: '全部已启用来源' },
+              { value: '', label: tr('全部已启用来源') },
               ...app.sources
                 .filter((s) => s.isEnabled)
                 .map((item) => ({ value: item.id, label: item.displayName })),
             ]"
         /></label>
         <label
-          >旅行范围<CustomSelect
+          >{{ tr('旅行范围')
+          }}<CustomSelect
             v-model="trip"
-            aria-label="检查旅行范围"
+            :aria-label="tr('检查旅行范围')"
             :options="[
-              { value: '', label: '全部已启用来源' },
+              { value: '', label: tr('全部已启用来源') },
               ...app.trips.map((item) => ({ value: item.id, label: item.name })),
             ]" /></label
         ><label
-          >整理状态<CustomSelect
+          >{{ tr('整理状态')
+          }}<CustomSelect
             v-model="range"
-            aria-label="检查整理范围"
+            :aria-label="tr('检查整理范围')"
             :options="[
-              { value: 'all', label: '全部照片' },
-              { value: 'keep', label: '仅保留照片' },
+              { value: 'all', label: tr('全部照片') },
+              { value: 'keep', label: tr('仅保留照片') },
             ]"
         /></label>
       </div>
       <p class="scope-count">
-        <strong>{{ status?.total ?? '—' }}</strong> 张照片 · 闭眼分析 {{ status?.eyesCount ?? 0 }} 项 ·
-        细节测量 {{ status?.detailCount ?? 0 }} 项
+        <strong>{{ status?.total ?? '—' }}</strong> {{ tr('张照片 · 闭眼分析') }} {{ status?.eyesCount ?? 0 }}
+        {{ tr('项 · 细节测量') }} {{ status?.detailCount ?? 0 }} {{ tr('项') }}
       </p>
       <button class="btn primary" :disabled="isDemo || !canStart" @click="start">
-        {{ busy ? '正在提交…' : '检查当前范围' }}
+        {{ busy ? tr('正在提交…') : tr('检查当前范围') }}
       </button>
       <p class="muted small">
-        仅运行已启用的项目，复用未变化的记录。单次最多 100000 张，开始后固定范围；视频不参与。
+        {{ tr('仅运行已启用的项目，复用未变化的记录。单次最多 100000 张，开始后固定范围；视频不参与。') }}
       </p>
       <p v-if="active.length" class="notice">
-        已有本地分析任务。<RouterLink to="/jobs">查看进度、暂停、继续或取消</RouterLink
-        >。关闭对应分析可停止任务。
+        {{ tr('已有本地分析任务。')
+        }}<RouterLink to="/jobs">{{ tr('查看进度、暂停、继续或取消') }}</RouterLink
+        >{{ tr('。关闭对应分析可停止任务。') }}
       </p>
     </section>
     <p class="notice">
-      提示用于人工复核，不会自动淘汰或改变评分。远景、眼镜和遮挡可能误报或漏报；未检出人脸或未触发提示不保证所有人睁眼。
+      {{
+        tr(
+          '提示用于人工复核，不会自动淘汰或改变评分。远景、眼镜和遮挡可能误报或漏报；未检出人脸或未触发提示不保证所有人睁眼。',
+        )
+      }}
     </p>
     <div class="row results-heading">
-      <h2>检查记录</h2>
+      <h2>{{ tr('检查记录') }}</h2>
       <button class="btn" :disabled="selected.size < 2 || selected.size > 4 || loading" @click="compare">
-        对比所选 {{ selected.size }} 张
+        {{ tr('对比所选') }} {{ selected.size }} {{ tr('张') }}
       </button>
     </div>
     <div class="quality-controls result-controls">
-      <label><input v-model="onlyHints" type="checkbox" />仅看眼睛检查提示</label
-      ><label><input v-model="includeDismissed" type="checkbox" />包括已忽略记录</label
-      ><span class="muted small">每页 60 项，可选 2–4 张进入同步对比。</span>
+      <label><input v-model="onlyHints" type="checkbox" />{{ tr('仅看眼睛检查提示') }}</label
+      ><label><input v-model="includeDismissed" type="checkbox" />{{ tr('包括已忽略记录') }}</label
+      ><span class="muted small">{{ tr('每页 60 项，可选 2–4 张进入同步对比。') }}</span>
     </div>
-    <p v-if="loading" role="status">正在读取检查记录…</p>
+    <p v-if="loading" role="status">{{ tr('正在读取检查记录…') }}</p>
     <div v-else-if="results?.items.length" class="quality-grid">
       <article v-for="item in results.items" :key="item.asset.id" class="quality-card">
         <button
           class="preview-button"
-          :aria-label="`放大检查 ${item.asset.filename}`"
+          :aria-label="tr('放大检查 {0}', { 0: item.asset.filename })"
           :disabled="!item.analysis.observations.length"
           @click="view(item.asset.id)"
         >
@@ -158,7 +168,7 @@ const {
               :disabled="
                 !item.analysis.observations.length || (!selected.has(item.asset.id) && selected.size >= 4)
               "
-              :aria-label="`选择对比 ${item.asset.filename}`"
+              :aria-label="tr('选择对比 {0}', { 0: item.asset.filename })"
               @change="select(item.asset.id)"
             /><strong>{{ item.asset.filename }}</strong></label
           >
@@ -169,15 +179,15 @@ const {
     <EmptyState
       v-else-if="results"
       icon="check"
-      title="当前范围没有匹配的检查记录"
-      description="可运行检查、查看全部记录，或调整旅行与整理范围。"
+      :title="tr('当前范围没有匹配的检查记录')"
+      :description="tr('可运行检查、查看全部记录，或调整旅行与整理范围。')"
     />
     <div v-if="results && (results.total > 60 || offset)" class="quality-pagination">
       <button class="btn" :disabled="!offset || loading" @click="offset = Math.max(0, offset - 60)">
-        上一页</button
+        {{ tr('上一页') }}</button
       ><span>{{ offset + 1 }}–{{ Math.min(offset + 60, results.total) }} / {{ results.total }}</span
       ><button class="btn" :disabled="offset + 60 >= results.total || loading" @click="offset += 60">
-        下一页
+        {{ tr('下一页') }}
       </button>
     </div>
   </section>

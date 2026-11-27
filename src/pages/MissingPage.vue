@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import { computed, onMounted, onUnmounted, shallowRef } from 'vue';
 import { api, errorMessage } from '../services/api';
 import { useApp } from '../stores/app';
@@ -68,10 +70,10 @@ onMounted(() => {
     <div class="page-heading">
       <div>
         <div class="eyebrow">KEEP EVERY MEMORY CONNECTED</div>
-        <h1>文件状态</h1>
-        <p>离线与缺失分别处理，你的整理记录始终保留。</p>
+        <h1>{{ tr('文件状态') }}</h1>
+        <p>{{ tr('离线与缺失分别处理，你的整理记录始终保留。') }}</p>
       </div>
-      <button class="btn" @click="load()"><Icon name="refresh" :size="15" />刷新状态</button>
+      <button class="btn" @click="load()"><Icon name="refresh" :size="15" />{{ tr('刷新状态') }}</button>
     </div>
     <SourceCard v-for="source in app.sources.filter((s) => !s.isOnline)" :key="source.id" :source="source" />
     <div class="segmented wide-tabs">
@@ -90,35 +92,45 @@ onMounted(() => {
         {{ files[s] }}
       </button>
     </div>
-    <p class="muted small">根目录离线时不会把整盘照片判定为缺失。重新连接后，可在来源管理中重新扫描。</p>
+    <p class="muted small">
+      {{ tr('根目录离线时不会把整盘照片判定为缺失。重新连接后，可在来源管理中重新扫描。') }}
+    </p>
     <p v-if="!loading && !error" class="muted small">
-      当前状态 {{ total }} 项，已加载 {{ items.length }} 项。
+      {{ tr('当前状态') }} {{ total }} {{ tr('项，已加载') }} {{ items.length }} {{ tr('项。') }}
     </p>
     <div v-if="error" class="notice warning" role="alert">
-      {{ error }}<button class="text-btn" @click="load()">重试检查</button>
+      {{ error }}<button class="text-btn" @click="load()">{{ tr('重试检查') }}</button>
     </div>
     <section v-for="section in sections" :key="section.sourceId" class="status-source-group">
-      <h2>{{ section.source?.displayName ?? '来源信息暂未更新' }} · 已加载 {{ section.assets.length }} 项</h2>
+      <h2>
+        {{ section.source?.displayName ?? tr('来源信息暂未更新') }} {{ tr('· 已加载') }}
+        {{ section.assets.length }} {{ tr('项') }}
+      </h2>
       <p v-if="section.source" class="path-text">{{ section.source.absolutePath }}</p>
       <div class="data-table">
         <div class="table-header">
-          <span>文件</span><span>来源路径</span><span>状态</span><span>操作</span>
+          <span>{{ tr('文件') }}</span
+          ><span>{{ tr('来源路径') }}</span
+          ><span>{{ tr('状态') }}</span
+          ><span>{{ tr('操作') }}</span>
         </div>
         <div v-for="a in section.assets" :key="a.id" class="table-row">
           <strong>{{ a.filename }}</strong
           ><span class="path-text truncate" :title="a.relativePath">{{ a.relativePath }}</span
           ><span>{{ files[a.fileState] }}</span
-          ><RouterLink :to="`/viewer/${a.id}`" class="text-btn">查看缓存</RouterLink>
+          ><RouterLink :to="`/viewer/${a.id}`" class="text-btn">{{ tr('查看缓存') }}</RouterLink>
         </div>
       </div>
     </section>
     <EmptyState
       v-if="!items.length"
-      :title="loading ? '正在检查…' : error ? '文件状态暂不可用' : `没有${files[state]}的文件`"
+      :title="
+        loading ? tr('正在检查…') : error ? tr('文件状态暂不可用') : tr('没有{0}的文件', { 0: files[state] })
+      "
       :icon="error ? 'warning' : 'success'"
       :error="!!error"
     /><button v-if="cursor" class="btn" :disabled="loading" @click="load(true)">
-      载入更多（{{ items.length }}/{{ total }}）
+      {{ tr('载入更多（') }}{{ items.length }}/{{ total }}{{ tr('）') }}
     </button>
   </section>
 </template>

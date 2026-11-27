@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr, translatedRecord } from '../i18n';
+
 import { computed, shallowRef } from 'vue';
 import { api } from '../services/api';
 import { useApp } from '../stores/app';
@@ -13,7 +15,7 @@ const app = useApp(),
   detailOpen = shallowRef(false),
   report = shallowRef<Commands['get_export_report']['result'] | null>(null),
   reportOpen = shallowRef(false);
-const operationNames: Record<string, string> = {
+const operationNames: Record<string, string> = translatedRecord({
   renamePreview: '重命名预演',
   storyExport: '故事导出',
   aiImportModel: '导入离线模型',
@@ -24,7 +26,7 @@ const operationNames: Record<string, string> = {
   eyesRemoveModel: '移除闭眼模型和记录',
   qualityAnalyze: '照片闭眼与细节检查',
   recomputeExact: '重算过期精确组',
-};
+});
 const visible = computed(() =>
   app.jobs.filter(
     (j) =>
@@ -59,20 +61,22 @@ async function showReport(jobId: string) {
       <div>
         <div class="eyebrow">WORKING QUIETLY IN THE BACKGROUND</div>
         <h1>
-          任务中心<span class="heading-count">{{ app.running.length }} 进行中</span>
+          {{ tr('任务中心') }}<span class="heading-count">{{ app.running.length }} {{ tr('进行中') }}</span>
         </h1>
-        <p>让整理在后台继续，把注意力留给风景。</p>
+        <p>{{ tr('让整理在后台继续，把注意力留给风景。') }}</p>
       </div>
-      <button class="btn" @click="app.perform(app.refresh)"><Icon name="refresh" :size="15" />刷新</button>
+      <button class="btn" @click="app.perform(app.refresh)">
+        <Icon name="refresh" :size="15" />{{ tr('刷新') }}
+      </button>
     </div>
     <div class="segmented wide-tabs">
       <button
         v-for="[value, label] in [
-          ['all', '全部任务'],
-          ['running', '进行中'],
-          ['completed', '已完成'],
-          ['failed', '失败'],
-          ['cancelled', '已取消'],
+          ['all', tr('全部任务')],
+          ['running', tr('进行中')],
+          ['completed', tr('已完成')],
+          ['failed', tr('失败')],
+          ['cancelled', tr('已取消')],
         ]"
         :key="value"
         :class="{ active: filter === value }"
@@ -106,7 +110,7 @@ async function showReport(jobId: string) {
             </h3>
             <span class="state-pill" :class="job.status">{{
               job.cancelRequested && ['running', 'queued', 'paused'].includes(job.status)
-                ? '正在安全取消…'
+                ? tr('正在安全取消…')
                 : jobStates[job.status]
             }}</span>
           </div>
@@ -114,9 +118,11 @@ async function showReport(jobId: string) {
             {{ date(job.createdAt, true) }}<span class="dot">·</span
             >{{
               job.progressTotal === null
-                ? `已处理 ${job.progressDone} 项 · 总数待发现`
-                : `${job.progressDone} / ${job.progressTotal} 项`
-            }}<span v-if="job.failureCount" class="warning-text"> · {{ job.failureCount }} 项失败</span>
+                ? tr('已处理 {0} 项 · 总数待发现', { 0: job.progressDone })
+                : tr('{0} / {1} 项', { 0: job.progressDone, 1: job.progressTotal })
+            }}<span v-if="job.failureCount" class="warning-text">
+              · {{ job.failureCount }} {{ tr('项失败') }}</span
+            >
           </p>
           <ElProgress
             v-if="['queued', 'running', 'paused'].includes(job.status)"
@@ -131,18 +137,22 @@ async function showReport(jobId: string) {
             class="muted"
             role="status"
           >
-            电池供电，后台处理已等待；接通电源或关闭电池暂停选项后自动继续。
+            {{ tr('电池供电，后台处理已等待；接通电源或关闭电池暂停选项后自动继续。') }}
           </p>
         </div>
         <div class="job-actions">
           <template v-if="['queued', 'running'].includes(job.status) && !job.cancelRequested"
-            ><button class="icon-btn" aria-label="暂停任务" @click="control('pause_job', job.id)">
+            ><button class="icon-btn" :aria-label="tr('暂停任务')" @click="control('pause_job', job.id)">
               <Icon name="pause" /></button
-            ><button class="text-btn" @click="control('cancel_job', job.id)">取消</button></template
+            ><button class="text-btn" @click="control('cancel_job', job.id)">
+              {{ tr('取消') }}
+            </button></template
           ><template v-else-if="job.status === 'paused'"
             ><button class="btn small-btn" @click="control('resume_job', job.id)">
-              <Icon name="play" :size="14" />继续</button
-            ><button class="text-btn" @click="control('cancel_job', job.id)">取消</button></template
+              <Icon name="play" :size="14" />{{ tr('继续') }}</button
+            ><button class="text-btn" @click="control('cancel_job', job.id)">
+              {{ tr('取消') }}
+            </button></template
           ><button
             v-else-if="
               ['failed', 'cancelled'].includes(job.status) &&
@@ -153,18 +163,19 @@ async function showReport(jobId: string) {
             class="btn small-btn"
             @click="control('retry_job', job.id)"
           >
-            <Icon name="refresh" :size="14" />重试</button
+            <Icon name="refresh" :size="14" />{{ tr('重试') }}</button
           ><button v-if="job.failureCount || job.errorSummary" class="text-btn" @click="details(job.id)">
-            失败明细</button
+            {{ tr('失败明细') }}</button
           ><button v-if="job.type === 'EXPORT'" class="btn small-btn" @click="showReport(job.id)">
-            导出报告</button
-          ><RouterLink v-if="job.operation?.startsWith('ai')" to="/ai" class="btn small-btn"
-            >本地 AI</RouterLink
+            {{ tr('导出报告') }}</button
+          ><RouterLink v-if="job.operation?.startsWith('ai')" to="/ai" class="btn small-btn">{{
+            tr('本地 AI')
+          }}</RouterLink
           ><RouterLink
             v-if="job.operation?.startsWith('eyes') || job.operation === 'qualityAnalyze'"
             to="/quality"
             class="btn small-btn"
-            >照片检查</RouterLink
+            >{{ tr('照片检查') }}</RouterLink
           ><button
             v-if="job.operation === 'renamePreview'"
             class="btn small-btn"
@@ -173,7 +184,7 @@ async function showReport(jobId: string) {
               app.renameOpen = true;
             "
           >
-            查看预演
+            {{ tr('查看预演') }}
           </button>
         </div>
       </article>
@@ -181,15 +192,17 @@ async function showReport(jobId: string) {
     <EmptyState
       v-else
       icon="jobs"
-      title="现在，一切井然有序"
-      description="扫描、缩略图、查重、导出和备份任务会显示在这里。"
+      :title="tr('现在，一切井然有序')"
+      :description="tr('扫描、缩略图、查重、导出和备份任务会显示在这里。')"
     />
-    <p class="muted small">当前显示最近 100 个任务。中断的任务会保留历史，并在重启后标为可重试。</p>
-    <ElDialog v-model="detailOpen" title="任务失败明细" width="680px"
-      ><p v-if="!errors.length">没有逐文件错误。任务可能被中断或取消；请查看任务卡片摘要。</p>
+    <p class="muted small">
+      {{ tr('当前显示最近 100 个任务。中断的任务会保留历史，并在重启后标为可重试。') }}
+    </p>
+    <ElDialog v-model="detailOpen" :title="tr('任务失败明细')" width="680px"
+      ><p v-if="!errors.length">{{ tr('没有逐文件错误。任务可能被中断或取消；请查看任务卡片摘要。') }}</p>
       <div class="job-errors">
         <div v-for="(e, i) in errors" :key="i">
-          <code>{{ e.assetId?.slice(0, 8) ?? '任务' }}</code
+          <code>{{ e.assetId?.slice(0, 8) ?? tr('任务') }}</code
           ><span>{{ e.message }}</span>
         </div>
       </div></ElDialog

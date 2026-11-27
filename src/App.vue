@@ -22,6 +22,7 @@ const app = useApp(),
 const componentLocale = computed(() => (locale.value === 'en-US' ? enUS : zhCN));
 watchEffect(() => {
   document.documentElement.lang = locale.value;
+  document.title = locale.value === 'en-US' ? t('app.name') : `${t('app.name')} · Travel Gallery`;
 });
 const immersive = computed(
   () => ['/cull', '/compare'].includes(route.path) || route.path.startsWith('/viewer/'),

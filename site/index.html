@@ -31,6 +31,7 @@
               : 'light';
       } catch {}
     </script>
+    <script src="./language.js"></script>
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./main.js"></script>
     <title>旅图 Travel Gallery · 把旅途的心动，好好收藏。</title>
@@ -84,9 +85,17 @@
         </a>
         <nav aria-label="主要导航">
           <a href="#features">功能</a><a href="#cull">挑片体验</a><a href="#privacy">隐私</a>
-          <a href="https://github.com/merlinalex1028/travel-gallery#快速开始">文档</a>
+          <a href="./guide.html#start">文档</a>
         </nav>
         <div class="header-actions">
+          <a
+            class="language-toggle"
+            href="./en/"
+            lang="en"
+            data-language="en-US"
+            aria-label="Switch to English"
+            >EN</a
+          >
           <a
             class="icon-button github-link"
             href="https://github.com/merlinalex1028/travel-gallery"
@@ -120,20 +129,10 @@
             />在自己的电脑上，整理成随时想重温的回忆。
           </p>
           <div class="hero-actions">
-            <a
-              class="button"
-              data-download="macos"
-              href="https://github.com/merlinalex1028/travel-gallery/releases"
-            >
+            <a class="button" data-download="macos" href="#download">
               <svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>下载 macOS 版
             </a>
-            <a
-              class="button button-outline"
-              data-download="windows"
-              href="https://github.com/merlinalex1028/travel-gallery/releases"
-            >
-              下载 Windows 版
-            </a>
+            <a class="button button-outline" data-download="windows" href="#download"> 下载 Windows 版 </a>
           </div>
           <p class="hero-meta">
             <span data-release-status>查看公开版本</span><span aria-hidden="true">·</span>macOS 13+ / Windows
@@ -227,7 +226,7 @@
               >
             </li>
           </ul>
-          <a class="text-link" href="https://github.com/merlinalex1028/travel-gallery#功能">了解完整功能</a>
+          <a class="text-link" href="./guide.html#features">了解完整功能</a>
         </div>
         <div class="review-demo">
           <figure class="memory-card" data-state="unreviewed">
@@ -318,35 +317,27 @@
             <h2 id="download-title">下一段回忆，从这里开始。</h2>
             <p>旅图 Travel Gallery · 你的本地旅行影像资料库</p>
             <span class="release-status" data-release-status aria-live="polite"
-              >选择你的平台，在 Releases 获取可用版本</span
+              >选择你的平台，下载可用版本</span
             >
           </div>
           <div class="download-options">
             <article class="platform-download">
               <h3>macOS</h3>
               <p>Apple Silicon · macOS 13+</p>
-              <a
-                class="button"
-                data-download="macos"
-                href="https://github.com/merlinalex1028/travel-gallery/releases"
+              <a class="button" data-download="macos" href="#download"
                 ><svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>下载 DMG 安装包</a
               >
             </article>
             <article class="platform-download">
               <h3>Windows</h3>
               <p>x64 · Windows 10 / 11</p>
-              <a
-                class="button button-outline"
-                data-download="windows"
-                href="https://github.com/merlinalex1028/travel-gallery/releases"
+              <a class="button button-outline" data-download="windows" href="#download"
                 ><svg aria-hidden="true" class="icon"><use href="#i-download" /></svg>下载 EXE 安装包</a
               >
             </article>
           </div>
           <p class="download-notice">
-            当前为未获系统信任签名的公开体验包。首次启动请参照<a
-              href="https://github.com/merlinalex1028/travel-gallery#安装与首次启动"
-              >安装说明</a
+            当前为未获系统信任签名的公开体验包。首次启动请参照<a href="./guide.html#install">安装说明</a
             >，并核对随包 SHA256SUMS.txt。
           </p>
         </div>
@@ -447,9 +438,8 @@
       <p>沿途的风景，值得好好珍藏。</p>
       <nav aria-label="页脚导航">
         <a href="https://github.com/merlinalex1028/travel-gallery">GitHub</a
-        ><a href="https://github.com/merlinalex1028/travel-gallery/releases">版本记录</a
-        ><a href="https://github.com/merlinalex1028/travel-gallery#快速开始">文档</a
-        ><a href="https://github.com/merlinalex1028/travel-gallery/blob/main/AGENTS.md">开发规范</a>
+        ><a href="./guide.html#versions">版本记录</a><a href="./guide.html#start">文档</a
+        ><a href="./guide.html#development">开发指南</a>
       </nav>
     </footer>
   </body>

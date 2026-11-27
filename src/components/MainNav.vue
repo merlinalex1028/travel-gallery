@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { locale, tr } from '../i18n';
+
 import { ElMessage } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 import { useApp } from '../stores/app';
@@ -28,7 +30,7 @@ function library(filter: AssetFilter) {
 }
 function openSavedFilter(saved: SavedFilter) {
   if (temporaryFilterField(saved.filter)) {
-    ElMessage.error('这条规则包含临时范围。请从图库重新保存规则，并在设置中删除这条旧规则。');
+    ElMessage.error(tr('这条规则包含临时范围。请从图库重新保存规则，并在设置中删除这条旧规则。'));
     return;
   }
   lib.setFilter(saved.filter);
@@ -61,7 +63,9 @@ function openSavedFilter(saved: SavedFilter) {
           @click="nav.path === '/library' ? library({}) : router.push(nav.path)"
         >
           <Icon :name="nav.icon" /><span>{{ t(nav.label) }}</span
-          ><span v-if="nav.path === '/library'" class="nav-count">{{ app.total.toLocaleString() }}</span>
+          ><span v-if="nav.path === '/library'" class="nav-count">{{
+            app.total.toLocaleString(locale)
+          }}</span>
         </button>
       </nav>
       <div class="nav-section-label nav-section-with-action">

@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
@@ -32,7 +33,14 @@ export function useLocalAi() {
   const groups = shallowRef<AiClusters | null>(null),
     groupCount = shallowRef(3),
     selectedJob = shallowRef<string | null>(typeof route.query.job === 'string' ? route.query.job : null);
-  const aiJobs = computed(() => app.jobs.filter((job) => job.operation?.startsWith('ai') || job.operation?.startsWith('eyes') || job.operation === 'qualityAnalyze'));
+  const aiJobs = computed(() =>
+    app.jobs.filter(
+      (job) =>
+        job.operation?.startsWith('ai') ||
+        job.operation?.startsWith('eyes') ||
+        job.operation === 'qualityAnalyze',
+    ),
+  );
   const active = computed(() =>
     aiJobs.value.filter((job) => ['queued', 'running', 'paused'].includes(job.status)),
   );
@@ -163,7 +171,7 @@ export function useLocalAi() {
       if (!alive || !selected.path) return;
       await api('import_ai_model', { selectedPath: selected.path, clientMutationId: crypto.randomUUID() });
       if (alive) {
-        message.value = '模型导入已加入后台，完成校验后仍需手动启用。';
+        message.value = tr('模型导入已加入后台，完成校验后仍需手动启用。');
         await app.refresh();
         await refreshStatus();
       }
@@ -175,9 +183,11 @@ export function useLocalAi() {
   }
   async function removeModel() {
     const confirmed = await ElMessageBox.confirm(
-      '移除本机模型及可重建的 AI 索引和内容组？照片源文件、评分、标签、收藏和旅行相册保留。需要时可重新导入原模型包。',
-      '移除本地模型',
-      { confirmButtonText: '移除模型和 AI 索引', cancelButtonText: '取消', type: 'warning' },
+      tr(
+        '移除本机模型及可重建的 AI 索引和内容组？照片源文件、评分、标签、收藏和旅行相册保留。需要时可重新导入原模型包。',
+      ),
+      tr('移除本地模型'),
+      { confirmButtonText: tr('移除模型和 AI 索引'), cancelButtonText: tr('取消'), type: 'warning' },
     )
       .then(() => true)
       .catch(() => false);
@@ -187,7 +197,7 @@ export function useLocalAi() {
     try {
       await api('remove_ai_model', { confirmed: true, clientMutationId: crypto.randomUUID() });
       if (alive) {
-        message.value = '模型和 AI 索引移除任务已加入后台。';
+        message.value = tr('模型和 AI 索引移除任务已加入后台。');
         results.value = null;
         groups.value = null;
         await app.refresh();
@@ -211,8 +221,8 @@ export function useLocalAi() {
         : await api('start_ai_index', request);
       if (alive && current === scopeGeneration) {
         message.value = cluster
-          ? '内容分组已加入后台，将先补齐所选范围的内容索引。'
-          : '内容索引已加入后台，可在任务中心暂停、继续或取消。';
+          ? tr('内容分组已加入后台，将先补齐所选范围的内容索引。')
+          : tr('内容索引已加入后台，可在任务中心暂停、继续或取消。');
         if (cluster) selectedJob.value = result.jobId;
       }
       await app.refresh();
@@ -256,7 +266,8 @@ export function useLocalAi() {
         target: { kind: 'explicit', assetIds: ids },
       });
       if (!alive || current !== selectionGeneration || search !== searchGeneration) return;
-      if (snapshot.count !== ids.length) throw new Error('部分结果已移除或来源已停用，请重新搜索后再打开。');
+      if (snapshot.count !== ids.length)
+        throw new Error(tr('部分结果已移除或来源已停用，请重新搜索后再打开。'));
       lib.setFilter({ selectionSnapshotId: snapshot.id, combineLinked: false });
       await router.push('/filter?showResults=1');
       await lib.search();

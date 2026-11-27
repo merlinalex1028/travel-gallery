@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import CustomSelect from '../components/CustomSelect.vue';
 import { computed } from 'vue';
 import { useApp } from '../stores/app';
@@ -22,49 +24,51 @@ const chips = computed(() =>
       label:
         key === 'captureDateKnown'
           ? value
-            ? '有拍摄日期'
-            : '未知拍摄日期'
+            ? tr('有拍摄日期')
+            : tr('未知拍摄日期')
           : key === 'pickStates'
             ? (lib.filter.pickStates ?? []).map((s) => picks[s]).join(' / ')
             : key === 'favorite'
               ? value
-                ? '仅收藏'
-                : '排除收藏'
+                ? tr('仅收藏')
+                : tr('排除收藏')
               : key === 'ratingMin'
-                ? `${value} 星及以上`
+                ? tr('{0} 星及以上', { 0: value })
                 : key === 'mediaKinds'
-                  ? (lib.filter.mediaKinds ?? []).map((s) => (s === 'image' ? '照片' : '视频')).join(' / ')
+                  ? (lib.filter.mediaKinds ?? [])
+                      .map((s) => (s === 'image' ? tr('照片') : tr('视频')))
+                      .join(' / ')
                   : key === 'sourceIds'
-                    ? '指定来源'
+                    ? tr('指定来源')
                     : key === 'keyword'
-                      ? `搜索：${value}`
+                      ? tr('搜索：{0}', { 0: value })
                       : key === 'collectionId'
-                        ? '当前旅行'
+                        ? tr('当前旅行')
                         : ((
                             {
-                              extensions: '指定格式',
-                              cameraModels: '指定设备',
-                              tagRule: '指定标签',
-                              fileStates: '文件状态',
-                              duplicateKind: '重复分组',
-                              captureFromMs: '拍摄开始日期',
-                              captureToMs: '拍摄结束日期',
-                              captureLocalFrom: '拍摄开始日期',
-                              captureLocalTo: '拍摄结束日期',
-                              gpsCell: '地图位置',
-                              combineLinked: '展开配套文件',
-                              selectionSnapshotId: '冻结挑片范围',
-                              aiClusterId: 'AI 内容组',
-                              minBytes: '最小大小',
-                              maxBytes: '最大大小',
-                              minWidth: '最低宽度',
-                              minHeight: '最低高度',
-                              ratingMax: '最高星级',
-                              indexedFromMs: '导入开始',
-                              indexedToMs: '导入结束',
-                              durationMinMs: '最短视频',
-                              durationMaxMs: '最长视频',
-                              folder: '目录前缀',
+                              extensions: tr('指定格式'),
+                              cameraModels: tr('指定设备'),
+                              tagRule: tr('指定标签'),
+                              fileStates: tr('文件状态'),
+                              duplicateKind: tr('重复分组'),
+                              captureFromMs: tr('拍摄开始日期'),
+                              captureToMs: tr('拍摄结束日期'),
+                              captureLocalFrom: tr('拍摄开始日期'),
+                              captureLocalTo: tr('拍摄结束日期'),
+                              gpsCell: tr('地图位置'),
+                              combineLinked: tr('展开配套文件'),
+                              selectionSnapshotId: tr('冻结挑片范围'),
+                              aiClusterId: tr('AI 内容组'),
+                              minBytes: tr('最小大小'),
+                              maxBytes: tr('最大大小'),
+                              minWidth: tr('最低宽度'),
+                              minHeight: tr('最低高度'),
+                              ratingMax: tr('最高星级'),
+                              indexedFromMs: tr('导入开始'),
+                              indexedToMs: tr('导入结束'),
+                              durationMinMs: tr('最短视频'),
+                              durationMaxMs: tr('最长视频'),
+                              folder: tr('目录前缀'),
                             } as Record<string, string>
                           )[key] ?? key),
     })),
@@ -81,11 +85,11 @@ function remove(key: string) {
 <template>
   <div class="library-toolbar">
     <div class="segmented">
-      <button :class="{ active: !lib.filter.mediaKinds?.length }" @click="quick('')">全部</button
+      <button :class="{ active: !lib.filter.mediaKinds?.length }" @click="quick('')">{{ tr('全部') }}</button
       ><button :class="{ active: lib.filter.mediaKinds?.[0] === 'image' }" @click="quick('image')">
-        照片</button
+        {{ tr('照片') }}</button
       ><button :class="{ active: lib.filter.mediaKinds?.[0] === 'video' }" @click="quick('video')">
-        视频
+        {{ tr('视频') }}
       </button>
     </div>
     <div class="toolbar-right">
@@ -97,27 +101,26 @@ function remove(key: string) {
             lib.filter.combineLinked = ($event.target as HTMLInputElement).checked;
             lib.search();
           "
-        />合并配套</label
+        />{{ tr('合并配套') }}</label
       >
       <button class="btn small-btn" :class="{ tinted: activeCount }" @click="$emit('filter')">
-        <Icon name="filter" :size="15" />筛选<span v-if="activeCount" class="filter-count">{{
-          activeCount
-        }}</span></button
+        <Icon name="filter" :size="15" />{{ tr('筛选')
+        }}<span v-if="activeCount" class="filter-count">{{ activeCount }}</span></button
       ><CustomSelect
         v-model="lib.sort.field"
         class="sort-select"
-        aria-label="排序字段"
+        :aria-label="tr('排序字段')"
         @change="lib.search()"
         :options="[
-          { value: 'captureUtcMs', label: '拍摄时间' },
-          { value: 'indexedAt', label: '导入时间' },
-          { value: 'filename', label: '文件名称' },
-          { value: 'byteSize', label: '文件大小' },
-          { value: 'rating', label: '星级评分' },
+          { value: 'captureUtcMs', label: tr('拍摄时间') },
+          { value: 'indexedAt', label: tr('导入时间') },
+          { value: 'filename', label: tr('文件名称') },
+          { value: 'byteSize', label: tr('文件大小') },
+          { value: 'rating', label: tr('星级评分') },
         ]"
       /><button
         class="icon-btn"
-        :aria-label="lib.sort.direction === 'asc' ? '改为降序' : '改为升序'"
+        :aria-label="lib.sort.direction === 'asc' ? tr('改为降序') : tr('改为升序')"
         @click="
           () => {
             lib.sort.direction = lib.sort.direction === 'asc' ? 'desc' : 'asc';
@@ -132,12 +135,12 @@ function remove(key: string) {
         min="150"
         max="320"
         class="density-slider"
-        aria-label="缩略图尺寸"
+        :aria-label="tr('缩略图尺寸')"
         @change="app.perform(app.persist)"
       /><button
         class="icon-btn"
         :class="{ tinted: app.settings.showInspector }"
-        aria-label="显示或隐藏详情栏"
+        :aria-label="tr('显示或隐藏详情栏')"
         @click="app.settings.showInspector = !app.settings.showInspector"
       >
         <Icon name="inspector" :size="18" />
@@ -147,7 +150,7 @@ function remove(key: string) {
   <div v-if="chips.length" class="filter-chips">
     <span v-for="chip in chips" :key="chip.key" class="filter-chip"
       >{{ chip.label
-      }}<button :aria-label="`移除${chip.label}筛选`" @click="remove(chip.key)">
+      }}<button :aria-label="tr('移除{0}筛选', { 0: chip.label })" @click="remove(chip.key)">
         <Icon name="close" :size="12" /></button></span
     ><button
       class="text-btn"
@@ -158,7 +161,9 @@ function remove(key: string) {
         }
       "
     >
-      清空条件</button
-    ><button class="text-btn" @click="$emit('save')"><Icon name="plus" :size="13" />保存为智能筛选</button>
+      {{ tr('清空条件') }}</button
+    ><button class="text-btn" @click="$emit('save')">
+      <Icon name="plus" :size="13" />{{ tr('保存为智能筛选') }}
+    </button>
   </div>
 </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import { computed, onMounted, reactive, shallowRef } from 'vue';
 import { useRouter } from 'vue-router';
 import { useApp } from '../stores/app';
@@ -109,17 +111,20 @@ useMediaKeyboard((key, e) => {
 <template>
   <div class="compare-page viewer-page">
     <header class="viewer-top">
-      <RouterLink to="/library" class="btn ghost"><Icon name="back" :size="17" />返回图库</RouterLink>
+      <RouterLink to="/library" class="btn ghost"
+        ><Icon name="back" :size="17" />{{ tr('返回图库') }}</RouterLink
+      >
       <div class="viewer-title">
-        <strong>多图对比</strong><span>{{ assets.length }} 张照片 · 点击照片切换操作对象</span>
+        <strong>{{ tr('多图对比') }}</strong
+        ><span>{{ assets.length }} {{ tr('张照片 · 点击照片切换操作对象') }}</span>
       </div>
       <div class="row">
         <button class="btn ghost" :disabled="!lib.history.length || busy" @click="undo">
-          <Icon name="undo" :size="15" />撤销
+          <Icon name="undo" :size="15" />{{ tr('撤销') }}
         </button>
-        <label class="check-label"><input v-model="sync" type="checkbox" />同步缩放 / 平移</label
+        <label class="check-label"><input v-model="sync" type="checkbox" />{{ tr('同步缩放 / 平移') }}</label
         ><button class="btn ghost" @click="togglePixels">
-          {{ currentView.actualPixels ? '1:1 原图' : '适应窗口' }}
+          {{ currentView.actualPixels ? tr('1:1 原图') : tr('适应窗口') }}
         </button>
       </div>
     </header>
@@ -140,7 +145,7 @@ useMediaKeyboard((key, e) => {
         <div class="compare-item-heading">
           <strong>{{ asset.filename }}</strong
           ><button class="text-btn" :disabled="busy" @click.stop="winner(asset.id)">
-            <Icon name="flag" :size="14" />保留这一张
+            <Icon name="flag" :size="14" />{{ tr('保留这一张') }}
           </button>
         </div>
         <MediaStage
@@ -156,13 +161,13 @@ useMediaKeyboard((key, e) => {
     <EmptyState
       v-else
       icon="layers"
-      title="先选出想要对比的照片"
-      description="在图库中选择 2–4 张照片，然后点击「对比」。"
-      action="回到图库"
+      :title="tr('先选出想要对比的照片')"
+      :description="tr('在图库中选择 2–4 张照片，然后点击「对比」。')"
+      :action="tr('回到图库')"
       @action="router.push('/library')"
     />
     <footer class="viewer-footer">
-      <Icon name="shield" :size="13" />只标记你指定的照片，每张照片的状态独立保存。
+      <Icon name="shield" :size="13" />{{ tr('只标记你指定的照片，每张照片的状态独立保存。') }}
     </footer>
   </div>
 </template>

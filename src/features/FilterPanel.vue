@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import { computed, reactive, shallowRef, useId, watch } from 'vue';
 import { useApp } from '../stores/app';
 import type { AssetFilter, PickState, MediaKind, FileState } from '../services/contracts';
@@ -59,9 +61,9 @@ const validationId = useId();
 const errors = computed(() => {
   const result: Partial<Record<DraftField, string>> = {};
   for (const field of ['sourceIds', 'extensions', 'cameraModels'] as const) {
-    if ((form[field]?.length ?? 0) > 200) result[field] = '最多选择200项，请移除多余选项';
+    if ((form[field]?.length ?? 0) > 200) result[field] = tr('最多选择200项，请移除多余选项');
   }
-  if (tagIds.value.length > 200) result.tagIds = '最多选择200项，请移除多余选项';
+  if (tagIds.value.length > 200) result.tagIds = tr('最多选择200项，请移除多余选项');
   for (const field of numericFields) {
     const value: unknown = form[field];
     if (
@@ -71,16 +73,16 @@ const errors = computed(() => {
         value !== '' &&
         (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0))
     )
-      result[field] = '请输入0或以上的有效整数';
+      result[field] = tr('请输入0或以上的有效整数');
   }
   for (const field of ['ratingMin', 'ratingMax'] as const) {
     const value = form[field];
-    if (typeof value === 'number' && (value < 0 || value > 5)) result[field] = '星级必须为0～5';
+    if (typeof value === 'number' && (value < 0 || value > 5)) result[field] = tr('星级必须为0～5');
   }
   for (const [from, to, message] of [
-    ['ratingMin', 'ratingMax', '最低星级不能高于最高星级'],
-    ['minBytes', 'maxBytes', '最小值不能大于最大值'],
-    ['durationMinMs', 'durationMaxMs', '最小值不能大于最大值'],
+    ['ratingMin', 'ratingMax', tr('最低星级不能高于最高星级')],
+    ['minBytes', 'maxBytes', tr('最小值不能大于最大值')],
+    ['durationMinMs', 'durationMaxMs', tr('最小值不能大于最大值')],
   ] as const) {
     const first = form[from],
       last = form[to];
@@ -102,7 +104,7 @@ const errors = computed(() => {
         !Number.isFinite(date.getTime()) ||
         date.toISOString().slice(0, 10) !== value
       )
-        result[field] = '请输入有效日期';
+        result[field] = tr('请输入有效日期');
     }
   }
   for (const [from, to] of [
@@ -110,7 +112,7 @@ const errors = computed(() => {
     ['indexedFrom', 'indexedTo'],
   ] as const) {
     if (!result[from] && !result[to] && dates[from] && dates[to] && dates[from] > dates[to])
-      result[from] = result[to] = '起始日期不能晚于结束日期';
+      result[from] = result[to] = tr('起始日期不能晚于结束日期');
   }
   return result;
 });
@@ -189,11 +191,13 @@ function reset() {
 }
 </script>
 <template>
-  <ElDrawer v-model="open" title="组合筛选" size="390px"
-    ><div class="filter-explainer"><Icon name="filter" :size="16" />不同条件同时满足，同一条件内任一匹配</div>
-    <div v-if="hasErrors" class="notice warning" role="alert">请先修正标红的筛选条件。</div>
+  <ElDrawer v-model="open" :title="tr('组合筛选')" size="390px"
+    ><div class="filter-explainer">
+      <Icon name="filter" :size="16" />{{ tr('不同条件同时满足，同一条件内任一匹配') }}
+    </div>
+    <div v-if="hasErrors" class="notice warning" role="alert">{{ tr('请先修正标红的筛选条件。') }}</div>
     <div class="filter-section">
-      <h4>挑片状态</h4>
+      <h4>{{ tr('挑片状态') }}</h4>
       <div class="filter-options">
         <label v-for="s in pickOptions" :key="s" class="check-label"
           ><input
@@ -205,62 +209,65 @@ function reset() {
       </div>
     </div>
     <div class="filter-section">
-      <h4>媒体类型</h4>
+      <h4>{{ tr('媒体类型') }}</h4>
       <div class="filter-options">
         <label v-for="s in kindOptions" :key="s" class="check-label"
           ><input
             type="checkbox"
             :checked="form.mediaKinds?.includes(s)"
             @change="list('mediaKinds', s, ($event.target as HTMLInputElement).checked)"
-          />{{ s === 'image' ? '照片' : '视频' }}</label
+          />{{ s === 'image' ? tr('照片') : tr('视频') }}</label
         >
       </div>
     </div>
     <div class="filter-section form-stack">
       <label
-        >最低星级<CustomSelect
+        >{{ tr('最低星级')
+        }}<CustomSelect
           v-model="form.ratingMin"
-          aria-label="最低星级"
+          :aria-label="tr('最低星级')"
           v-bind="validationAttrs('ratingMin')"
           :options="[
-            { value: undefined, label: '不限' },
+            { value: undefined, label: tr('不限') },
             ...Array.from({ length: 6 }, (_, index) => {
               const n = index + 1;
-              return { value: n - 1, label: String(n - 1) + ' 星及以上' };
+              return { value: n - 1, label: tr('{0} 星及以上', { 0: n - 1 }) };
             }),
           ]"
         /><small v-if="errors.ratingMin" :id="errorId('ratingMin')" class="filter-field-error" role="alert">{{
           errors.ratingMin
         }}</small></label
       ><label
-        >最高星级<CustomSelect
+        >{{ tr('最高星级')
+        }}<CustomSelect
           v-model="form.ratingMax"
-          aria-label="最高星级"
+          :aria-label="tr('最高星级')"
           v-bind="validationAttrs('ratingMax')"
           :options="[
-            { value: undefined, label: '不限' },
+            { value: undefined, label: tr('不限') },
             ...Array.from({ length: 6 }, (_, index) => {
               const n = index + 1;
-              return { value: n - 1, label: String(n - 1) + ' 星及以下' };
+              return { value: n - 1, label: tr('{0} 星及以下', { 0: n - 1 }) };
             }),
           ]"
         /><small v-if="errors.ratingMax" :id="errorId('ratingMax')" class="filter-field-error" role="alert">{{
           errors.ratingMax
         }}</small></label
       ><label
-        >收藏<CustomSelect
+        >{{ tr('收藏')
+        }}<CustomSelect
           v-model="form.favorite"
-          aria-label="收藏"
+          :aria-label="tr('收藏')"
           :options="[
-            { value: undefined, label: '全部' },
-            { value: true, label: '仅收藏' },
-            { value: false, label: '排除收藏' },
+            { value: undefined, label: tr('全部') },
+            { value: true, label: tr('仅收藏') },
+            { value: false, label: tr('排除收藏') },
           ]"
       /></label>
     </div>
     <div class="filter-section">
-      <h4>来源目录</h4>
-      <div role="group" aria-label="来源目录" v-bind="validationAttrs('sourceIds')">
+      <h4>{{ tr('来源目录') }}</h4>
+      <div role="group" :aria-label="tr('来源目录')" v-bind="validationAttrs('sourceIds')">
         <label v-for="s in app.sources" :key="s.id" class="check-label"
           ><input
             type="checkbox"
@@ -274,28 +281,30 @@ function reset() {
       }}</small>
     </div>
     <div class="filter-section form-stack">
-      <label>目录片段<input v-model="form.folder" placeholder="相对来源的目录前缀" /></label
+      <label
+        >{{ tr('目录片段') }}<input v-model="form.folder" :placeholder="tr('相对来源的目录前缀')" /></label
       ><label
-        >拍摄日期可信度<CustomSelect
+        >{{ tr('拍摄日期可信度')
+        }}<CustomSelect
           v-model="form.captureDateKnown"
-          aria-label="拍摄日期可信度"
+          :aria-label="tr('拍摄日期可信度')"
           :options="[
-            { value: undefined, label: '全部' },
-            { value: true, label: '有拍摄日期' },
-            { value: false, label: '未知日期 / 仅文件修改时间' },
+            { value: undefined, label: tr('全部') },
+            { value: true, label: tr('有拍摄日期') },
+            { value: false, label: tr('未知日期 / 仅文件修改时间') },
           ]" /></label
       ><label
-        >拍摄日期
+        >{{ tr('拍摄日期') }}
         <div class="input-pair">
           <input
             v-model="captureFrom"
             type="date"
-            aria-label="拍摄起始日期"
+            :aria-label="tr('拍摄起始日期')"
             v-bind="validationAttrs('captureFrom', 'capture')"
           /><input
             v-model="captureTo"
             type="date"
-            aria-label="拍摄结束日期"
+            :aria-label="tr('拍摄结束日期')"
             v-bind="validationAttrs('captureTo', 'capture')"
           />
         </div>
@@ -307,17 +316,17 @@ function reset() {
           >{{ issue('captureFrom', 'captureTo') }}</small
         ></label
       ><label
-        >导入日期
+        >{{ tr('导入日期') }}
         <div class="input-pair">
           <input
             v-model="indexedFrom"
             type="date"
-            aria-label="导入起始日期"
+            :aria-label="tr('导入起始日期')"
             v-bind="validationAttrs('indexedFrom', 'indexed')"
           /><input
             v-model="indexedTo"
             type="date"
-            aria-label="导入结束日期"
+            :aria-label="tr('导入结束日期')"
             v-bind="validationAttrs('indexedTo', 'indexed')"
           />
         </div>
@@ -332,13 +341,13 @@ function reset() {
     </div>
     <div class="filter-section form-stack">
       <label
-        >文件格式（多选）
-        <div role="group" aria-label="文件格式（多选）" v-bind="validationAttrs('extensions')">
+        >{{ tr('文件格式（多选）') }}
+        <div role="group" :aria-label="tr('文件格式（多选）')" v-bind="validationAttrs('extensions')">
           <CustomSelect
             v-model="form.extensions"
             multiple
-            placeholder="全部格式"
-            aria-label="文件格式（多选）"
+            :placeholder="tr('全部格式')"
+            :aria-label="tr('文件格式（多选）')"
             :options="extensionOptions"
             v-bind="validationAttrs('extensions')"
           />
@@ -347,15 +356,15 @@ function reset() {
           errors.extensions
         }}</small></label
       ><label
-        >设备型号
-        <div role="group" aria-label="设备型号" v-bind="validationAttrs('cameraModels')">
+        >{{ tr('设备型号') }}
+        <div role="group" :aria-label="tr('设备型号')" v-bind="validationAttrs('cameraModels')">
           <CustomSelect
             v-model="form.cameraModels"
             multiple
             filterable
             allow-create
-            aria-label="设备型号"
-            placeholder="输入 EXIF 中的完整型号"
+            :aria-label="tr('设备型号')"
+            :placeholder="tr('输入 EXIF 中的完整型号')"
             :options="cameraModelOptions"
             v-bind="validationAttrs('cameraModels')"
           />
@@ -368,22 +377,22 @@ function reset() {
           >{{ errors.cameraModels }}</small
         ></label
       ><label
-        >文件大小范围（字节）
+        >{{ tr('文件大小范围（字节）') }}
         <div class="input-pair">
           <input
             v-model.number="form.minBytes"
             type="number"
             min="0"
-            placeholder="最小"
-            aria-label="最小文件大小"
+            :placeholder="tr('最小')"
+            :aria-label="tr('最小文件大小')"
             v-bind="validationAttrs('minBytes', 'bytes')"
             @input="trackNumber('minBytes', $event)"
           /><input
             v-model.number="form.maxBytes"
             type="number"
             min="0"
-            placeholder="最大"
-            aria-label="最大文件大小"
+            :placeholder="tr('最大')"
+            :aria-label="tr('最大文件大小')"
             v-bind="validationAttrs('maxBytes', 'bytes')"
             @input="trackNumber('maxBytes', $event)"
           />
@@ -396,22 +405,22 @@ function reset() {
           >{{ issue('minBytes', 'maxBytes') }}</small
         ></label
       ><label
-        >最低分辨率
+        >{{ tr('最低分辨率') }}
         <div class="input-pair">
           <input
             v-model.number="form.minWidth"
             type="number"
             min="0"
-            placeholder="宽度"
-            aria-label="最小宽度"
+            :placeholder="tr('宽度')"
+            :aria-label="tr('最小宽度')"
             v-bind="validationAttrs('minWidth', 'resolution')"
             @input="trackNumber('minWidth', $event)"
           /><input
             v-model.number="form.minHeight"
             type="number"
             min="0"
-            placeholder="高度"
-            aria-label="最小高度"
+            :placeholder="tr('高度')"
+            :aria-label="tr('最小高度')"
             v-bind="validationAttrs('minHeight', 'resolution')"
             @input="trackNumber('minHeight', $event)"
           />
@@ -424,22 +433,22 @@ function reset() {
           >{{ issue('minWidth', 'minHeight') }}</small
         ></label
       ><label
-        >视频时长范围（毫秒）
+        >{{ tr('视频时长范围（毫秒）') }}
         <div class="input-pair">
           <input
             v-model.number="form.durationMinMs"
             type="number"
             min="0"
-            placeholder="最短"
-            aria-label="最短时长"
+            :placeholder="tr('最短')"
+            :aria-label="tr('最短时长')"
             v-bind="validationAttrs('durationMinMs', 'duration')"
             @input="trackNumber('durationMinMs', $event)"
           /><input
             v-model.number="form.durationMaxMs"
             type="number"
             min="0"
-            placeholder="最长"
-            aria-label="最长时长"
+            :placeholder="tr('最长')"
+            :aria-label="tr('最长时长')"
             v-bind="validationAttrs('durationMaxMs', 'duration')"
             @input="trackNumber('durationMaxMs', $event)"
           />
@@ -455,21 +464,22 @@ function reset() {
     </div>
     <div class="filter-section form-stack">
       <label
-        >标签规则<CustomSelect
+        >{{ tr('标签规则')
+        }}<CustomSelect
           v-model="tagMode"
-          aria-label="标签规则"
+          :aria-label="tr('标签规则')"
           :options="[
-            { value: 'any', label: '包含任一标签' },
-            { value: 'all', label: '包含全部标签' },
-            { value: 'exclude', label: '排除这些标签' },
+            { value: 'any', label: tr('包含任一标签') },
+            { value: 'all', label: tr('包含全部标签') },
+            { value: 'exclude', label: tr('排除这些标签') },
           ]"
       /></label>
-      <div role="group" aria-label="选择标签" v-bind="validationAttrs('tagIds')">
+      <div role="group" :aria-label="tr('选择标签')" v-bind="validationAttrs('tagIds')">
         <CustomSelect
           v-model="tagIds"
           multiple
-          placeholder="选择标签"
-          aria-label="选择标签"
+          :placeholder="tr('选择标签')"
+          :aria-label="tr('选择标签')"
           :options="tagOptions"
           v-bind="validationAttrs('tagIds')"
         />
@@ -479,7 +489,7 @@ function reset() {
       }}</small>
     </div>
     <div class="filter-section">
-      <h4>文件状态</h4>
+      <h4>{{ tr('文件状态') }}</h4>
       <label v-for="s in fileOptions" :key="s" class="check-label"
         ><input
           type="checkbox"
@@ -490,21 +500,24 @@ function reset() {
     </div>
     <div class="filter-section form-stack">
       <label
-        >重复分组<CustomSelect
+        >{{ tr('重复分组')
+        }}<CustomSelect
           v-model="form.duplicateKind"
-          aria-label="重复分组"
+          :aria-label="tr('重复分组')"
           :options="[
-            { value: undefined, label: '不限' },
-            { value: 'exact', label: '精确重复组' },
-            { value: 'similar', label: '视觉相似组' },
-            { value: 'any', label: '任一分组' },
-            { value: 'none', label: '未加入重复组' },
+            { value: undefined, label: tr('不限') },
+            { value: 'exact', label: tr('精确重复组') },
+            { value: 'similar', label: tr('视觉相似组') },
+            { value: 'any', label: tr('任一分组') },
+            { value: 'none', label: tr('未加入重复组') },
           ]"
       /></label>
     </div>
     <template #footer
-      ><button class="btn" @click="reset">清空条件</button
-      ><button class="btn primary" :disabled="hasErrors" @click="apply">应用筛选</button></template
+      ><button class="btn" @click="reset">{{ tr('清空条件') }}</button
+      ><button class="btn primary" :disabled="hasErrors" @click="apply">
+        {{ tr('应用筛选') }}
+      </button></template
     ></ElDrawer
   >
 </template>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { locale, tr } from '../i18n';
+
 import CustomSelect from '../components/CustomSelect.vue';
 import { computed, nextTick, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -49,14 +51,14 @@ const title = computed(
   () =>
     trip.value?.name ??
     (lib.filter.favorite
-      ? '我的收藏'
+      ? tr('我的收藏')
       : lib.filter.pickStates?.[0] === 'keep'
-        ? '已保留'
+        ? tr('已保留')
         : lib.filter.pickStates?.[0] === 'unreviewed'
-          ? '未整理'
+          ? tr('未整理')
           : route.path === '/filter'
-            ? '筛选结果'
-            : '全部媒体'),
+            ? tr('筛选结果')
+            : tr('全部媒体')),
 );
 onMounted(() => {
   if (route.params.id) lib.setFilter({ collectionId: String(route.params.id) });
@@ -106,7 +108,7 @@ async function cull() {
       await lib.search();
       if (lib.error) throw new Error(lib.error);
       const fallback = lib.items[0];
-      if (!fallback) throw new Error('此范围目前没有媒体，请刷新图库。');
+      if (!fallback) throw new Error(tr('此范围目前没有媒体，请刷新图库。'));
       const filter: AssetFilter = { ...scopeFilter, pickStates: ['unreviewed'] };
       lib.setFilter(filter);
       await lib.search();
@@ -139,13 +141,17 @@ async function saveFilter() {
   const filter = { ...lib.filter };
   const sort = { ...lib.sort };
   if (temporaryFilterField(filter)) {
-    ElMessage.error(TEMPORARY_FILTER_MESSAGE);
+    ElMessage.error(tr(TEMPORARY_FILTER_MESSAGE));
     return;
   }
-  const answer = await ElMessageBox.prompt('保存当前筛选规则，之后自动显示符合条件的照片。', '保存智能筛选', {
-    inputPlaceholder: '例如：四星以上的保留照片',
-    inputValidator: (value) => !!value?.trim() || '请输入名称',
-  }).catch(() => null);
+  const answer = await ElMessageBox.prompt(
+    tr('保存当前筛选规则，之后自动显示符合条件的照片。'),
+    tr('保存智能筛选'),
+    {
+      inputPlaceholder: tr('例如：四星以上的保留照片'),
+      inputValidator: (value) => !!value?.trim() || tr('请输入名称'),
+    },
+  ).catch(() => null);
   if (answer)
     await app.perform(async () => {
       await api('save_filter', {
@@ -154,7 +160,7 @@ async function saveFilter() {
         sort,
       });
       await app.refresh();
-    }, '智能筛选已保存');
+    }, tr('智能筛选已保存'));
 }
 function compare() {
   if (lib.count >= 2 && lib.count <= 4 && !lib.snapshot) void router.push('/compare');
@@ -228,9 +234,11 @@ useMediaKeyboard((key, event) => {
           <div class="eyebrow">YOUR JOURNEY, FRAME BY FRAME</div>
           <h1>
             {{ title
-            }}<span v-if="!lib.queryUnavailable" class="heading-count">{{ lib.total.toLocaleString() }}</span>
+            }}<span v-if="!lib.queryUnavailable" class="heading-count">{{
+              lib.total.toLocaleString(locale)
+            }}</span>
           </h1>
-          <p>{{ trip?.description ?? '把沿途的风景，整理成值得珍藏的回忆。' }}</p>
+          <p>{{ trip?.description ?? tr('把沿途的风景，整理成值得珍藏的回忆。') }}</p>
         </div>
         <div class="heading-actions">
           <template v-if="trip"
@@ -241,10 +249,10 @@ useMediaKeyboard((key, event) => {
                 app.perform(async () => {
                   await api('set_trip_cover', { tripId: trip!.id, assetId: [...lib.selected][0]! });
                   await app.refresh();
-                }, '旅行封面已更新')
+                }, tr('旅行封面已更新'))
               "
             >
-              设为封面</button
+              {{ tr('设为封面') }}</button
             ><button
               class="btn"
               :disabled="!lib.count"
@@ -254,21 +262,21 @@ useMediaKeyboard((key, event) => {
                   await app.refresh();
                   await lib.search();
                   lib.clearSelection();
-                }, '已移出相册，照片保留')
+                }, tr('已移出相册，照片保留'))
               "
             >
-              移出旅行
+              {{ tr('移出旅行') }}
             </button></template
           >
           <button
             class="btn"
             :disabled="!lib.history.length || !!lib.pending"
-            title="撤销上次修改"
+            :title="tr('撤销上次修改')"
             @click="app.perform(lib.undo)"
           >
-            <Icon name="undo" :size="15" />撤销</button
+            <Icon name="undo" :size="15" />{{ tr('撤销') }}</button
           ><button class="btn" :disabled="!lib.count && (lib.queryUnavailable || !lib.total)" @click="cull">
-            <Icon name="flag" :size="15" />开始挑片
+            <Icon name="flag" :size="15" />{{ tr('开始挑片') }}
           </button>
         </div>
       </div>
@@ -281,18 +289,18 @@ useMediaKeyboard((key, event) => {
           ><Icon name="calendar" :size="14" /><CustomSelect
             v-model="groupBy"
             class="group-select"
-            aria-label="日期分组"
+            :aria-label="tr('日期分组')"
             :options="[
-              { value: 'day', label: '按日分组' },
-              { value: 'month', label: '按月分组' },
-              { value: 'none', label: '不分组' },
+              { value: 'day', label: tr('按日分组') },
+              { value: 'month', label: tr('按月分组') },
+              { value: 'none', label: tr('不分组') },
             ]"
         /></span>
         <div>
-          <span v-if="lib.pending" class="muted">正在保存…</span
-          ><span v-else-if="lib.loading" class="muted">正在更新匹配结果…</span
-          ><span v-else-if="!lib.error" class="muted">{{ lib.items.length }} 张已加载</span
-          ><button class="icon-btn" aria-label="刷新图库" @click="lib.search()">
+          <span v-if="lib.pending" class="muted">{{ tr('正在保存…') }}</span
+          ><span v-else-if="lib.loading" class="muted">{{ tr('正在更新匹配结果…') }}</span
+          ><span v-else-if="!lib.error" class="muted">{{ lib.items.length }} {{ tr('张已加载') }}</span
+          ><button class="icon-btn" :aria-label="tr('刷新图库')" @click="lib.search()">
             <Icon name="refresh" :size="14" />
           </button>
         </div>
@@ -300,9 +308,9 @@ useMediaKeyboard((key, event) => {
       <EmptyState
         v-if="lib.error"
         icon="warning"
-        title="暂时无法加载媒体"
+        :title="tr('暂时无法加载媒体')"
         :description="lib.error"
-        action="刷新结果"
+        :action="tr('刷新结果')"
         error
         @action="lib.search()"
       />
@@ -312,22 +320,26 @@ useMediaKeyboard((key, event) => {
       <EmptyState
         v-else-if="!lib.items.length && emptySource"
         icon="folder"
-        title="此目录没有可索引的媒体"
-        description="可选择另一个照片目录。这个来源仍可在来源管理中重新扫描。"
-        action="换目录"
+        :title="tr('此目录没有可索引的媒体')"
+        :description="tr('可选择另一个照片目录。这个来源仍可在来源管理中重新扫描。')"
+        :action="tr('换目录')"
         @action="app.importOpen = true"
       />
       <EmptyState
         v-else-if="!lib.items.length"
         :title="
-          app.total ? '这里还没有匹配的照片' : app.running.length ? '正在寻找沿途的风景…' : '从一段旅程开始'
+          app.total
+            ? tr('这里还没有匹配的照片')
+            : app.running.length
+              ? tr('正在寻找沿途的风景…')
+              : tr('从一段旅程开始')
         "
         :description="
           app.total
-            ? '试试调整筛选条件，或清空搜索。'
-            : '添加照片所在的目录，原图留在原处，旅图帮你有序收藏。'
+            ? tr('试试调整筛选条件，或清空搜索。')
+            : tr('添加照片所在的目录，原图留在原处，旅图帮你有序收藏。')
         "
-        :action="app.total ? '清空筛选' : '添加照片目录'"
+        :action="app.total ? tr('清空筛选') : tr('添加照片目录')"
         @action="app.total ? setFilter({}) : (app.importOpen = true)"
       /><MediaGrid
         v-else
@@ -369,13 +381,13 @@ useMediaKeyboard((key, event) => {
         v-if="context"
         ref="contextMenu"
         role="menu"
-        aria-label="选中媒体操作"
+        :aria-label="tr('选中媒体操作')"
         class="context-menu"
         :style="{ left: `${context.x}px`, top: `${context.y}px` }"
         @click.stop
         @keydown.esc.stop.prevent="closeContext"
       >
-        <span>操作 {{ lib.count }} 张选中媒体</span
+        <span>{{ tr('操作') }} {{ lib.count }} {{ tr('张选中媒体') }}</span
         ><button
           role="menuitem"
           @click="
@@ -385,7 +397,7 @@ useMediaKeyboard((key, event) => {
             }
           "
         >
-          <Icon name="flag" />标记保留</button
+          <Icon name="flag" />{{ tr('标记保留') }}</button
         ><button
           role="menuitem"
           @click="
@@ -395,7 +407,7 @@ useMediaKeyboard((key, event) => {
             }
           "
         >
-          <Icon name="close" />标记淘汰</button
+          <Icon name="close" />{{ tr('标记淘汰') }}</button
         ><button
           role="menuitem"
           @click="
@@ -405,7 +417,7 @@ useMediaKeyboard((key, event) => {
             }
           "
         >
-          <Icon name="heart" />加入收藏</button
+          <Icon name="heart" />{{ tr('加入收藏') }}</button
         ><button
           role="menuitem"
           @click="
@@ -415,7 +427,7 @@ useMediaKeyboard((key, event) => {
             }
           "
         >
-          <Icon name="play" />开始挑片</button
+          <Icon name="play" />{{ tr('开始挑片') }}</button
         ><button
           role="menuitem"
           @click="
@@ -425,7 +437,7 @@ useMediaKeyboard((key, event) => {
             }
           "
         >
-          <Icon name="export" />复制导出
+          <Icon name="export" />{{ tr('复制导出') }}
         </button>
       </div></Teleport
     >

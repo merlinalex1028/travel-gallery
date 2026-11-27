@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../../i18n';
+
 import CustomSelect from '../CustomSelect.vue';
 import type { AiClusters, JobSummary, Trip } from '../../services/contracts';
 import { date } from '../../services/format';
@@ -19,17 +21,18 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
   <section class="settings-card ai-group-card">
     <div class="row">
       <div>
-        <h2>按内容分组</h2>
-        <p>使用同一模型的画面特征寻找相近内容，结果由你复核。</p>
+        <h2>{{ tr('按内容分组') }}</h2>
+        <p>{{ tr('使用同一模型的画面特征寻找相近内容，结果由你复核。') }}</p>
       </div>
       <div class="row">
         <label
-          >期望组数<input
+          >{{ tr('期望组数')
+          }}<input
             v-model.number="groupCount"
             type="number"
             min="2"
             :max="maximumGroups"
-            aria-label="内容分组数量" /></label
+            :aria-label="tr('内容分组数量')" /></label
         ><button
           class="btn"
           :disabled="
@@ -42,23 +45,27 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
           "
           @click="emit('generate')"
         >
-          生成内容组
+          {{ tr('生成内容组') }}
         </button>
       </div>
     </div>
     <p class="muted small">
-      单次最多 10000 项、2–20
-      组。会先补齐当前范围索引；画面高度相近时实际组数可能更少。分组与相近程度不改变保留状态、星级、收藏或标签。
+      {{
+        tr(
+          '单次最多 10000 项、2–20 组。会先补齐当前范围索引；画面高度相近时实际组数可能更少。分组与相近程度不改变保留状态、星级、收藏或标签。',
+        )
+      }}
     </p>
     <label v-if="completedGroups.length" class="ai-history"
-      >查看已生成的分组<CustomSelect
+      >{{ tr('查看已生成的分组')
+      }}<CustomSelect
         v-model="selectedJob"
-        aria-label="内容分组历史"
+        :aria-label="tr('内容分组历史')"
         :options="[
-          { value: null, label: '当前范围最近一次' },
+          { value: null, label: tr('当前范围最近一次') },
           ...completedGroups.map((job) => ({
             value: job.id,
-            label: String(date(job.createdAt, true)) + ' · ' + String(job.progressDone) + ' 步',
+            label: `${date(job.createdAt, true)} · ${tr('{0}步', { 0: job.progressDone })}`,
           })),
         ]"
     /></label>
@@ -67,15 +74,14 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
         {{ date(groups.createdAt, true) }} ·
         {{
           groups.filter.collectionId
-            ? (trips.find((t) => t.id === groups?.filter.collectionId)?.name ?? '原旅行范围')
-            : '全部已启用来源'
+            ? (trips.find((t) => t.id === groups?.filter.collectionId)?.name ?? tr('原旅行范围'))
+            : tr('全部已启用来源')
         }}
-        · 当时范围 {{ groups.summary?.scopeCount }} 项，已分组 {{ groups.summary?.clusteredCount }} 项，{{
-          groups.summary?.actualGroups
-        }}
-        组<span v-if="groups.summary?.failedCount"
-          >，{{ groups.summary.failedCount }} 项无法处理（见任务明细）</span
-        >。
+        {{ tr('· 当时范围') }} {{ groups.summary?.scopeCount }} {{ tr('项，已分组') }}
+        {{ groups.summary?.clusteredCount }} {{ tr('项，') }}{{ groups.summary?.actualGroups }} {{ tr('组')
+        }}<span v-if="groups.summary?.failedCount"
+          >{{ tr('，') }}{{ groups.summary.failedCount }} {{ tr('项无法处理（见任务明细）') }}</span
+        >{{ tr('。') }}
       </p>
       <div class="ai-group-grid">
         <article v-for="group in groups.groups" :key="group.id" class="ai-group">
@@ -90,18 +96,18 @@ const emit = defineEmits<{ generate: []; view: [group: AiClusters['groups'][numb
           </div>
           <div class="row">
             <h3>{{ group.name }}</h3>
-            <strong>{{ group.validCount }} 项有效</strong>
+            <strong>{{ group.validCount }} {{ tr('项有效') }}</strong>
           </div>
           <p v-if="group.staleCount" class="warning-text small">
-            {{ group.staleCount }} 项素材或范围已变化，建议更新索引后重新分组。
+            {{ group.staleCount }} {{ tr('项素材或范围已变化，建议更新索引后重新分组。') }}
           </p>
           <button class="btn small-btn" :disabled="!group.validCount" @click="emit('view', group)">
-            查看当前有效成员
+            {{ tr('查看当前有效成员') }}
           </button>
         </article>
       </div></template
     >
-    <p v-else class="muted">当前范围尚未生成内容组。</p>
+    <p v-else class="muted">{{ tr('当前范围尚未生成内容组。') }}</p>
   </section>
 </template>
 <style scoped>

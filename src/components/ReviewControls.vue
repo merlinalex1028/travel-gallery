@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import type { AssetReview, ReviewPatch } from '../services/contracts';
 import Icon from './Icon.vue';
 defineProps<{ review?: AssetReview; busy?: boolean; compact?: boolean }>();
@@ -14,7 +16,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
         :aria-pressed="review?.pickState === 'keep'"
         @click="$emit('patch', { pickState: 'keep' })"
       >
-        <Icon name="flag" />保留<kbd>P</kbd></button
+        <Icon name="flag" />{{ tr('保留') }}<kbd>P</kbd></button
       ><button
         :disabled="busy"
         class="review-btn maybe"
@@ -22,7 +24,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
         :aria-pressed="review?.pickState === 'maybe'"
         @click="$emit('patch', { pickState: 'maybe' })"
       >
-        <Icon name="circle" />待定<kbd>U</kbd></button
+        <Icon name="circle" />{{ tr('待定') }}<kbd>U</kbd></button
       ><button
         :disabled="busy"
         class="review-btn reject"
@@ -30,7 +32,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
         :aria-pressed="review?.pickState === 'reject'"
         @click="$emit('patch', { pickState: 'reject' })"
       >
-        <Icon name="close" />淘汰<kbd>X</kbd>
+        <Icon name="close" />{{ tr('淘汰') }}<kbd>X</kbd>
       </button>
     </div>
     <button
@@ -39,7 +41,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
       :disabled="busy"
       @click="$emit('patch', { pickState: 'unreviewed' })"
     >
-      清除挑片标记
+      {{ tr('清除挑片标记') }}
     </button>
     <div class="rating-controls">
       <button
@@ -47,7 +49,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
         :key="star"
         class="star-btn"
         :class="{ filled: star <= (review?.rating ?? 0) }"
-        :aria-label="`${star} 星`"
+        :aria-label="tr('{0} 星', { 0: star })"
         :aria-pressed="review?.rating === star"
         :disabled="busy"
         @click="$emit('patch', { rating: review?.rating === star ? 0 : star })"
@@ -58,7 +60,7 @@ defineEmits<{ patch: [patch: ReviewPatch]; undo: [] }>();
         :class="{ liked: review?.isFavorite }"
         :aria-pressed="!!review?.isFavorite"
         :disabled="busy"
-        aria-label="切换收藏 F"
+        :aria-label="tr('切换收藏 F')"
         @click="$emit('patch', { isFavorite: !review?.isFavorite })"
       >
         <Icon name="heart" />

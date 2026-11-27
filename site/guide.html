@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f8fafc" />
+    <meta
+      name="description"
+      content="旅图使用指南：安装、导入照片、中英切换、挑片、Live Photo、导出、应用更新与资料库维护。"
+    />
+    <link rel="canonical" href="https://merlinalex1028.github.io/travel-gallery/guide.html" />
+    <link rel="icon" type="image/svg+xml" href="./assets/logo.svg" />
+    <script src="./language.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./main.js"></script>
+    <title>使用指南 · 旅图 Travel Gallery</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳至主要内容</a>
+    <header class="site-header">
+      <div class="header-inner container">
+        <a class="brand" href="./"
+          ><img src="./assets/logo.svg" alt="" width="32" height="32" /><span
+            >旅图 <small>Travel Gallery</small></span
+          ></a
+        >
+        <nav aria-label="主要导航">
+          <a href="./#features">功能</a><a href="./guide.html#start" aria-current="page">使用指南</a
+          ><a href="#install">安装</a>
+        </nav>
+        <div class="header-actions">
+          <a
+            class="language-toggle"
+            href="./en/guide.html"
+            lang="en"
+            data-language="en-US"
+            aria-label="Switch to English"
+            >EN</a
+          ><button
+            class="theme-toggle icon-button"
+            type="button"
+            aria-label="切换为深色主题"
+            aria-pressed="false"
+          >
+            ◐</button
+          ><a class="button button-small" href="./#download">下载旅图</a>
+        </div>
+      </div>
+    </header>
+    <main id="main" class="guide-layout container">
+      <aside class="guide-nav" aria-label="指南目录">
+        <p class="eyebrow">TRAVEL GALLERY GUIDE</p>
+        <a href="#start">快速开始</a><a href="#install">安装与首次启动</a><a href="#language">中英切换</a
+        ><a href="#features">功能与快捷键</a><a href="#live">Live Photo</a><a href="#export">复制与故事导出</a
+        ><a href="#updates">应用内更新</a><a href="#catalog">资料库与隐私</a><a href="#models">可选本地分析</a
+        ><a href="#versions">版本记录</a><a href="#development">开发与构建</a>
+      </aside>
+      <article class="guide-content">
+        <div class="guide-intro">
+          <p class="eyebrow">把沿途的心动，好好收藏</p>
+          <h1>旅图使用指南</h1>
+          <p>从添加第一个照片目录，到整理与分享你的旅行。在这里就能找到日常使用说明。</p>
+        </div>
+        <section id="start">
+          <h2>快速开始</h2>
+          <ol>
+            <li>选择适合电脑的安装包，完成安装后打开旅图。</li>
+            <li>
+              点击「添加照片目录」，通过系统选择器授权本地或外接硬盘上的目录。可选择包含子文件夹、跳过隐藏文件和排除规则。
+            </li>
+            <li>等待后台建立索引与缩略图，然后在图库筛选，或进入「挑片工作台」标记照片。</li>
+            <li>创建旅行相册，在图库选中照片后「加入旅行」。需要分享时，先预演，再复制导出。</li>
+          </ol>
+          <p>应用引用原始照片和视频，不搬动源文件。浏览器中的交互示例仅使用内置素材。</p>
+          <a class="text-link" href="./#download">前往下载</a>
+        </section>
+        <section id="install">
+          <h2>安装与首次启动</h2>
+          <div class="guide-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>平台</th>
+                  <th>安装方式</th>
+                  <th>系统要求</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>macOS Apple Silicon</td>
+                  <td>打开 DMG，将旅图拖入「应用程序」，再从该目录启动。</td>
+                  <td>macOS 13+，Apple 芯片</td>
+                </tr>
+                <tr>
+                  <td>Windows x64</td>
+                  <td>运行 EXE 并按向导安装，包含离线 WebView2 安装器。</td>
+                  <td>Windows 10 / 11，64 位</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            当前 macOS 包使用 ad-hoc 完整性签名，未经 Apple 公证；Windows 未做 Authenticode
+            签名。更新包另有完整性签名，两者不等于系统信任的发布者签名。
+          </p>
+          <ol>
+            <li>只使用本网站下载入口提供的 GitHub Release 安装包，核对同版本 SHA256SUMS.txt。</li>
+            <li>macOS 如阻止打开，在「系统设置 → 隐私与安全性」查看是否提供「仍要打开」。</li>
+            <li>Windows 如显示 SmartScreen，可查看「更多信息 → 仍要运行」。组织策略可能不允许手动放行。</li>
+          </ol>
+          <p>不需要关闭系统的全局安全功能。校验命令如下：</p>
+          <pre><code>shasum -a 256 Travel-Gallery-*-macOS-arm64.dmg
+Get-FileHash .\Travel-Gallery-*-Windows-x64-setup.exe -Algorithm SHA256</code></pre>
+          <p>备份原始照片和资料库后，可覆盖安装新版；升级沿用正式资料库。</p>
+        </section>
+        <section id="language">
+          <h2>中英切换</h2>
+          <p>
+            官网页眉点击「EN /
+            中文」，可在首页与本指南的对应语言之间切换；选择会在本浏览器保存。应用顶部与「设置 →
+            界面语言」提供中文 / English，立即切换并在此设备记住选择。
+          </p>
+          <p>
+            日期与系统组件文案随应用语言显示。你自己的标签、备注、旅行名和文件名保持原样；无需联网翻译。原生工具诊断、系统授权窗口和发布说明可能保留来源语言。README
+            顶部也提供中文与 English 链接。
+          </p>
+        </section>
+        <section id="features">
+          <h2>功能与快捷键</h2>
+          <ul>
+            <li>
+              图库：照片和视频一起浏览，组合文件名、文件夹、时间、格式、标签、评分等筛选，保存为智能筛选。
+            </li>
+            <li>挑片：保留、待定、淘汰、星级、收藏、备注；支持撤销和 2–4 张同步缩放对比。淘汰只做标记。</li>
+            <li>重复与相似：SHA-256 精确重复、视觉相似、按时间的连拍分组分别展示，逐组人工复核。</li>
+            <li>旅行：跨来源创建相册、时间轴、离线 GPS 足迹与旅行故事。未知拍摄日期和未知时区会明确标注。</li>
+            <li>来源：管理离线、缺失与受限格式。重连硬盘后重新扫描；重新定位可在核验后恢复来源关联。</li>
+          </ul>
+          <div class="guide-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>按键</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>P / X / U</td>
+                  <td>保留 / 淘汰 / 待定</td>
+                </tr>
+                <tr>
+                  <td>0–5 / F</td>
+                  <td>星级 / 收藏</td>
+                </tr>
+                <tr>
+                  <td>← / →</td>
+                  <td>上一张 / 下一张</td>
+                </tr>
+                <tr>
+                  <td>Space / Tab</td>
+                  <td>打开或缩放预览 / 详情面板</td>
+                </tr>
+                <tr>
+                  <td>⌘ / Ctrl + Z</td>
+                  <td>撤销整理修改</td>
+                </tr>
+                <tr>
+                  <td>Esc</td>
+                  <td>关闭浮层或退出查看器</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            输入框、菜单与弹窗中会暂停照片快捷键。HEIC、RAW
+            和视频预览取决于本机解码能力，受限文件仍保留索引。RAW 预览使用内嵌 JPEG，不是完整 RAW 显影。
+          </p>
+        </section>
+        <section id="live">
+          <h2>Live Photo 配对与播放</h2>
+          <p>
+            Apple「照片」导出的未修改原片中，JPG / JPEG / HEIC / HEIF 与 MOV 的 Apple
+            内容标识唯一匹配时会自动配对。图库「合并配套」默认开启，组合显示一张 LIVE · 2 卡片。
+          </p>
+          <p>
+            仅同目录同名、没有有效内容标识时属于候选，请在「照片详情 → 配套素材 → 确认配对」复核。大图左上角
+            LIVE 标识悬停时静音播放一次，离开立即停止；停留不循环，重新移入才重播。也可用 Enter / Space
+            或轻点操作。
+          </p>
+          <p>
+            这是配套 MOV 预览，取决于本机解码能力，不包含 Apple 原生 Live Photo
+            的按压和过渡效果。切图或关闭预览会停止播放。原文件保持独立。
+          </p>
+          <p>
+            Apple 导出的 XMP 不参与配对，当前不自动导入其中的 IPTC 内容；旅图导出时可另选生成标签、星级和备注
+            XMP。
+          </p>
+        </section>
+        <section id="export">
+          <h2>复制与故事导出</h2>
+          <p>
+            选中照片后点击「复制导出」，选择目标目录、结构、同名规则及可选的 XMP
+            或已确认配套文件。先预演数量、大小、冲突和来源状态，再确认复制。预演路径统一用 / 显示。
+          </p>
+          <p>
+            媒体与 XMP 先写临时副本，逐文件校验 SHA-256
+            后发布，拒绝覆盖已有文件。目录受到替换保护；失败时只清理本次创建且身份一致的临时文件。已完成的副本保留，可在「任务中心
+            → 导出报告」查看结果。
+          </p>
+          <p>
+            在旅行故事中可导出离线 HTML、JPEG 预览和 SHA-256 清单，最多 5000
+            项。视频仅含静帧，不包含原始媒体；备注须单独勾选。预览重编码不写入 GPS
+            字段或源目录路径，分享时保留整个故事文件夹。
+          </p>
+        </section>
+        <section id="updates">
+          <h2>应用内更新</h2>
+          <ol>
+            <li>打开「设置 → 应用更新」，点击「检查更新」。</li>
+            <li>发现新版本后点击「下载更新」，可查看进度；下载后验证更新包签名。</li>
+            <li>保存编辑并完成或取消全部后台任务，包括暂停任务，再确认「安装并重启」。</li>
+          </ol>
+          <p>
+            自动检查默认关闭；开启后在启动时及每 4
+            小时检查一次，仅提示新版本，下载与安装仍由你操作。仅跟随最新正式 Release，预发布版请手动下载。
+          </p>
+          <p>
+            检查和下载通过 GitHub
+            及附件服务联网，不发送照片、路径或资料库；断网不影响浏览整理。下载仅在本次进程暂存，退出后需重新下载。缺少更新清单、断网或安装失败会提示错误，可重试或手动覆盖安装。
+          </p>
+          <p>
+            适用于 macOS Apple Silicon 与 Windows x64 正式发行包；浏览器、开发与验收版本不检查或安装。macOS
+            请先移入「应用程序」。旧版没有更新入口时，先手动安装含此功能的新版本。
+          </p>
+        </section>
+        <section id="catalog">
+          <h2>资料库、缓存与隐私</h2>
+          <p>
+            在「设置 →
+            本地资料库」备份或恢复索引、评分、标签、相册和任务。恢复前验证备份并自动备份当前库。资料库备份不含原始媒体和独立模型包，请分别备份。
+          </p>
+          <p>
+            清理缓存仅移除可再生成的预览，不重置整理记录。来源离线时保留缩略图和整理结果，不把整盘误判为缺失。
+          </p>
+          <p>
+            核心浏览与整理在本机运行，无需账户、不上传照片、不收集遥测。离线地图使用 Natural Earth
+            公共领域底图，不联网请求坐标。官网无统计脚本和第三方字体。
+          </p>
+        </section>
+        <section id="models">
+          <h2>可选本地分析</h2>
+          <p>
+            本地 AI
+            与闭眼提示默认关闭，需要自行导入独立离线模型包并启用。模型不会自动下载，照片不上传；可在任务中心暂停或取消，关闭分析可释放推理进程。
+          </p>
+          <p>
+            AI
+            内容检索与分组、闭眼提示和同场景细节测量仅供人工复核，不自动淘汰照片或修改评分。模型与索引可移除重建，手工整理保留。
+          </p>
+        </section>
+        <section id="versions">
+          <h2>版本记录</h2>
+          <p>
+            这里显示已发布的公开版本。下载文件托管在 GitHub；以下明确标注的 GitHub
+            入口用于查看原始发布记录与校验清单。
+          </p>
+          <div data-release-history aria-live="polite"><p>暂时无法读取版本信息，请稍后刷新。</p></div>
+          <a class="text-link" href="https://github.com/merlinalex1028/travel-gallery/releases"
+            >GitHub Releases 与校验清单</a
+          >
+        </section>
+        <section id="development">
+          <h2>开发与构建</h2>
+          <p>
+            前端为 Vue 3、TypeScript、Pinia 与 Element Plus；原生端为 Rust、Tauri 2 与
+            SQLite；官网为独立静态页面。需要 Node.js 22、pnpm 10、Rust stable 以及 Tauri 平台依赖。
+          </p>
+          <pre><code>pnpm install --frozen-lockfile
+pnpm dev          # Browser demo
+pnpm desktop      # Isolated native development
+pnpm test
+pnpm build
+pnpm test:rust
+pnpm site:build</code></pre>
+          <p>
+            原生开发使用独立应用标识 com.travelgallery.development，正式版使用
+            com.travelgallery.desktop。测试仅用自有临时素材与隔离资料库，保护原图。
+          </p>
+          <p>
+            两个 README 版本提供同等使用说明，官网页面不依赖 README
+            才能阅读。源码中的发布指南、媒体工具与协作规则面向贡献者：
+          </p>
+          <div class="guide-links">
+            <a href="https://github.com/merlinalex1028/travel-gallery">GitHub 源码仓库</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/blob/main/docs/RELEASING.md"
+              >GitHub 构建与发布指南</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/blob/main/docs/MEDIA-TOOLS.md"
+              >GitHub 媒体工具说明</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/blob/main/AGENTS.md">GitHub 协作规范</a
+            ><a href="https://github.com/merlinalex1028/travel-gallery/issues">GitHub 问题反馈</a>
+          </div>
+        </section>
+      </article>
+    </main>
+    <footer class="site-footer container">
+      <a class="brand" href="./"
+        ><img src="./assets/logo.svg" alt="" width="28" height="28" /><span
+          >旅图 <small>Travel Gallery</small></span
+        ></a
+      >
+      <nav aria-label="页脚导航">
+        <a href="./">首页</a><a href="#start">使用指南</a><a href="./#download">下载</a
+        ><a href="https://github.com/merlinalex1028/travel-gallery">GitHub</a>
+      </nav>
+    </footer>
+  </body>
+</html>

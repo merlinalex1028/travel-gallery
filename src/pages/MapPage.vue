@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { locale, tr } from '../i18n';
+
 import CustomSelect from '../components/CustomSelect.vue';
 import { computed, onMounted, onUnmounted, shallowRef, useTemplateRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -119,13 +121,18 @@ async function reload() {
       if (!destroyed && seq === generation) fitLocations(locations);
     } else if (map) pendingSourceRefresh = true;
   } catch {
-    if (!destroyed && seq === generation) error.value = '无法更新地图范围，请重试。';
+    if (!destroyed && seq === generation) error.value = tr('无法更新地图范围，请重试。');
   } finally {
     if (!destroyed && seq === generation) loading.value = false;
   }
 }
 watch(showTrails, (show) => {
   if (map?.getLayer('trails')) map.setLayoutProperty('trails', 'visibility', show ? 'visible' : 'none');
+});
+watch(locale, () => {
+  for (const marker of markers.values()) marker.remove();
+  markers.clear();
+  map?.triggerRepaint();
 });
 onMounted(async () => {
   try {
@@ -192,7 +199,8 @@ onMounted(async () => {
     });
     map.addControl(new maplibre.NavigationControl({ showCompass: false }), 'top-right');
     loadTimer = setTimeout(() => {
-      if (!ready.value && !destroyed) mapError.value = '离线地图没有完成加载，可通过下方坐标列表查看照片。';
+      if (!ready.value && !destroyed)
+        mapError.value = tr('离线地图没有完成加载，可通过下方坐标列表查看照片。');
     }, 10000);
     function updateMarkers() {
       if (!map || !ready.value) return;
@@ -211,7 +219,9 @@ onMounted(async () => {
         button.textContent = String(count);
         button.setAttribute(
           'aria-label',
-          p.cluster ? `放大查看 ${count} 张照片的位置` : `查看此处的 ${count} 张照片`,
+          p.cluster
+            ? tr('放大查看 {0} 张照片的位置', { 0: count })
+            : tr('查看此处的 {0} 张照片', { 0: count }),
         );
         button.addEventListener('click', () => {
           if (!p.cluster) {
@@ -248,12 +258,12 @@ onMounted(async () => {
       }
     });
     map.on('error', () => {
-      mapError.value = '地图资源暂时无法加载，可通过下方坐标列表查看照片。';
+      mapError.value = tr('地图资源暂时无法加载，可通过下方坐标列表查看照片。');
     });
   } catch {
     error.value = points.value.length
-      ? '地图暂时不可用，可通过下方地点列表查看照片。'
-      : '暂时无法加载地图或照片位置，请重新进入此页重试。';
+      ? tr('地图暂时不可用，可通过下方地点列表查看照片。')
+      : tr('暂时无法加载地图或照片位置，请重新进入此页重试。');
   } finally {
     loading.value = false;
   }
@@ -273,48 +283,51 @@ onUnmounted(() => {
     <div class="page-heading">
       <div>
         <div class="eyebrow">THE PLACES WE CARRY WITH US</div>
-        <h1>足迹地图</h1>
-        <p>世界很大，去过的地方都在心里。</p>
+        <h1>{{ tr('足迹地图') }}</h1>
+        <p>{{ tr('世界很大，去过的地方都在心里。') }}</p>
       </div>
-      <span class="state-pill online"><Icon name="offline" :size="14" />完全离线</span>
+      <span class="state-pill online"><Icon name="offline" :size="14" />{{ tr('完全离线') }}</span>
     </div>
     <div class="notice">
-      <Icon name="info" />离线世界概览采用 Natural Earth
-      公共领域数据，供定位参考，不包含街道。只展示媒体中的真实
-      GPS；点击位置可查看此处全部照片，不向网络发送坐标。
+      <Icon name="info" />{{
+        tr(
+          '离线世界概览采用 Natural Earth 公共领域数据，供定位参考，不包含街道。只展示媒体中的真实 GPS；点击位置可查看此处全部照片，不向网络发送坐标。',
+        )
+      }}
     </div>
     <div class="row map-options">
       <label
-        >旅行范围
+        >{{ tr('旅行范围') }}
         <CustomSelect
           v-model="tripId"
           :disabled="loading"
-          aria-label="地图旅行范围"
+          :aria-label="tr('地图旅行范围')"
           @change="reload"
           :options="[
-            { value: '', label: '全部媒体' },
+            { value: '', label: tr('全部媒体') },
             ...app.trips.map((trip) => ({ value: trip.id, label: trip.name })),
           ]"
       /></label>
       <label class="check-label"
-        ><input
-          v-model="showTrails"
-          type="checkbox"
-          :disabled="!ready || !trails.features.length"
-        />显示按日拍摄顺序提示</label
+        ><input v-model="showTrails" type="checkbox" :disabled="!ready || !trails.features.length" />{{
+          tr('显示按日拍摄顺序提示')
+        }}</label
       >
     </div>
     <p v-if="showTrails" class="muted small">
-      连线仅表示同日照片的拍摄顺序，不代表实际行走路线。跨日、时区变化、间隔至少6小时或跨越180°经线时断开。{{
-        trails.unknownTimezone ? '部分照片时区未知，顺序按媒体墙上时间排列。' : ''
-      }}{{ trails.truncated ? '仅显示时间最早的5000张定位照片，请按旅行缩小范围。' : '' }}
+      {{
+        tr(
+          '连线仅表示同日照片的拍摄顺序，不代表实际行走路线。跨日、时区变化、间隔至少6小时或跨越180°经线时断开。',
+        )
+      }}{{ trails.unknownTimezone ? tr('部分照片时区未知，顺序按媒体墙上时间排列。') : ''
+      }}{{ trails.truncated ? tr('仅显示时间最早的5000张定位照片，请按旅行缩小范围。') : '' }}
     </p>
-    <div ref="map-root" class="offline-map" aria-label="离线照片足迹地图" />
+    <div ref="map-root" class="offline-map" :aria-label="tr('离线照片足迹地图')" />
     <p v-if="error || mapError" class="warning-text" role="alert">{{ error || mapError }}</p>
     <div v-if="points.length" class="map-locations">
       <button v-for="point in visibleLocations" :key="`${point.lon}-${point.lat}`" @click="open(point)">
         <Icon name="locate" /><span
-          ><strong>{{ point.count }} 张照片</strong
+          ><strong>{{ point.count }} {{ tr('张照片') }}</strong
           ><small
             >{{ Math.abs(point.lat).toFixed(2) }}° {{ point.lat < 0 ? 'S' : 'N' }},
             {{ Math.abs(point.lon).toFixed(2) }}° {{ point.lon < 0 ? 'W' : 'E' }}</small
@@ -322,18 +335,23 @@ onUnmounted(() => {
         ><Icon name="right" :size="16" />
       </button>
     </div>
-    <nav v-if="locationPages > 1" class="row" aria-label="地点列表分页">
+    <nav v-if="locationPages > 1" class="row" :aria-label="tr('地点列表分页')">
       <span
-        >{{ points.length.toLocaleString() }} 个位置 · 第 {{ locationPage }} / {{ locationPages }} 页</span
+        >{{ points.length.toLocaleString(locale) }} {{ tr('个位置 · 第') }} {{ locationPage }} /
+        {{ locationPages }} {{ tr('页') }}</span
       >
-      <button class="btn" :disabled="locationPage === 1" @click="locationPage--">上一页</button>
-      <button class="btn" :disabled="locationPage === locationPages" @click="locationPage++">下一页</button>
+      <button class="btn" :disabled="locationPage === 1" @click="locationPage--">{{ tr('上一页') }}</button>
+      <button class="btn" :disabled="locationPage === locationPages" @click="locationPage++">
+        {{ tr('下一页') }}
+      </button>
     </nav>
     <EmptyState
       v-if="!points.length && !error"
       :icon="loading ? 'loader' : 'map'"
-      :title="loading ? '正在准备离线地图…' : '还没有带 GPS 的旅行照片'"
-      :description="loading ? '正在读取本地位置和地图资源。' : '未记录位置的照片不会被推断出精确地点。'"
+      :title="loading ? tr('正在准备离线地图…') : tr('还没有带 GPS 的旅行照片')"
+      :description="
+        loading ? tr('正在读取本地位置和地图资源。') : tr('未记录位置的照片不会被推断出精确地点。')
+      "
     />
   </section>
 </template>

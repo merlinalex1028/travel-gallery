@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../i18n';
+
 import type { AssetSummary } from '../services/contracts';
 import { duration, files, picks } from '../services/format';
 import Icon from './Icon.vue';
@@ -21,7 +23,9 @@ defineEmits<{
       rejected: asset.review.pickState === 'reject',
     }"
     tabindex="0"
-    :aria-label="`${asset.filename}，${picks[asset.review.pickState]}，${asset.review.rating} 星`"
+    :aria-label="
+      tr('{0}，{1}，{2} 星', { 0: asset.filename, 1: picks[asset.review.pickState], 2: asset.review.rating })
+    "
     :aria-selected="selected"
     @click="$emit('select', $event)"
     @dblclick="$emit('open')"
@@ -41,7 +45,7 @@ defineEmits<{
         v-if="asset.linkedMediaCount"
         class="media-badge top-left"
         @click.stop="$emit('links')"
-        :aria-label="`展开 ${asset.linkedMediaCount + 1} 个配套源文件`"
+        :aria-label="tr('展开 {0} 个配套源文件', { 0: asset.linkedMediaCount + 1 })"
       >
         <Icon name="layers" :size="12" />{{
           asset.linkedMediaType === 'live_photo' ? 'LIVE' : 'RAW + JPEG'
@@ -59,7 +63,7 @@ defineEmits<{
       <button
         class="favorite-btn"
         :class="{ active: asset.review.isFavorite }"
-        :aria-label="asset.review.isFavorite ? '取消收藏' : '收藏'"
+        :aria-label="asset.review.isFavorite ? tr('取消收藏') : tr('收藏')"
         @click.stop="$emit('favorite')"
       >
         <Icon name="heart" :size="17" />
@@ -79,11 +83,13 @@ defineEmits<{
     </div>
     <div class="media-caption">
       <span class="truncate">{{ asset.filename }}</span
-      ><span v-if="asset.review.rating" class="stars" :aria-label="`${asset.review.rating} 星`">{{
-        '★'.repeat(asset.review.rating)
-      }}</span
+      ><span
+        v-if="asset.review.rating"
+        class="stars"
+        :aria-label="tr('{0} 星', { 0: asset.review.rating })"
+        >{{ '★'.repeat(asset.review.rating) }}</span
       ><span v-else class="file-type">{{
-        asset.mediaKind === 'video' ? '视频' : asset.extension.toUpperCase()
+        asset.mediaKind === 'video' ? tr('视频') : asset.extension.toUpperCase()
       }}</span>
     </div>
   </article>

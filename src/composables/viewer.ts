@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { computed, onMounted, onUnmounted, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useApp } from '../stores/app';
@@ -48,7 +49,7 @@ export function useViewer() {
   const failedReview = shallowRef<ReviewAttempt | null>(null),
     retryNeedsRefresh = shallowRef(false),
     canRetry = computed(() => !!failedReview.value && failedReview.value.assetId === asset.value?.id),
-    retryLabel = computed(() => (retryNeedsRefresh.value ? '刷新照片' : '重试'));
+    retryLabel = computed(() => (retryNeedsRefresh.value ? tr('刷新照片') : tr('重试')));
   const filmstrip = shallowRef<AssetSummary[]>([]),
     progress = shallowRef<Commands['get_cull_progress']['result'] | null>(null),
     summary = shallowRef<Record<PickState, number> | null>(null);

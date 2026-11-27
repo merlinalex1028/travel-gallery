@@ -11,8 +11,11 @@ if (args.length && (args.length !== 2 || args[0] !== '--releases'))
 
 // An explicit source allowlist keeps desktop resources and local records out of Pages.
 await mkdir(path.join(output, 'assets'), { recursive: true });
-for (const name of ['index.html', 'styles.css', 'main.js'])
+for (const name of ['index.html', 'guide.html', 'styles.css', 'main.js', 'language.js'])
   await copyFile(path.join(root, 'site', name), path.join(output, name));
+await mkdir(path.join(output, 'en'), { recursive: true });
+for (const name of ['index.html', 'guide.html'])
+  await copyFile(path.join(root, 'site/en', name), path.join(output, 'en', name));
 await copyFile(
   path.join(root, 'site/assets/library-preview.jpg'),
   path.join(output, 'assets/library-preview.jpg'),
@@ -34,7 +37,22 @@ const complete = published
   )
   .sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at));
 const release = complete.find((item) => !item.prerelease) ?? complete[0];
-const downloads = { url: `${repository}/releases`, tag: null, assets: {} };
+const downloads = {
+  url: `${repository}/releases`,
+  tag: null,
+  assets: {},
+  releases: published
+    .filter((item) => item.html_url?.startsWith(`${repository}/releases/tag/`))
+    .sort((a, b) => Date.parse(b.published_at) - Date.parse(a.published_at))
+    .slice(0, 10)
+    .map((item) => ({
+      tag: item.tag_name,
+      name: item.name || item.tag_name,
+      publishedAt: item.published_at,
+      prerelease: Boolean(item.prerelease),
+      url: item.html_url,
+    })),
+};
 if (release) {
   if (!release.html_url.startsWith(`${repository}/releases/tag/`)) throw new Error('Unexpected release URL.');
   downloads.url = release.html_url;
@@ -52,9 +70,24 @@ if (release) {
 }
 await writeFile(path.join(output, 'downloads.json'), `${JSON.stringify(downloads, null, 2)}\n`);
 await writeFile(path.join(output, '.nojekyll'), '');
-const expected = ['.nojekyll', 'assets', 'downloads.json', 'index.html', 'main.js', 'styles.css'];
+const expected = [
+  '.nojekyll',
+  'assets',
+  'downloads.json',
+  'en',
+  'guide.html',
+  'index.html',
+  'language.js',
+  'main.js',
+  'styles.css',
+];
 if (JSON.stringify((await readdir(output)).sort()) !== JSON.stringify(expected))
   throw new Error('Unexpected files in dist/site; remove the previous site output and rebuild.');
+if (
+  JSON.stringify((await readdir(path.join(output, 'en'))).sort()) !==
+  JSON.stringify(['guide.html', 'index.html'])
+)
+  throw new Error('Unexpected English website files; refusing to publish outside the allowlist.');
 const assets = ['journey.svg', 'library-preview.jpg', 'logo.svg'];
 if (JSON.stringify((await readdir(path.join(output, 'assets'))).sort()) !== JSON.stringify(assets))
   throw new Error('Unexpected website assets; refusing to publish files outside the allowlist.');

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { tr } from '../../i18n';
+
 import { onUnmounted, shallowRef, watch } from 'vue';
 import { api, errorMessage } from '../../services/api';
 import type { AssetQuality, QualityObservation } from '../../services/contracts';
@@ -68,16 +70,16 @@ async function dismiss(observation: QualityObservation) {
 </script>
 <template>
   <details class="inspector-section" @toggle="toggle">
-    <summary>本地检查记录</summary>
+    <summary>{{ tr('本地检查记录') }}</summary>
     <template v-if="open">
-      <p v-if="loading" class="muted small" role="status">正在读取…</p>
+      <p v-if="loading" class="muted small" role="status">{{ tr('正在读取…') }}</p>
       <p v-if="error" class="warning-text small" role="alert">{{ error }}</p>
       <QualitySummary v-if="analysis" :analysis="analysis" :busy="busy" @dismiss="dismiss" />
       <p v-if="analysis && !analysis.observations.length" class="muted small">
-        暂无当前版本记录。<RouterLink to="/quality">设置或运行照片检查</RouterLink>
+        {{ tr('暂无当前版本记录。') }}<RouterLink to="/quality">{{ tr('设置或运行照片检查') }}</RouterLink>
       </p>
-      <p class="muted small">检查提示供人工复核，不会改变整理决定。</p>
-      <button class="text-btn" :disabled="loading || busy" @click="load">重新读取</button>
+      <p class="muted small">{{ tr('检查提示供人工复核，不会改变整理决定。') }}</p>
+      <button class="text-btn" :disabled="loading || busy" @click="load">{{ tr('重新读取') }}</button>
     </template>
   </details>
 </template>

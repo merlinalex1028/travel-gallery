@@ -1,3 +1,4 @@
+import { tr } from '../i18n';
 import { shallowRef, watch, type MaybeRefOrGetter, toValue } from 'vue';
 import { api, resourceUrl } from '../services/api';
 import type { PreviewHandle } from '../services/contracts';
@@ -145,7 +146,7 @@ export function usePreview(id: MaybeRefOrGetter<string | undefined>, variant: Va
     const assetId = toValue(id);
     if (!assetId || retries++ >= 1) {
       url.value = null;
-      reason.value = '预览加载失败，可重新加载或使用系统应用打开';
+      reason.value = tr('预览加载失败，可重新加载或使用系统应用打开');
       return;
     }
     cache.delete(`${assetId}:${variant}`);
@@ -180,7 +181,7 @@ export function usePreview(id: MaybeRefOrGetter<string | undefined>, variant: Va
         url.value = resourceUrl(result.resourceUrl);
         reason.value = result.reason ?? '';
       } catch {
-        if (!stale) reason.value = '预览不可用，可重试或用系统应用打开';
+        if (!stale) reason.value = tr('预览不可用，可重试或用系统应用打开');
       } finally {
         if (!stale) loading.value = false;
       }
